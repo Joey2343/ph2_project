@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2-SMART - Online Management System</title>
+  <link rel="icon" href="logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+  <link rel="stylesheet" href="css/style.css?v=1790328075514">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" id="brand-link" title="กลับหน้าแรก">
+        <img class="brand-logo" src="logo.png" alt="P2-SMART">
+        <div class="brand-text">
+          <div class="brand-title">P2-SMART</div>
+          <div class="brand-sub">Online Management System</div>
+        </div>
+      </div>
+      <div class="topbar-right" id="topbar-right"></div>
+    </div>
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <footer class="footer">
+    สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2 &nbsp;•&nbsp; ระบบศูนย์กลางการบริหารจัดการภายในสำนักงาน
+  </footer>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="vendor/pdfjs/pdf.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/sim-date.js?v=101"></script>
+  <script src="js/ui.js?v=9003stamp5"></script>
+  <script src="js/export-filter.js?v=1"></script>
+  <script src="js/constants.js?v=1788344146409"></script>
+  <script src="js/auth.js?v=1789458909908"></script>
+  <script src="js/views/home.js?v=1790738000001"></script>
+  <script src="js/views/office.js"></script>
+  <script src="js/views/schools.js?v=1789451484579"></script>
+  <script src="js/views/clock.js?v=203"></script>
+  <script src="js/views/vehicles.js?v=201"></script>
+  <script src="js/views/rooms.js?v=201"></script>
+  <script src="js/views/memos.js?v=204"></script>
+  <script src="js/views/travel.js?v=1790324228197"></script>
+  <script src="js/views/leaves.js?v=1790829000000"></script>
+  <script src="/vendor/pdf-lib.min.js"></script>
+    <script src="js/views/documents.js?v=1790831000001"></script>
+  <script src="js/views/budgets.js?v=200"></script>
+  <script src="js/views/academics.js?v=200"></script>
+  <script src="js/views/staff.js?v=1789451171643"></script>
+  <script src="js/app.js?v=204"></script>
+</body>
+</html>

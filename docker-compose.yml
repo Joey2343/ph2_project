@@ -1,0 +1,73 @@
+# MySQL สำหรับ dev/test — ระบบเดียวกันใช้ได้ทั้ง SQLite และ MySQL
+#
+# ใช้:
+#   docker compose up -d          เริ่ม MySQL
+#   docker compose ps             ดูสถานะ
+#   docker compose logs -f mysql  ดู log
+#   docker compose down           ปิด (เก็บข้อมูลไว้ใน volume)
+#   docker compose down -v        ปิดและลบข้อมูลทั้งหมด
+#
+# จากนั้นใส่ค่าใน backend/.env:
+#   DATABASE_URL=mysql://ph2:ph2pass@127.0.0.1:3307/ph2
+#
+# หมายเหตุเรื่องพอร์ต: ใช้ 3307 เพื่อไม่ชนกับ MySQL ที่อาจมีอยู่แล้วในเครื่อง
+# ถ้าต้องการใช้ 3306 ให้แก้ทั้ง ports และ DATABASE_URL ให้ตรงกัน
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: ph2-mysql
+    restart: unless-stopped
+    ports:
+      - '3307:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: ph2
+      MYSQL_USER: ph2
+      MYSQL_PASSWORD: ph2pass
+      # สำคัญสำหรับภาษาไทย + emoji
+      TZ: Asia/Bangkok
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+07:00
+      # ให้สคริปต์ของระบบ (doc_number ยาว) ทำงานได้
+      - --max-allowed-packet=64M
+    volumes:
+      - ph2-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-prootpass']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ตัวเลือก: MariaDB 10.11 สำหรับทดสอบความเข้ากันได้
+  # (เปิดใช้ด้วย: docker compose --profile mariadb up -d mariadb)
+  mariadb:
+    image: mariadb:10.11
+    container_name: ph2-mariadb
+    profiles: ['mariadb']
+    restart: unless-stopped
+    ports:
+      - '3308:3306'
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_DATABASE: ph2
+      MARIADB_USER: ph2
+      MARIADB_PASSWORD: ph2pass
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ph2-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  ph2-mysql-data:
+  ph2-mariadb-data:

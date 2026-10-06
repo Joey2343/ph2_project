@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<!--
+  โครงสร้างหน้าเว็บถูกย้ายมาอยู่ใน src/App.vue (header + main + footer)
+  ไฟล์นี้เหลือไว้แค่จุดเริ่มต้นของ Vite และประกาศ meta/font
+  โดยคงรูปแบบของเดิมทุกอย่างที่กระทบต่อหน้าตา
+-->
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>P2-SMART - Online Management System</title>
+
+    <!-- ไอคอน: เสิร์ฟจาก backend (ตามเดิมใช้ logo.png ที่ราก backend) -->
+    <link rel="icon" href="/logo.png" />
+
+    <!-- ฟอนต์หลักของระบบ (เหมือนเดิมทุกประการ) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Vue จะเขียนหน้าเว็บทั้งหมดลงใน #app -->
+    <div id="app"></div>
+
+    <noscript>
+      <div style="padding: 40px; font-family: sans-serif; text-align: center">
+        <h2>ต้องเปิดใช้งาน JavaScript</h2>
+        <p>ระบบนี้ต้องใช้ JavaScript ในการทำงาน กรุณาเปิด JavaScript แล้วโหลดหน้าใหม่</p>
+      </div>
+    </noscript>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

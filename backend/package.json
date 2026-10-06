@@ -1,0 +1,29 @@
+{
+  "name": "spp-phrae2-office",
+  "version": "2.0.0",
+  "description": "ระบบศูนย์กลางการบริหารจัดการภายในสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node db.js --seed",
+    "db:init": "node db.js --init",
+    "db:migrate-sqlite": "node scripts/migrate-to-mysql.js",
+    "db:inspect": "node scripts/inspect-db.js",
+    "test": "node --test test/",
+    "test:parity": "node test/parity.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^2.0.2",
+    "mysql2": "^3.14.1",
+    "pdf-lib": "^1.17.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "acorn": "^8.18.0",
+    "acorn-walk": "^8.3.5"
+  }
+}
