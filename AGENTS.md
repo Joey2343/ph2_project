@@ -46,6 +46,28 @@
   ✓ <img :src="'logo.png'" />    <!-- ผูกเป็น runtime -->
   ```
 - `setInterval` ใน `onMounted` ต้อง `clearInterval` ใน `onBeforeUnmount`
+- **นับ element ของ component ตัวเองตอน unmount ไม่ได้** เพราะ Vue เรียก
+  `onBeforeUnmount()` **ก่อน** ถอด element ออกจาก DOM
+  ```js
+  // ✗ ผิด — ปิด modal แล้วเลื่อนหน้าไม่ได้ (เจอจริงบนหน้าแรก admin)
+  // นับเจอตัวเอง 1 ตัวตอนปิด → คิดว่ายังมี modal ค้าง → overflow='hidden' ค้างตลอด
+  onBeforeUnmount(() => {
+    const stillOpen = document.querySelectorAll('[data-app-modal]').length > 0;
+    document.body.style.overflow = stillOpen ? 'hidden' : '';
+  });
+
+  // ✓ ถูก — ตัดตัวเองออกจากการนับเสมอ
+  const root = ref(null);
+  onBeforeUnmount(() => {
+    const others = [...document.querySelectorAll('[data-app-modal]')]
+      .filter((el) => el !== root.value);
+    document.body.style.overflow = others.length > 0 ? 'hidden' : '';
+  });
+  ```
+  > อาการ: ผู้ใช้เปิด-ปิด dialog ใดๆ แล้วเลื่อนหน้าไม่ได้อีก จนกว่าจะรีเฟรช
+  > กันไว้แล้วที่ `verify-vue-pages.mjs` → "เปิด-ปิด dialog แล้วยังเลื่อนหน้าได้"
+  > ถ้าจะปิด modal ฝั่ง legacy ให้เรียก `UI.closeTopModal()` อย่างเดียว
+  > (มันล้าง `#modal-root` และปลดล็อก body ให้พร้อมกัน — ล้าง `innerHTML` เองจะค้าง)
 - `AppModal` ต้องมี **prop `footer`** ถึงจะแสดง slot `#footer` (ไม่งั้นปุ่มหายเงียบ ๆ)
 - component ที่ import เป็น default ให้เขียน `import X from './X.vue'` — อย่าใช้ `{ X }`
   (ตรวจด้วย: ไฟล์นั้นมี `export` ใน SFC ไหม)
@@ -498,7 +520,7 @@ node scripts/verify.js --with-mysql
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน 366 modules |
 | `verify-build --server` | ผ่าน 40/40 |
-| `verify-vue-pages --all` | ผ่าน **182** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **183** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
 | `backend/verify.js --with-mysql` | ผ่าน 15/15 (SQLite ↔ MySQL parity) |
