@@ -236,6 +236,9 @@ cd frontend && npm run port   # อ่าน docs/legacy/source-v1/js → เข
   ถ้าเขียน `src="logo.png` ตรง ๆ Vite จะไปหาไฟล์ในโปรเจกต์ตอน build แล้ว fail ด้วย `Rollup failed to resolve import`
 - ค่าจาก `import.meta.env` ต้องอ่านผ่าน computed/ฟังก์ชันใน template ไม่งั้นจะไม่ถูกแทนค่าตอน build
 - เรียก `setInterval` ใน `onMounted` ต้อง `clearInterval` ใน `onBeforeUnmount` ไม่งั้นจะเดินค้างหลังเปลี่ยนหน้า
+- อย่านับ element ของ component ตัวเองตอน `onBeforeUnmount` — Vue ยังไม่ถอด element ออกจาก DOM ในตอนนั้น
+  ถ้าใช้นับสิ่งนี้เพื่อปลดล็อก `document.body.style.overflow` จะว่างไม่ปลด ผู้ใช้จะเลื่อนหน้าไม่ได้หลังปิด dialog
+- ถ้าจะปิด modal ฝั่ง legacy ให้เรียก `UI.closeTopModal()` อย่าล้าง `innerHTML` ของ `#modal-root` เอง
 - `<style scoped>` ในหน้าใหม่ปล่อยว่างได้ เพราะคลาสทั้งหมดมาจาก `styles/theme.css` ที่ตรงกับต้นฉบับ
 
 ---
