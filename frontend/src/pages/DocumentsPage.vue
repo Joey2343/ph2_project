@@ -467,7 +467,7 @@ const TAB_ACTIONS = computed(() => {
       incoming_reg: office,
       outgoing_reg: [
         { label: '▭ ลงทะเบียนหนังสือส่ง', bg: '#1d4ed8', show: true, run: () => openOutgoingForm() },
-        { label: '🔢 กำหนดเลขหนังสือสถานศึกษา', bg: '#7c3aed', show: isSchoolDocStaff.value, run: () => (prefixOpen = true) },
+        { label: '🔢 กำหนดเลขหนังสือสถานศึกษา', bg: '#7c3aed', show: isSchoolDocStaff.value, run: () => (prefixOpen.value = true) },
       ],
       order: [],
       certificate: [],
@@ -484,7 +484,7 @@ const TAB_ACTIONS = computed(() => {
     order: [{ label: '▭ ลงทะเบียนคำสั่ง', bg: '#b45309', show: true, run: () => openSimpleForm('order') }],
     certificate: [
       { label: '▭ ลงทะเบียนหนังสือรับรอง', bg: '#be185d', show: canCert({}), run: () => openSimpleForm('certificate') },
-      { label: '⊗ กำหนดเจ้าหน้าที่หนังสือรับรอง', bg: '#0f766e', show: isAdmin.value, run: () => (certStaffOpen = true) },
+      { label: '⊗ กำหนดเจ้าหน้าที่หนังสือรับรอง', bg: '#0f766e', show: isAdmin.value, run: () => (certStaffOpen.value = true) },
     ],
     honor: [{ label: '▭ ลงทะเบียนเกียรติบัตร', bg: '#a16207', show: true, run: () => openSimpleForm('honor') }],
   };
