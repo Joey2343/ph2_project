@@ -58,7 +58,9 @@ check(html.includes('Noto+Sans+Thai'), 'มีลิงก์ฟอนต์ Not
 const assetRefs = [...html.matchAll(/(?:src|href)="\/(assets\/[^"]+)"/g)].map((m) => m[1]);
 check(assetRefs.length > 0, `index.html อ้าง asset ${assetRefs.length} รายการ`);
 for (const ref of assetRefs) {
-  const p = join(DIST, ref.replace(/\//g, '\\'));
+  // ห้ามแปลง "/" เป็น "\\" เอง — บน Linux เส้นทางจะกลายเป็นชื่อไฟล์เดียวที่มี backslash
+  // path.join จัดการ separator ให้ถูกทั้ง Windows และ POSIX อยู่แล้ว
+  const p = join(DIST, ref);
   check(existsSync(p), `มีไฟล์ ${ref} (${existsSync(p) ? Math.round(statSync(p).size / 1024) + ' KB' : 'ไม่พบ'})`);
 }
 
