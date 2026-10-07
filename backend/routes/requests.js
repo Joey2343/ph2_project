@@ -1088,7 +1088,7 @@ router.get('/leave-balances', auth.requireAuth, async (req, res) => {
   // ดึงรายชื่อบุคลากรทั้งหมดที่ active
   // เรียงตามลำดับเจ้าหน้าที่ (staff_no) เหมือนหน้าเจ้าหน้าที่ — ผู้ที่ยังไม่กำหนดลำดับอยู่ท้ายสุด (เรียงตาม id)
   const users = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, staff_no, user_group,
-    ROW_NUMBER() OVER (ORDER BY CASE WHEN staff_no IS NULL OR staff_no = '' THEN 1 ELSE 0 END, CAST(staff_no AS INTEGER) ASC, id ASC) AS seq
+    ROW_NUMBER() OVER (ORDER BY CASE WHEN staff_no IS NULL OR staff_no = '' THEN 1 ELSE 0 END, CAST(staff_no AS SIGNED) ASC, id ASC) AS seq
     FROM users WHERE status = 'active'`).all();
   // ดึงยอดลาพักผ่อนที่ได้รับอนุมัติแล้วปีนี้
   // "ลาปีนี้" นับตามปีงบประมาณ (1 ต.ค. ปีก่อน - 30 ก.ย. ปีที่เลือก) เช่น ปีงบประมาณ 2569 = 1 ต.ค. 2568 - 30 ก.ย. 2569
@@ -1132,7 +1132,7 @@ router.put('/leave-balances/:userId', auth.requireAuth, async (req, res) => {
   const accumulated = Number(b.vacation_accumulated) || 0;
   const annual = Number(b.vacation_annual) || 0;
   await db.prepare(`INSERT INTO user_leave_balances (user_id, year, vacation_accumulated, vacation_annual)
-    VALUES (?,?,?,?) ON CONFLICT(user_id, year) DO UPDATE SET vacation_accumulated=excluded.vacation_accumulated, vacation_annual=excluded.vacation_annual
+    VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE vacation_accumulated=VALUES(vacation_accumulated), vacation_annual=VALUES(vacation_annual)
   `).run(userId, year, accumulated, annual);
   res.json({ ok: true, message: 'บันทึกข้อมูลวันลาพักผ่อนเรียบร้อย' });
 });
@@ -1188,7 +1188,7 @@ router.put('/settings/leave-approvers', auth.requireAuth, auth.requireAdmin, asy
       }
     }
   }
-  await db.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(data));
+  await db.prepare('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)').run(key, JSON.stringify(data));
   res.json({ ok: true, message: 'บันทึกเจ้าหน้าที่การลาเรียบร้อย', approvers: data });
 });
 

@@ -9,23 +9,67 @@ jobs:
   ci-test:
     name: Run Tests & Build Check
     runs-on: ubuntu-latest
+
+    # ระบบใช้ MariaDB 11.4 ตัวเดียว → CI ต้องมีฐานจริงชนิดเดียวกัน ไม่งั้นเทสต์ไม่ครอบคลุม
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: rootpass
+          MARIADB_DATABASE: admin_ph2
+          MARIADB_USER: admin_ph2
+          MARIADB_PASSWORD: admin_ph2pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: mysql://admin_ph2:admin_ph2pass@127.0.0.1:3306/admin_ph2
+      SMOKE_DATABASE_URL: mysql://admin_ph2:admin_ph2pass@127.0.0.1:3306/admin_ph2_test
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
-      - name: Test Backend
+      - name: สร้างฐานทดสอบ
         run: |
-          cd backend
-          npm ci
-          node test/smoke.js || true
+          docker exec "${{ job.services.mariadb.id }}" \
+            mariadb -uroot -prootpass -e "
+              CREATE DATABASE IF NOT EXISTS admin_ph2_test
+                CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+              GRANT ALL PRIVILEGES ON admin_ph2_test.* TO 'admin_ph2'@'%';
+              FLUSH PRIVILEGES;"
+          docker exec "${{ job.services.mariadb.id }}" \
+            mariadb -uroot -prootpass -e "SHOW DATABASES;"
 
-      - name: Test Build Frontend
+      - name: ติดตั้ง Backend
+        run: npm ci
+        working-directory: backend
+
+      - name: ตรวจระบบ + ทดสอบ endpoint
+        run: npm run verify
+        working-directory: backend
+
+      - name: Build Frontend
+        run: npm run build
+        working-directory: frontend
+
+      - name: ตรวจ registry และ dist
         run: |
-          cd frontend
           npm ci
-          npm run build
+          npm run verify:registry
+          npm run verify:build
+        working-directory: frontend
 
   cd-deploy:
     name: Deploy to Server
@@ -51,19 +95,40 @@ jobs:
             git reset --hard HEAD
             git pull origin main
 
-            echo ">>> 2. อัปเดต Backend"
+            echo ">>> 2. ติดตั้ง Backend"
             cd backend
             npm ci --omit=dev
-            node db.js || true
+
+            echo ">>> 3. สร้าง/ปรับ schema + seed ข้อมูลตั้งต้น"
+            # server.js ก็เรียก bootstrap() ตอนบูต แต่เรียกตรง ๆ ตรงนี้
+            # เพื่อให้เห็น error ก่อน reload และไม่เสี่ยงทำให้ process ตายวน
+            node db.js --init
+
+            echo ">>> 4. โหลดโค้ดใหม่เข้า process"
             pm2 reload ph2-api --update-env
 
-            echo ">>> 3. Build Frontend"
+            echo ">>> 5. Build Frontend"
             cd ../frontend
             npm ci
             npm run build
 
-            echo ">>> 4. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
+            echo ">>> 6. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
             # คัดลอกเฉพาะไฟล์ที่ build ได้ไปวางที่ public_html โดยไม่ลบ .htaccess
             cp -r dist/* $WEB_DIR/
+
+            echo ">>> 7. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
+            for i in $(seq 1 10); do
+              if curl -fsS -o /dev/null http://127.0.0.1:3000/api/office; then
+                echo "    ตอบกลับแล้ว (รอบที่ $i)"
+                break
+              fi
+              echo "    รอให้บูต... ($i/10)"
+              sleep 3
+              if [ "$i" = "10" ]; then
+                echo "!! เซิร์ฟเวอร์ไม่ตอบกลับหลัง 30 วินาที"
+                pm2 logs ph2-api --lines 40 --nostream
+                exit 1
+              fi
+            done
 
             echo ">>> Deploy สำเร็จ!"

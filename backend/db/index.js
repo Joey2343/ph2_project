@@ -2,44 +2,25 @@
 /**
  * หน้าต่อฐานข้อมูลของทั้งระบบ (ADR-0004)
  *
- * โค้ดทั้งโปรเจกต์เรียกผ่านโมดูลนี้โดยตรง และ API คงรูปแบบเดิมของ better-sqlite3
- * แต่ทุกเมธอดคืน Promise แทนค่าตรง ๆ:
+ * ระบบใช้ MariaDB 11.4 ตัวเดียว ไม่มีการแปลง SQL อีกแล้ว
+ * ทุกคำสั่ง SQL ในโค้ดเป็น MariaDB โดยตรง
  *
  *   const row  = await db.prepare('SELECT ... WHERE id = ?').get(id)
- *   const rows = await db.prepare('SELECT ...').all(a, b)
+ *   const rows = await db.prepare('SELECT ...').all()
  *   await db.prepare('INSERT ...').run(a, b)
- *   await db.exec('...')
+ *   await db.exec('...')            // รันหลายคำสั่งต่อกันได้
  *   await db.transaction(async (tx) => { ... })
- *
- * ข้อดีคือ diff จากระบบเดิมมีแค่เติม `await` — ไม่ต้องเขียน SQL ใหม่
- * และ SQL ชุดเดิมยังรันได้ทั้ง SQLite และ MySQL (แปลง dialect อัตโนมัติ)
  */
 const config = require('./config');
-const sql = require('./sql');
-const { SqliteDriver } = require('./driver-sqlite');
+const { MysqlDriver } = require('./driver-mysql');
 
 let driver = null;
-let dialect = null;
 let ready = false;
 
-/** สร้าง driver ตามค่าตั้งค่าปัจจุบัน (ยังไม่เชื่อมต่อ) */
-function createDriver() {
-  const cfg = config.resolve();
-  if (cfg.dialect === 'mysql') {
-    // โหลดแบบ lazy เพื่อไม่ให้ mysql2 ถูกโหลดเมื่อใช้ SQLite
-    const { MysqlDriver } = require('./driver-mysql');
-    return { cfg, driver: new MysqlDriver(cfg) };
-  }
-  return { cfg, driver: new SqliteDriver(cfg) };
-}
-
-/** เปิดการเชื่อมต่อ — ต้องเรียกครั้งเดียวก่อนรับ request */
 async function init() {
   if (ready) return api;
-  const created = createDriver();
-  driver = created.driver;
+  driver = new MysqlDriver(config.resolve());
   await driver.init();
-  dialect = driver.dialect;
   ready = true;
   return api;
 }
@@ -59,35 +40,22 @@ function assertReady() {
   return driver;
 }
 
-/** ถ้าเป็น MySQL ให้แปลง SQL ก่อนส่ง */
-function render(sqlText) {
-  return dialect === 'mysql' ? sql.translate(sqlText) : sqlText;
-}
-
 const api = {
-  /** @returns {'sqlite'|'mysql'} */
-  get dialect() {
-    return dialect;
-  },
-
-  get collation() {
-    return dialect === 'mysql' ? config.resolve().collation : null;
-  },
-
   get isMaria() {
     return driver ? driver.isMaria : false;
   },
 
-  get isSQLite() {
-    return dialect === 'sqlite';
-  },
-
-  get isMySQL() {
-    return dialect === 'mysql';
+  get collation() {
+    return config.resolve().collation;
   },
 
   get connectionInfo() {
     return driver ? config.describe(config.resolve()) : '(ยังไม่ได้เชื่อมต่อ)';
+  },
+
+  /** เวอร์ชัน MariaDB ที่เชื่อมต่ออยู่ เช่น 11.4.13-MariaDB */
+  get driverVersion() {
+    return driver ? driver.version : null;
   },
 
   init,
@@ -98,32 +66,21 @@ const api = {
    */
   prepare(sqlText) {
     const d = assertReady();
-    const finalSql = render(sqlText);
     return {
-      get: (...params) => d.get(finalSql, params),
-      all: (...params) => d.all(finalSql, params),
-      run: (...params) => d.run(finalSql, params),
-      /** สำหรับ driver ที่อยู่ใน transaction (ใช้ต่อเนื่องหลายครั้งได้) */
-      sync: () => d.syncPrepare ? d.syncPrepare(finalSql) : null,
+      get: (...params) => d.get(sqlText, params),
+      all: (...params) => d.all(sqlText, params),
+      run: (...params) => d.run(sqlText, params),
     };
   },
 
-  /** รัน SQL ที่ไม่ต้องคืนแถว (DDL หลายคำสั่ง, PRAGMA ฯลฯ) */
+  /** รัน SQL ที่ไม่ต้องคืนแถว — แยกทีละคำสั่งเพราะ mysql2 ปิด multipleStatements */
   async exec(sqlText) {
     const d = assertReady();
-    if (dialect === 'mysql') {
-      // แปลงทีละคำสั่ง: DDL ของเดิมมีหลายคำสั่งค้างกันใน exec เดียว
-      for (const stmt of splitStatements(sqlText)) {
-        if (!stmt.trim()) continue;
-        await d.exec(sql.translateDDL(stmt, { isMaria: d.isMaria, collation: config.resolve().collation }));
-      }
-      return undefined;
+    for (const stmt of splitStatements(sqlText)) {
+      if (!stmt.trim()) continue;
+      await d.exec(stmt);
     }
-    return d.exec(sqlText);
-  },
-
-  async pragma(key, value) {
-    return assertReady().pragma(key, value);
+    return undefined;
   },
 
   async columns(table) {
@@ -155,11 +112,10 @@ const api = {
 
   /** คืน facade ที่ผูกกับ connection ภายใน transaction */
   prepareTx(txDriver, sqlText) {
-    const finalSql = render(sqlText);
     return {
-      get: (...params) => txDriver.get(finalSql, params),
-      all: (...params) => txDriver.all(finalSql, params),
-      run: (...params) => txDriver.run(finalSql, params),
+      get: (...params) => txDriver.get(sqlText, params),
+      all: (...params) => txDriver.all(sqlText, params),
+      run: (...params) => txDriver.run(sqlText, params),
     };
   },
 
@@ -170,21 +126,17 @@ const api = {
 function makeTxFacade(txDriver) {
   return {
     prepare: (sqlText) => api.prepareTx(txDriver, sqlText),
-    exec: (sqlText) => txDriver.exec(render(sqlText)),
+    exec: (sqlText) => txDriver.exec(sqlText),
     transaction: (fn) => api.transaction(fn),
-    get dialect() {
-      return dialect;
-    },
-    get isMySQL() {
-      return dialect === 'mysql';
-    },
-    get isSQLite() {
-      return dialect === 'sqlite';
+    columns: (table) => driver.columns(table),
+    tables: () => driver.tables(),
+    get isMaria() {
+      return driver.isMaria;
     },
   };
 }
 
-/** แยกคำสั่ง SQL ที่ปนกันในสตริงเดียว (ใช้เฉพาะฝั่ง MySQL) */
+/** แยกคำสั่ง SQL ที่ปนกันในสตริงเดียว */
 function splitStatements(text) {
   const out = [];
   let buf = '';

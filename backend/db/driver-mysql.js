@@ -1,13 +1,13 @@
 'use strict';
 /**
- * ไดรเวอร์ MySQL 8.0+ / MariaDB 10.4+ (ผ่าน mysql2/promise)
+ * ไดรเวอร์ MariaDB 11.4 (ผ่าน mysql2/promise)
  *
- * การตั้งค่าสำคัญเพื่อให้พฤติกรรมตรงกับ SQLite เดิม:
+ * การตั้งค่าสำคัญเพื่อให้พฤติกรรมสม่ำเสมอ:
  *   - decimalNumbers  → เงิน/ตัวเลขทศนิยมคืนเป็น number ไม่ใช่ string
- *   - dateStrings     → คืนค่าวันที่เป็น string (ตารางเก็บวันที่เป็น VARCHAR อยู่แล้ว)
+ *   - dateStrings     → คืนค่าวันที่เป็น string (ตารางเก็บวันที่เป็น VARCHAR)
  *   - charset utf8mb4 → รองรับภาษาไทยเต็มรูปแบบ (สำคัญมากสำหรับระบบนี้)
- *   - PIPES_AS_CONCAT → `||` ต่อสตริงได้เหมือน SQLite (ดู config.js)
- *   - ONLY_FULL_GROUP_BY ถูกปลด → GROUP BY แบบ SQLite ที่ไม่ aggregate ทุกคอลัมน์ยังรันได้
+ *   - PIPES_AS_CONCAT → `||` ต่อสตริงได้ (ดู config.js)
+ *   - ONLY_FULL_GROUP_BY ถูกปลด → GROUP BY แบบเดิมที่ไม่ aggregate ทุกคอลัมน์ยังรันได้
  */
 const mysql = require('mysql2/promise');
 
@@ -46,11 +46,10 @@ class MysqlDriver {
       conn.query(`SET SESSION sql_mode = '${this.cfg.sqlMode}'`);
     });
 
-    // ตรวจว่าเป็น MariaDB หรือ MySQL (DDL ของ TEXT DEFAULT ต่างกัน)
+    // ตรวจเวอร์ชันจริงจาก server (บันทึกไว้แสดงตอนเริ่มโปรแกรม)
     const [rows] = await this.pool.query('SELECT VERSION() AS v');
-    const version = rows && rows[0] ? String(rows[0].v) : '';
-    this.isMaria = /mariadb/i.test(version);
-    this.version = version;
+    this.version = rows && rows[0] ? String(rows[0].v) : '';
+    this.isMaria = /mariadb/i.test(this.version);
     return this;
   }
 
@@ -65,11 +64,6 @@ class MysqlDriver {
     // ใช้ query() เพราะต้องรัน DDL หลายคำสั่งต่อกันได้
     const [result] = await this.pool.query(sql);
     return result;
-  }
-
-  async pragma() {
-    // SQLite-only — การตั้งค่าสำหรับ MySQL ไม่มี
-    return [];
   }
 
   async columns(table) {

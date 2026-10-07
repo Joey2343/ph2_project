@@ -11,7 +11,10 @@
     "lat": 18.228,
     "lng": 100.143,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 2,
@@ -25,7 +28,10 @@
     "lat": 18.235,
     "lng": 100.135,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 3,
@@ -39,7 +45,10 @@
     "lat": 18.1,
     "lng": 99.855,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 4,
@@ -53,7 +62,10 @@
     "lat": 18.085,
     "lng": 99.845,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 5,
@@ -67,7 +79,10 @@
     "lat": 17.9,
     "lng": 99.61,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 6,
@@ -81,7 +96,10 @@
     "lat": 18.08,
     "lng": 99.78,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 7,
@@ -95,7 +113,10 @@
     "lat": 18.29,
     "lng": 100.06,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 8,
@@ -109,7 +130,10 @@
     "lat": 18.33,
     "lng": 100.175,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   },
   {
     "id": 9,
@@ -123,6 +147,9 @@
     "lat": 18.19,
     "lng": 100.1,
     "image": null,
-    "notes": "ข้อมูลตัวอย่าง"
+    "notes": "ข้อมูลตัวอย่าง",
+    "disaster": null,
+    "group_name": "",
+    "disaster_image": null
   }
 ]

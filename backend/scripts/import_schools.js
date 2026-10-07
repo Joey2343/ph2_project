@@ -20,9 +20,6 @@ async function main() {
    * - สำรองข้อมูลเดิมในตาราง schools ไปที่ pikud/schools_backup_before_import.json
    * - ล้างตารางเดิม แล้ว import ใหม่จาก CSV (รหัสกระทรวง 10 หลักเป็นคีย์)
    */
-  const fs = require('fs');
-  const path = require('path');
-  const db = require('../db');
 
   const CSV = path.join(__dirname, '..', 'pikud', 'Definition.csv');
   const BACKUP = path.join(__dirname, '..', 'pikud', 'schools_backup_before_import.json');

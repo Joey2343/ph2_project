@@ -2,14 +2,13 @@
 /**
  * ระบบศูนย์กลางการบริหารจัดการ สพป.แพร่ เขต 2 — จุดเริ่มต้นเซิร์ฟเวอร์
  *
- * รองรับ SQLite (ค่าเริ่มต้น) และ MySQL 8.0+/MariaDB 10.4+
- * เลือก dialect ตอน deploy-time จาก DATABASE_URL (ดู db/config.js)
+ * ใช้ MariaDB 11.4 — ต้องตั้ง DATABASE_URL ใน backend/.env ก่อน
  *
  * การเปลี่ยนแปลงจากรุ่นเดิม:
  *   1. เชื่อมต่อฐานข้อมูก่อนเปิดพอร์ต (เดิมทำงานตอน require)
  *   2. ห่อ async route handler ให้ error เข้า error handler
  *   3. เสิร์ฟ frontend ที่ build แล้วจาก ../frontend/dist (ถ้ามี)
- *   4. ย้ายไปใช้ mysql2 แทน better-sqlite3, และ node:sqlite แทน driver ของ SQLite
+ *   4. ย้ายไปใช้ mysql2 ผ่าน db/index.js
  */
 require('dotenv').config();
 

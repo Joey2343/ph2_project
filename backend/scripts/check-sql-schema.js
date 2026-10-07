@@ -2,8 +2,8 @@
 /**
  * ตรวจ SQL ทุกประเภทคำสั่งเทียบกับ schema จริงของฐานข้อมูล
  *
- * จุดประสงค์: จับ "คอลัมน์ที่ไม่มีอยู่จริง" ซึ่งเป็นบั๊กเงียบที่ SQLite จะไม่报จนกว่า
- * จะรัน query นั้น — เช่นบั๊กที่พบ `memos.created_by` (ตาราง memos ไม่มีคอลัมน์นี้)
+ * จุดประสงค์: จับ "คอลัมน์ที่ไม่มีอยู่จริง" ซึ่งเป็นบั๊กเงียบที่ MariaDB จะไม่แจ้ง
+ * จนกว่าจะรัน query นั้น — เช่นบั๊กที่พบ `memos.created_by` (ตาราง memos ไม่มีคอลัมน์นี้)
  * การตรวจแบบนี้จับได้ทั้งระบบในครั้งเดียว
  *
  * ตรวจ 4 รูปแบบ:
@@ -23,28 +23,6 @@ const walk = require('acorn-walk');
 const BACKEND = path.join(__dirname, '..');
 const SQL_HINT =
   /\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WHERE|FROM|JOIN)\b/i;
-
-// ── โหลด schema จริง ─────────────────────────────────────────────────────────
-function loadSchema(dbPath) {
-  const tmp = path.join(os.tmpdir(), `ph2-schema-${Date.now()}.db`);
-  fs.copyFileSync(dbPath, tmp);
-  const { DatabaseSync } = require('node:sqlite');
-  const d = new DatabaseSync(tmp);
-  const schema = new Map();
-  const tables = d
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-    .all()
-    .map((r) => r.name);
-  for (const t of tables) {
-    const cols = d.prepare(`PRAGMA table_info("${t}")`).all().map((c) => c.name);
-    schema.set(t, new Set(cols));
-  }
-  d.close();
-  for (const s of ['', '-wal', '-shm']) {
-    if (fs.existsSync(tmp + s)) fs.unlinkSync(tmp + s);
-  }
-  return schema;
-}
 
 // ── ชุดคำที่อนุญาตให้ใช้เป็น "คอลัมน์" ──────────────────────────────────────
 const NOT_COLUMNS = new Set([
@@ -205,10 +183,28 @@ function stripParens(sql) {
   return out;
 }
 
-function main() {
-  const dbPath = process.env.SQLITE_FILE || path.join(BACKEND, 'data.db');
-  const schema = loadSchema(dbPath);
-  console.log(`อ่าน schema จาก ${dbPath}: ${schema.size} ตาราง\n`);
+/**
+ * อ่าน schema จริงจาก MariaDB ผ่าน information_schema
+ *
+ * เดิมอ่านจากไฟล์ SQLite ซึ่งไม่มีแล้วหลังย้ายมาใช้ dialect เดียว
+ */
+async function loadSchemaFromMysql() {
+  const db = require('../db');
+  await db.init();
+  const schema = new Map();
+  const tables = await db.tables();
+  for (const t of tables) {
+    const cols = await db.columns(t);
+    schema.set(t, new Set(cols.map((c) => c.name)));
+  }
+  const info = db.connectionInfo;
+  await db.close();
+  return { schema, info };
+}
+
+async function main() {
+  const { schema, info } = await loadSchemaFromMysql();
+  console.log(`อ่าน schema จาก ${info}: ${schema.size} ตาราง\n`);
 
   const files = [];
   for (const root of ['routes', 'lib']) {
@@ -270,6 +266,11 @@ function main() {
   process.exit(total === 0 ? 0 : 1);
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('✖ ตรวจไม่สำเร็จ:', e.message);
+    process.exit(1);
+  });
+}
 
-module.exports = { loadSchema, checkQualified, checkInsert, checkUpdate };
+module.exports = { checkQualified, checkInsert, checkUpdate, loadSchemaFromMysql };

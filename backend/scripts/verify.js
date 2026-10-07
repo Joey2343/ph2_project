@@ -2,21 +2,24 @@
 /**
  * ตรวจความถูกต้องทั้งระบบด้วยคำสั่งเดียว
  *
- * รวมเครื่องมือตรวจทั้งหมดที่สร้างไว้ระหว่างการย้ายระบบมา async + รองรับ MySQL
- * เพื่อให้ตรวจซ้ำได้บ่อย ๆ โดยไม่ต้องจำคำสั่งยาว ๆ
+ * ระบบใช้ MariaDB 11.4 ตัวเดียว จึงไม่มีการเทียบระหว่าง dialect แล้ว
+ *
+ * ตัวแปรที่ต้องตั้ง:
+ *   DATABASE_URL         ฐานข้อมูลจริง (ใช้ตรวจ schema)   เช่น .../admin_ph2
+ *   SMOKE_DATABASE_URL   ฐานทดสอบ (ชื่อต้องลงท้าย _test)   เช่น .../admin_ph2_test
  *
  * ใช้: node scripts/verify.js
- *   node scripts/verify.js --with-mysql   ตรวจ MySQL ด้วย (ต้องมี Docker ทำงาน)
  */
+
+require('dotenv').config();
 
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const BACKEND = path.join(__dirname, '..');
 const PROJECT = path.join(BACKEND, '..');
-const WITH_MYSQL = process.argv.includes('--with-mysql');
+const DATABASE_URL = process.env.DATABASE_URL || '';
 
 function run(label, args, opts = {}) {
   process.stdout.write(`  ${label} … `);
@@ -57,7 +60,7 @@ function main() {
     'backend/server.js',
     'backend/db.js',
     'backend/db/index.js',
-    'backend/db/sql.js',
+    'backend/db/driver-mysql.js',
     'backend/lib/async-route.js',
     'backend/routes/admin.js',
     'docker-compose.yml',
@@ -68,14 +71,16 @@ function main() {
     results.push(ok);
   }
 
-  console.log('\n[ไฟล์ .env]');
+  console.log('\n[ฐานข้อมูล]');
   const envPath = path.join(BACKEND, '.env');
   if (fs.existsSync(envPath)) {
-    console.log('  ✔ มี .env (จะใช้ค่าจากไฟล์นี้)');
+    console.log('  ✔ มี .env');
   } else {
-    console.log('  – ไม่มี .env → จะใช้ SQLite (ค่าเริ่มต้น)');
-    console.log('      คัดลอก .env.example เป็น .env ได้ถ้าจะใช้ MySQL');
+    console.log('  – ไม่มี .env → จะใช้ค่าจาก DATABASE_URL ในสภาพแวดล้อม');
+    console.log('      คัดลอก .env.example เป็น .env ได้ถ้ายังไม่ได้ตั้งค่า');
   }
+  console.log(`  ${DATABASE_URL ? '✔' : '✖'} DATABASE_URL ถูกตั้งค่า`);
+  results.push(Boolean(DATABASE_URL));
 
   console.log('\n[ตรวจ syntax ทุกไฟล์]');
   results.push(
@@ -88,31 +93,17 @@ function main() {
   console.log('\n[ทดสอบ await precedence]');
   results.push(run('test-await-parens', [path.join(__dirname, 'test-await-parens.js')]));
 
-  console.log('\n[ทดสอบ endpoint บน SQLite]');
-  const port = 3301 + Math.floor(Math.random() * 200);
-  results.push(
-    run('smoke (SQLite)', [path.join(BACKEND, 'test', 'smoke.js')], {
-      env: { PORT: String(port), DATABASE_URL: '', SQLITE_FILE: '' },
-    })
-  );
-
-  if (WITH_MYSQL) {
-    console.log('\n[ทดสอบ endpoint บน MySQL]');
-    if (!process.env.DATABASE_URL) {
-      console.log('  – ข้าม: ต้องตั้ง DATABASE_URL ก่อน');
-    } else {
-      results.push(
-        run('smoke (MySQL)', [path.join(BACKEND, 'test', 'smoke.js')], {
-          env: { PORT: String(port + 1), SQLITE_FILE: '' },
-        })
-      );
-      results.push(
-        run('parity (SQLite ↔ MySQL)', [path.join(BACKEND, 'test', 'parity.js')])
-      );
-    }
+  console.log('\n[ทดสอบ endpoint บน MariaDB]');
+  const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
+  if (!smokeUrl) {
+    console.log('  – ข้าม: ต้องตั้ง SMOKE_DATABASE_URL (ฐานทดสอบที่ลงท้าย _test)');
   } else {
-    console.log('\n[ทดสอบ MySQL]');
-    console.log('  – ข้าม (ใช้ --with-mysql และตั้ง DATABASE_URL เพื่อทดสอบ)');
+    const port = 3301 + Math.floor(Math.random() * 200);
+    results.push(
+      run('smoke', [path.join(BACKEND, 'test', 'smoke.js')], {
+        env: { PORT: String(port), SMOKE_DATABASE_URL: smokeUrl, DATABASE_URL: smokeUrl },
+      })
+    );
   }
 
   const pass = results.filter(Boolean).length;
@@ -124,5 +115,4 @@ function main() {
   process.exit(pass === total ? 0 : 1);
 }
 
-void os;
 main();

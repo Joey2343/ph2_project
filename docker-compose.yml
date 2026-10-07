@@ -1,61 +1,28 @@
-# MySQL สำหรับ dev/test — ระบบเดียวกันใช้ได้ทั้ง SQLite และ MySQL
+# MariaDB 11.4 สำหรับ dev/test — ตัวเดียวกับเซิร์ฟเวอร์จริง
 #
 # ใช้:
-#   docker compose up -d          เริ่ม MySQL
-#   docker compose ps             ดูสถานะ
-#   docker compose logs -f mysql  ดู log
-#   docker compose down           ปิด (เก็บข้อมูลไว้ใน volume)
-#   docker compose down -v        ปิดและลบข้อมูลทั้งหมด
+#   docker compose up -d                    เริ่ม MariaDB (พอร์ต 3308)
+#   docker compose ps                       ดูสถานะ
+#   docker compose logs -f mariadb           ดู log
+#   docker compose down                     ปิด (เก็บข้อมูลไว้ใน volume)
+#   docker compose down -v                  ปิดและลบข้อมูลทั้งหมด
 #
 # จากนั้นใส่ค่าใน backend/.env:
-#   DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
+#   DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
 #
-# หมายเหตุเรื่องพอร์ต: ใช้ 3307 เพื่อไม่ชนกับ MySQL ที่อาจมีอยู่แล้วในเครื่อง
-# ถ้าต้องการใช้ 3306 ให้แก้ทั้ง ports และ DATABASE_URL ให้ตรงกัน
+# ฐานทดสอบ (ใช้กับ npm run verify — ชื่อต้องลงท้าย _test):
+#   SMOKE_DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2_test
 #
-# ⚠️ MYSQL_DATABASE / MARIADB_DATABASE มีผลเฉพาะตอน datadir ว่างเท่านั้น
-#    (docker-entrypoint รันครั้งแรกเท่านั้น) ถ้าเปลี่ยนชื่อฐานบน volume เดิม
-#    ระบบจะไม่สร้างฐานใหม่ให้ และไม่ rename ฐานเดิม — ต้อง `docker compose down -v`
-#    แล้ว up ใหม่ หรือไปสร้างฐานด้วย SQL เอง
+# หมายเหตุเรื่องพอร์ต: ใช้ 3308 เพื่อไม่ชนกับ MySQL/MariaDB ที่อาจมีอยู่แล้วในเครื่อง
+#
+# ⚠️ MARIADB_DATABASE มีผลตอน datadir ว่างเท่านั้น (docker-entrypoint รันครั้งแรก)
+#    ถ้าเปลี่ยนชื่อฐานบน volume เดิม ระบบจะไม่สร้างฐานใหม่ และไม่ rename ฐานเดิม
+#    ต้อง `docker compose down -v` แล้ว `up -d` ใหม่ (หรือสร้างฐานด้วย SQL เอง)
 
 services:
-  mysql:
-    image: mysql:8.4
-    container_name: ph2-mysql
-    restart: unless-stopped
-    ports:
-      - '3307:3306'
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: admin_ph2
-      MYSQL_USER: admin_ph2
-      MYSQL_PASSWORD: admin_ph2pass
-      # สำคัญสำหรับภาษาไทย + emoji
-      TZ: Asia/Bangkok
-    command:
-      - --character-set-server=utf8mb4
-      # ต้องตรงกับ backend/db/config.js (DB_COLLATION) ไม่งั้นลำดับการเรียง
-      # ของรายชื่อจะต่างจาก SQLite ตอนเทียบ parity
-      - --collation-server=utf8mb4_bin
-      - --default-time-zone=+07:00
-      # ให้สคริปต์ของระบบ (doc_number ยาว) ทำงานได้
-      - --max-allowed-packet=64M
-    volumes:
-      - ph2-mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-prootpass']
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
-
-  # ตัวเลือก: MariaDB สำหรับทดสอบความเข้ากันได้
-  # เวอร์ชันนี้ตรงกับเซิร์ฟเวอร์จริงของระบบ (11.4 LTS)
-  # (เปิดใช้ด้วย: docker compose --profile mariadb up -d mariadb)
   mariadb:
     image: mariadb:11.4
     container_name: ph2-mariadb
-    profiles: ['mariadb']
     restart: unless-stopped
     ports:
       - '3308:3306'
@@ -64,11 +31,18 @@ services:
       MARIADB_DATABASE: admin_ph2
       MARIADB_USER: admin_ph2
       MARIADB_PASSWORD: admin_ph2pass
+      TZ: Asia/Bangkok
     command:
       - --character-set-server=utf8mb4
+      # ต้องตรงกับ backend/db/config.js (DB_COLLATION) ไม่งั้นลำดับการเรียง
+      # ของรายชื่อจะต่างจากที่ระบบคาดไว้
       - --collation-server=utf8mb4_bin
+      # ให้สคริปต์ของระบบ (doc_number ยาว) ทำงานได้
+      - --max-allowed-packet=64M
+    # สร้างฐานทดสอบ admin_ph2_test และให้สิทธิ์ เพื่อให้ verify/smoke ใช้ได้
     volumes:
       - ph2-mariadb-data:/var/lib/mysql
+      - ./docker/mariadb-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
       interval: 5s
@@ -77,5 +51,4 @@ services:
       start_period: 30s
 
 volumes:
-  ph2-mysql-data:
   ph2-mariadb-data:

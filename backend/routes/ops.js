@@ -130,7 +130,7 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 /**
  * อ่านค่าตั้งค่าการลงเวลาตามตำแหน่งจากตาราง settings
  *
- * ทุกค่าต้อง await เพราะ db adapter เป็น async (SQLite ใช้ node:sqlite)
+ * ทุกค่าต้อง await เพราะ db adapter เป็น async
  * การไม่ await จะได้ Promise แทนค่าจริง → .trim() ไม่ใช่ฟังก์ชัน
  */
 async function getClockGeoConfig() {
@@ -163,7 +163,7 @@ router.get('/time/location-settings', auth.requireAdmin, async (req, res) => {
 router.put('/time/location-settings', auth.requireAdmin, (req, res) => {
   const { enabled, lat, lng, radius, ips } = req.body || {};
   const set = async (key, value) => { return 
-    await db.prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value').run(key, String(value)) };
+    await db.prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value = VALUES(value)').run(key, String(value)) };
   if (enabled !== undefined) set('clock_geo_enabled', enabled ? '1' : '0');
   if (lat !== undefined && lat !== null && lat !== '') {
     const n = Number(lat);
@@ -195,7 +195,7 @@ router.put('/time/editors', auth.requireAdmin, async (req, res) => {
   const ids = Array.isArray(user_ids)
     ? [...new Set(user_ids.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
     : [];
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('time_edit_users', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value")
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('time_edit_users', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)")
     .run(JSON.stringify(ids));
   res.json({ ok: true, message: 'บันทึกสิทธิ์การแก้ไขหมายเหตุเรียบร้อย' });
 });
@@ -238,7 +238,7 @@ router.get('/birthdays', auth.requireAuth, async (req, res) => {
   const rows = await db.prepare(`SELECT id, title, full_name, first_name, last_name, birth_date, position, workplace
                            FROM users
                            WHERE status = 'active' AND birth_date IS NOT NULL AND birth_date != ''
-                             AND substr(birth_date, 6, 5) = ?
+                             AND SUBSTRING(birth_date, 6, 5) = ?
                            ORDER BY full_name`).all(md);
   const year = parseInt(today.slice(0, 4), 10);
   const people = rows.map((u) => {
@@ -269,7 +269,7 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
   // ผู้ที่เกิดวันนี้ (พร้อมอายุ)
   const birthdays = (await db.prepare(`SELECT id, title, full_name, first_name, last_name, birth_date, position, workplace
     FROM users WHERE status = 'active' AND birth_date IS NOT NULL AND birth_date != ''
-      AND substr(birth_date, 6, 5) = ?
+      AND SUBSTRING(birth_date, 6, 5) = ?
     ORDER BY full_name`).all(md)).map((u) => {
     const m = String(u.birth_date).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
     let age = null;

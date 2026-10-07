@@ -2,7 +2,7 @@
 
 ระบบบริหารจัดการภายในสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2
 รุ่นนี้คือการย้ายระบบเดิม (vanilla JavaScript) มาเป็น **Vue 3** และเปลี่ยน backend
-ให้รองรับ **MySQL** ได้ โดยคงฟีเจอร์และหน้าตาเดิมไว้ทั้งหมด
+ให้ใช้ **MariaDB 11.4** ตัวเดียว (ตรงกับเซิร์ฟเวอร์จริง) โดยคงฟีเจอร์และหน้าตาเดิมไว้ทั้งหมด
 
 ---
 
@@ -13,19 +13,17 @@
 ├─ backend/                  Node.js + Express (โครงสร้างเดิมทั้งหมด)
 │  ├─ server.js              จุดเริ่มต้นเซิร์ฟเวอร์
 │  ├─ db.js                  schema · migrations · seed
-│  ├─ db/                    ★ ใหม่ — ชั้นรองรับหลายฐานข้อมูล
+│  ├─ db/                    ★ ใหม่ — ชั้นต่อฐานข้อมูล (MariaDB อย่างเดียว)
 │  │  ├─ config.js             อ่านค่าจาก .env / DATABASE_URL
-│  │  ├─ sql.js                แปลง SQL จาก SQLite เป็น MySQL
-│  │  ├─ driver-sqlite.js      ใช้ node:sqlite (โมดูลในตัว Node 22+)
+│  │  ├─ index.js              facade ที่ทั้งระบบเรียกผ่าน
 │  │  └─ driver-mysql.js       ใช้ mysql2/promise
 │  ├─ routes/               5 ไฟล์ · 162 endpoint (เหมือนเดิมทุกตัว)
 │  ├─ lib/                  auth · approvals · uploads · simdate · cleanup
 │  │                        · telegram · async-route
 │  ├─ scripts/              เครื่องมือบำรุงรักษา + ตัวตรวจความถูกต้อง
-│  ├─ test/                 smoke.js (ทดสอบ endpoint) · parity.js (เทียบ 2 dialect)
+│  ├─ test/                 smoke.js (ทดสอบ endpoint บนฐาน _test)
 │  ├─ form/  font/  logo/   ทรัพยากรสำหรับเอกสาร/ฟอนต์/ตรา
-│  ├─ public/uploads/       ไฟล์ที่ผู้ใช้อัปโหลด
-│  └─ data.db               ฐานข้อมูล SQLite (ใช้เมื่อไม่ได้ตั้ง DATABASE_URL)
+│  └─ public/uploads/       ไฟล์ที่ผู้ใช้อัปโหลด
 ├─ frontend/                 ★ ใหม่ — Vue 3 + Vite + Pinia + vue-router
 │  ├─ index.html             หน้าหลัก (เชื่อมหน้าเดียว)
 │  ├─ sign-editor.html       หน้าลงนามในร่างเอกสาร (เปิดเป็น popup)
@@ -46,7 +44,8 @@
 │  ├─ adr/                  บันทึกการตัดสินใจทางสถาปัตยกรรม
 │  └─ legacy/               ซอร์สรุ่นเดิม + เอกสารเดิม (ไว้เทียบ/ย้อนกลับ)
 │     └─ source-v1/           css/ js/ (13 views) vendor/ index.html
-├─ docker-compose.yml       MySQL 8.4 + MariaDB 10.11 สำหรับ dev/test
+├─ docker-compose.yml       MariaDB 11.4 สำหรับ dev/test (พอร์ต 3308)
+├─ docker/mariadb-init/      สคริปต์สร้างฐานทดสอบ _test ตอน container เริ่ม
 ├─ .npmrc                   บังคับใช้ npm registry มาตรฐาน
 └─ README.md
 ```
@@ -55,14 +54,14 @@
 
 ## ข้อกำหนดระบบ
 
-- **Node.js 22 ขึ้นไป** (ต้องการ `node:sqlite` ที่มากับ Node โดยตรง)
-  ทดสอบแล้วกับ Node 24.12
-- MySQL 8.0 ขึ้นไป หรือ MariaDB 10.4 ขึ้นไป
+- **Node.js 22 ขึ้นไป** · ทดสอบแล้วกับ Node 24.12
+- **MariaDB 11.4** (ตรงกับเซิร์ฟเวอร์จริง)
 
-> **ทำไมเลิกใช้ `better-sqlite3`**
-> เป็น native module ต้อง compile ให้ตรงกับเวอร์ชัน Node ที่ติดตั้ง
-> เมื่อเปลี่ยนเวอร์ชัน Node ระบบจะรันไม่ได้ทันที (เคยเจอกรณีนี้จริงกับ Node 24)
-> การใช้ `node:sqlite` ที่มากับ Node ตัดปัญหานี้ออกไปทั้งหมด
+> **ทำไมถอด SQLite ออก**
+> เดิมรองรับ 2 dialect ทำให้ทุกจุดต้องเดาว่าโค้ดรันบนฐานไหน
+> และต้องมีชั้นแปลง SQL ที่ซ่อนความต่างเอาไว้
+> ตอนนี้ใช้ MariaDB ตัวเดียวทั้ง dev และ production จึงไม่มีบั๊กที่หลุดเฉพาะ dialect
+> ดูเหตุผลฉบับเต็มใน `docs/adr/0007-mariadb-only.md`
 
 ---
 
@@ -80,52 +79,40 @@ cd ../frontend && npm install
 > ไฟล์นี้บังคับ `registry.npmjs.org` เพราะ registry ภายในขององค์กร
 > แคช tarball ของ `mysql2` และ `leaflet.markercluster` ไม่ครบ (ได้ 404)
 
-### 2) เลือกฐานข้อมูล
+### 2) เปิด MariaDB
 
-#### ทางเลือก A — SQLite (ค่าเริ่มต้น ไม่ต้องติดตั้งอะไรเพิ่ม)
-
-```bash
-cd backend
-npm start
-```
-
-ใช้ไฟล์ `backend/data.db`
-
-#### ทางเลือก B — MySQL 8.4 (ผ่าน Docker)
+ระบบใช้ **MariaDB 11.4 ตัวเดียว** (ตรงกับเซิร์ฟเวอร์จริง) ไม่มี SQLite หรือ MySQL แยกอีกแล้ว
 
 ```bash
-docker compose up -d                 # เริ่ม MySQL ที่พอร์ต 3307
+docker compose up -d                 # MariaDB 11.4 ที่พอร์ต 3308
 cd backend
-cp .env.example .env                 # แก้ค่าให้ชี้ MySQL
+cp .env.example .env                 # แก้ค่าให้ชี้ฐาน
 npm start
 ```
 
 ค่าใน `.env`:
 ```
-DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
+DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
+SMOKE_DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2_test
 ```
 
-ทดสอบกับ MariaDB 11.4 (ตรงกับเซิร์ฟเวอร์จริง) แทน MySQL ได้ด้วย:
-```bash
-docker compose --profile mariadb up -d mariadb     # พอร์ต 3308
-# แก้ DATABASE_URL เป็น mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
-```
+`SMOKE_DATABASE_URL` ใช้ตอนรันเทสต์ — ตัวทดสอบเขียนและลบข้อมูล
+จึง**ต้องชี้ฐานที่ลงท้าย `_test` เสมอ** โค้ดจะปฏิเสธทำงานถ้าไม่ใช่
+(ฐานทดสอบถูกสร้างให้อัตโนมัติโดย `docker/mariadb-init/`)
 
 > ชื่อฐานข้อมูลอ่านจาก `DB_NAME` ก่อน path ใน `DATABASE_URL` (`backend/db/config.js`)
 > ถ้าไม่ได้ใช้แยกตัวแปรให้ลบบรรทัด `DB_NAME` ทิ้ง เพื่อไม่ต้องคอยแก้สองที่ให้ตรงกัน
 > และถ้าเปลี่ยนชื่อฐานบน Docker volume เดิม ระบบจะไม่ rename ให้ — ต้อง `docker compose down -v` แล้ว `up -d` ใหม่
 
-#### ทางเลือก C — ย้ายข้อมูลเดิมจาก SQLite ไป MySQL
+### 3) โหลดข้อมูลโรงเรียนจริง
+
+ข้อมูลตั้งต้นที่ `seed()` สร้างมีโรงเรียนแค่ 9 แห่ง (ตัวอย่าง)
+ข้อมูลจริงทั้งหมดอยู่ใน `backend/pikud/Definition.csv` — โหลดเข้าฐานด้วย:
 
 ```bash
 cd backend
-docker compose up -d
-cp .env.example .env
-npm run db:migrate-sqlite -- --force
+npm run db:import-schools
 ```
-
-สคริปต์นี้อ่านจาก `backend/data.db` แล้วเขียนเข้า MySQL ทีละตาราง
-ถ้าข้อมูลมีปัญหาจะย้อนกลับทั้งหมด (ทำงานใน transaction เดียว)
 
 ---
 
@@ -259,12 +246,11 @@ cd frontend && npm run port   # อ่าน docs/legacy/source-v1/js → เข
 |---|---|
 | `npm start` | เริ่มเซิร์ฟเวอร์ |
 | `npm run dev` | เริ่มแบบ auto-reload (`node --watch`) |
-| `npm test` | ทดสอบ endpoint ทั้งหมดบน SQLite |
-| `npm run test:parity` | เทียบผลลัพธ์ระหว่าง SQLite ↔ MySQL |
+| `npm run verify` | ตรวจทั้งระบบ (ดูหัวข้อถัดไป) |
+| `npm run test:smoke` | ทดสอบ endpoint ทั้งหมดบนฐานทดสอบ |
 | `npm run db:inspect` | ดูตาราง/คอลัมน์/จำนวนแถว |
 | `npm run db:init` | สร้าง schema + migration + seed |
-| `npm run db:migrate-sqlite` | ย้ายข้อมูลจาก SQLite ไป MySQL |
-| `node scripts/verify.js --with-mysql` | ตรวจทั้งระบบ (ดูด้านล่าง) |
+| `npm run db:import-schools` | โหลดข้อมูลโรงเรียนจาก pikud/Definition.csv |
 
 ### คำสั่งของ frontend
 
@@ -284,12 +270,18 @@ cd frontend && npm run port   # อ่าน docs/legacy/source-v1/js → เข
 ### ตรวจความถูกต้องทั้งระบบ
 
 ```bash
-node scripts/verify.js                 # ตรวจเฉพาะ SQLite
-node scripts/verify.js --with-mysql    # ตรวจทั้งสอง dialect (ต้องรัน MySQL อยู่)
+npm run verify
 ```
 
-ตรวจ: syntax ทุกไฟล์ · SQL เทียบ schema จริง · เรื่อง `await` precedence ·
-ทดสอบ endpoint บน SQLite · เทียบผลระหว่าง SQLite กับ MySQL
+ต้องตั้งค่าสองตัวก่อน:
+
+```
+DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
+SMOKE_DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2_test
+```
+
+ตรวจ: syntax ทุกไฟล์ · SQL เทียบ schema จริงใน MariaDB · เรื่อง `await` precedence ·
+ทดสอบ endpoint ทั้งหมดบนฐานทดสอบ
 
 ---
 
@@ -302,44 +294,35 @@ node scripts/verify.js --with-mysql    # ตรวจทั้งสอง diale
 | `check-sql-schema.js` | ตรวจว่าไม่มี query ที่อ้างคอลัมน์ซึ่งไม่มีจริง |
 | `check-await-parens.js` | ตรวจ/แก้ `await fn().prop` ซึ่งพังเมื่อเป็น async |
 | `test-await-parens.js` | เทสต์ตัวตรวจข้างบน 19 กรณี |
-| `measure-columns.js` | วัดความยาวข้อมูลจริง เพื่อเลือกขนาด VARCHAR ให้เหมาะสม |
-| `probe-mysql-ddl.js` | ทดสอบว่า MySQL ยอมรับไวยากรณ์ DDL แบบไหน |
+| `probe-mysql-ddl.js` | ทดสอบว่า MariaDB ยอมรับไวยากรณ์ DDL แบบไหน |
 | `inspect-db.js` | แสดง schema และจำนวนแถว |
-| `show-ddl.js` | แสดง DDL ดิบตามที่ฐานข้อมูลเก็บไว้ |
-| `debug-endpoint.js` | ยิง endpoint ที่ระบุแล้วดู error จากเซิร์ฟเวอร์ |
-| `migrate-to-mysql.js` | ย้ายข้อมูล SQLite → MySQL |
-| `fix-known-bugs.js` | แก้บั๊กที่ค้นพบระหว่างตรวจสอบ (มีคำอธิบายกำกับ) |
-| `port-to-async.js` | ไปป์ไลน์แปลงซอร์สรุ่นเดิม → async (รันซ้ำได้ ผลเหมือนเดิม) |
-| `port-maintenance.js` | port สคริปต์บำรุงรักษาเดิมให้ใช้ adapter ตัวเดียวกัน |
+| `import_schools.js` | โหลดข้อมูลโรงเรียนจริงจาก `pikud/Definition.csv` |
 
 ---
 
-## รองรับทั้ง SQLite และ MySQL อย่างไร
+## เพิ่ม schema อย่างไร
 
-โค้ดทั้งระบบเขียน SQL **แบบ SQLite** เหมือนเดิมทุกบรรทัด
-ชั้น `backend/db/` จะแปลงให้เป็น MySQL เมื่อ `DATABASE_URL` ชี้ไปที่ MySQL
+ทุกคำสั่ง SQL ในโค้ดเป็น **MariaDB โดยตรง** ไม่มีชั้นแปลง
+schema อยู่ที่ `SCHEMA_SQL` ใน `backend/db.js` และมีขั้นตอนเดียว:
 
-สิ่งที่ชั้นแปลงจัดการให้อัตโนมัติ:
-
-| เรื่อง | การจัดการ |
+| ต้องการ | ทำอะไร |
 |---|---|
-| `ON CONFLICT … DO UPDATE` | → `ON DUPLICATE KEY UPDATE` |
-| `INSERT OR IGNORE` | → `INSERT IGNORE` |
-| `datetime('now','localtime')` | → `NOW()` |
-| `CAST(x AS INTEGER)` | → `CAST(x AS SIGNED)` |
-| `AUTOINCREMENT` / `REAL` / `TEXT` | → `AUTO_INCREMENT` / `DOUBLE` / `MEDIUMTEXT`·`VARCHAR` |
-| คอลัมน์ชื่อ `key` `read` (reserved word) | ห่อด้วย backtick (ใช้ได้ทั้งสอง dialect) |
-| `\|\|` ต่อสตริง | ตั้ง `PIPES_AS_CONCAT` ใน `sql_mode` |
-| `GROUP BY` แบบไม่ aggregate ทุกคอลัมน์ | ปลด `ONLY_FULL_GROUP_BY` |
-| **ลำดับการเรียงข้อความ** | ใช้ collation `utf8mb4_bin` ให้ตรงกับ SQLite (ดู ADR-0007) |
+| เพิ่มตารางใหม่ | เพิ่ม `CREATE TABLE IF NOT EXISTS` ใน `SCHEMA_SQL` |
+| **เพิ่มคอลัมน์ใหม่** | แก้ `SCHEMA_SQL` **และ** เพิ่มใน `COLUMN_MIGRATIONS` ← ลืมไม่ได้ |
+| เติมค่าข้อมูลย้อนหลัง | เขียนเองใน `migrate()` ดูตัวอย่างที่ `db.js` |
+| เพิ่ม index | ยังไม่รองรับอัตโนมัติ ต้องรัน `ALTER TABLE` เอง |
+| เปลี่ยนชื่อคอลัมน์ | ยังไม่รองรับ ข้อมูลเดิมจะไม่ย้าย |
 
-รายละเอียดเชิงลึกของแต่ละเรื่องอยู่ใน `docs/adr/`
+`server.js` เรียก `bootstrap()` ทุกครั้งที่บูต → เพิ่มตาราง/คอลัมน์แล้ว
+รีสตาร์ทก็อัปเดตฐานเอง (ปลอดภัยเมื่อเรียกซ้ำ)
+
+รายละเอียดเหตุผลของการเลือก dialect เดียวอยู่ใน `docs/adr/0007-mariadb-only.md`
 
 ---
 
 ## โครงสร้าง backend
 
-- `db.js` — สร้างตาราง เพิ่มคอลัมน์ที่ขาด ใส่ข้อมูลตัวอย่าง (ทำซ้ำได้ ไม่เป็นอันตราย)
+- `db.js` — `SCHEMA_SQL` (DDL ของ MariaDB) · `COLUMN_MIGRATIONS` (เพิ่มคอลัมน์ที่ขาด) · `seed()` (ข้อมูลตั้งต้น) ทั้งหมดทำซ้ำได้ไม่เป็นอันตราย
 - `routes/` — 162 endpoint แบ่งเป็น 5 ไฟล์ ตามกลุ่มเมนู (โครงสร้างเดิม)
 - `lib/async-route.js` — จัดการ error ของ async handler
   (Express 4 ไม่ catch promise ที่ reject เอง ถ้าไม่มีตัวนี้ request จะค้าง)
