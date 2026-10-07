@@ -1,0 +1,13 @@
+ทดสอบ GitHub Actions
+====================
+
+ไฟล์นี้ถูกสร้างเพื่อทดสอบการทำงานของ workflow ใน .github/workflows/deploy.yml
+
+วันที่สร้าง: 2026-10-07
+Branch: feature/maria
+
+หลังจาก merge เข้า main แล้ว workflow จะ:
+1. รัน ci-test      — ทดสอบ backend + build frontend
+2. รัน cd-deploy    — SSH ไปเซิร์ฟเวอร์และ deploy
+
+ถ้า deploy สำเร็จ จะเห็นข้อความ ">>> Deploy สำเร็จ!" ใน log
