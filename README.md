@@ -102,8 +102,18 @@ npm start
 
 ค่าใน `.env`:
 ```
-DATABASE_URL=mysql://ph2:ph2pass@127.0.0.1:3307/ph2
+DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
 ```
+
+ทดสอบกับ MariaDB 11.4 (ตรงกับเซิร์ฟเวอร์จริง) แทน MySQL ได้ด้วย:
+```bash
+docker compose --profile mariadb up -d mariadb     # พอร์ต 3308
+# แก้ DATABASE_URL เป็น mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
+```
+
+> ชื่อฐานข้อมูลอ่านจาก `DB_NAME` ก่อน path ใน `DATABASE_URL` (`backend/db/config.js`)
+> ถ้าไม่ได้ใช้แยกตัวแปรให้ลบบรรทัด `DB_NAME` ทิ้ง เพื่อไม่ต้องคอยแก้สองที่ให้ตรงกัน
+> และถ้าเปลี่ยนชื่อฐานบน Docker volume เดิม ระบบจะไม่ rename ให้ — ต้อง `docker compose down -v` แล้ว `up -d` ใหม่
 
 #### ทางเลือก C — ย้ายข้อมูลเดิมจาก SQLite ไป MySQL
 

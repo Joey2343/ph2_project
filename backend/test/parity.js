@@ -23,9 +23,32 @@ const os = require('os');
 const path = require('path');
 const acorn = require('acorn');
 const walk = require('acorn-walk');
+const { DatabaseSync } = require('node:sqlite');
 
 const BACKEND = path.join(__dirname, '..');
 const VERBOSE = process.argv.includes('--verbose');
+
+/**
+ * คัดลอกฐาน SQLite ไปยังไฟล์ชั่วคราว
+ *
+ * ⚠️ ต้อง checkpoint WAL ก่อนเสมอ ไม่งั้นข้อมูลหาย
+ *
+ *   data.db เปิดโหมด WAL การ commit ล่าสุดจะอยู่ในไฟล์ data.db-wal
+ *   ไม่ได้ถูก merge เข้าไฟล์หลักจนกว่าจะ checkpoint หรือปิดแบบสะอาด
+ *   ถ้า copy แค่ไฟล์หลัก เราจะได้ฐานที่ตัดข้อมูลออก (เคยเจอ WAL ใหญ่กว่าไฟล์หลัก)
+ *   อาการคือ parity ไม่ผ่านเฉพาะตารางที่เพิ่งเขียน เช่น time_records
+ */
+function snapshotSqlite(src, dest) {
+  const db = new DatabaseSync(src);
+  try {
+    // TRUNCATE = merge เข้าไฟล์หลักแล้วล้าง WAL ให้เล็ก
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  } finally {
+    db.close();
+  }
+  fs.copyFileSync(src, dest);
+  return dest;
+}
 
 const MOUNTS = {
   'auth.js': '/api/auth',
@@ -151,12 +174,12 @@ async function login(port) {
 async function main() {
   if (!process.env.DATABASE_URL) {
     console.error('✖ ต้องตั้ง DATABASE_URL ของ MySQL');
-    console.error('  เช่น DATABASE_URL=mysql://ph2:ph2pass@127.0.0.1:3307/ph2');
+    console.error('  เช่น DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2');
     process.exit(1);
   }
 
   const sqliteFile = path.join(os.tmpdir(), `ph2-parity-${Date.now()}.db`);
-  fs.copyFileSync(path.join(BACKEND, 'data.db'), sqliteFile);
+  snapshotSqlite(path.join(BACKEND, 'data.db'), sqliteFile);
 
   const PORT_SQLITE = 3211;
   const PORT_MYSQL = 3212;

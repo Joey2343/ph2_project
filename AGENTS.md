@@ -148,18 +148,30 @@ cd backend && npm start
 
 ค่าใน `backend/.env`:
 ```
-DATABASE_URL=mysql://ph2:ph2pass@127.0.0.1:3307/ph2
+DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
 ```
 
 **ทำไมต้องเป็น 3307** — กันชนกับ MySQL ที่อาจมีอยู่แล้วในเครื่อง
 ถ้าจะใช้ 3306 ให้แก้ทั้ง `docker-compose.yml` (ports) และ `DATABASE_URL` ให้ตรงกัน
 
+> ⚠️ **ชื่อฐานข้อมูลมาจาก 2 ที่** — `backend/db/config.js:71` อ่าน `DB_NAME` ก่อน
+> path ใน `DATABASE_URL` ดังนั้น**ถ้าเคยแตะ `DB_NAME` ต้องแก้ให้ตรงกันด้วย**
+> ถ้าไม่ได้ใช้แยกตัวแปร ให้ลบบรรทัด `DB_NAME` ทิ้ง จะได้ไม่ต้องคอยแก้สองที่ให้ตรงกัน
+
+> ⚠️ **`MYSQL_DATABASE` มีผลตอน datadir ว่างเท่านั้น** (docker-entrypoint รันครั้งแรก)
+> ถ้าเปลี่ยนชื่อฐานบน volume เดิม ระบบจะไม่สร้างฐานใหม่ และไม่ rename ฐานเดิม
+> ต้อง `docker compose down -v` แล้ว `up -d` ใหม่ (หรือสร้างฐานด้วย SQL เอง)
+
 ### 3.4 MariaDB (ตัวเลือก ทดสอบความเข้ากันได้)
 
 ```bash
 docker compose --profile mariadb up -d mariadb   # พอร์ต 3308
-# แก้ DATABASE_URL เป็น mysql://ph2:ph2pass@127.0.0.1:3308/ph2
+# แก้ DATABASE_URL เป็น mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
 ```
+
+> เวอร์ชันใน `docker-compose.yml` คือ `mariadb:11.4` ซึ่งตรงกับเซิร์ฟเวอร์จริง (11.4 LTS)
+> MariaDB **ไม่มี `RENAME DATABASE`** ถ้าเปลี่ยนชื่อฐานบนเซิร์ฟเวอร์ด้วยการย้ายตาราง
+> grant ในตาราง `mysql.db` จะ**ไม่ย้ายตาม** ต้อง `GRANT` ใหม่เอง
 
 ### 3.5 ทางเลือก C — ย้ายข้อมูลจาก SQLite ไป MySQL
 
@@ -171,6 +183,26 @@ cd backend && npm run db:migrate-sqlite -- --force
 
 อ่านจาก `backend/data.db` → เขียนเข้า MySQL ทีละตาราง
 ถ้าข้อมูลมีปัญหาจะย้อนกลับทั้งหมด (ทำงานใน transaction เดียว)
+
+> เคยมี 23 ตาราง · 444 แถว (ย้ายสำเร็จทั้ง MySQL 8.4 และ MariaDB 11.4)
+> ชื่อฐานและ user ปัจจุบัน: `admin_ph2` / `admin_ph2` / รหัส `admin_ph2pass`
+> รหัสผ่านเปลี่ยนแล้วถ้า Docker ยังจำของเดิมอยู่ ต้องล้าง volume (ดูหมายเหตุข้างล่าง)
+
+> ⚠️ **`data.db` เปิดโหมด WAL** — ข้อมูลที่เพิ่งเขียนจะอยู่ในไฟล์ `data.db-wal`
+> ยังไม่ถูก merge เข้าไฟล์หลัก จนกว่าจะ checkpoint หรือปิดแบบสะอาด
+> **ถ้าจะ copy `data.db` ไปที่อื่น ต้อง `PRAGMA wal_checkpoint(TRUNCATE)` ก่อน**
+> ไม่งั้นจะได้ฐานที่ตัดข้อมูลออก — `test/parity.js` และ `test/smoke.js`
+> ตอนนี้ checkpoint ให้แล้วทั้งสองไฟล์
+> (อาการคือ parity ไม่ผ่านเฉพาะตารางที่เพิ่งเขียน เช่น `time_records`)
+
+> ⚠️ **เปลี่ยนรหัสผ่าน/ชื่อฐานใน compose แล้วต้องล้าง volume ด้วย**
+> `MYSQL_PASSWORD` / `MARIADB_PASSWORD` มีผลตอน datadir ว่างเท่านั้นเหมือนกัน
+> และ `docker compose down -v` **ไม่ลบ service ที่อยู่หลัง profile**
+> ต้องระบุ profile ด้วย:
+> ```bash
+> docker compose --profile mariadb down -v
+> ```
+> ไม่งั้นจะเจอ `ER_ACCESS_DENIED_ERROR` ทั้งที่ compose อ่านค่าใหม่แล้ว
 
 ### 3.6 โหมด dev ของ backend
 
