@@ -60,15 +60,20 @@ jobs:
         run: npm run verify
         working-directory: backend
 
+      - name: ติดตั้ง Frontend
+        run: npm ci
+        working-directory: frontend
+
+      - name: ตรวจสอบ Registry
+        run: npm run verify:registry
+        working-directory: frontend
+
       - name: Build Frontend
         run: npm run build
         working-directory: frontend
 
-      - name: ตรวจ registry และ dist
-        run: |
-          npm ci
-          npm run verify:registry
-          npm run verify:build
+      - name: ตรวจสอบผลลัพธ์ Build
+        run: npm run verify:build
         working-directory: frontend
 
   cd-deploy:
