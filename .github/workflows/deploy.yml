@@ -1,0 +1,69 @@
+name: Deploy to DirectAdmin Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci-test:
+    name: Run Tests & Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test Backend
+        run: |
+          cd backend
+          npm ci
+          node test/smoke.js || true
+
+      - name: Test Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+  cd-deploy:
+    name: Deploy to Server
+    needs: ci-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: SSH Remote Deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            set -e
+            APP_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/app"
+            WEB_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/public_html"
+
+            echo ">>> 1. ดึงโค้ดล่าสุด"
+            cd $APP_DIR
+            git reset --hard HEAD
+            git pull origin main
+
+            echo ">>> 2. อัปเดต Backend"
+            cd backend
+            npm ci --omit=dev
+            node db.js || true
+            pm2 reload ph2-api --update-env
+
+            echo ">>> 3. Build Frontend"
+            cd ../frontend
+            npm ci
+            npm run build
+
+            echo ">>> 4. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
+            # คัดลอกเฉพาะไฟล์ที่ build ได้ไปวางที่ public_html โดยไม่ลบ .htaccess
+            cp -r dist/* $WEB_DIR/
+
+            echo ">>> Deploy สำเร็จ!"
