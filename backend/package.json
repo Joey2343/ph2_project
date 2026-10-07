@@ -8,10 +8,10 @@
     "dev": "node --watch server.js",
     "seed": "node db.js --seed",
     "db:init": "node db.js --init",
-    "db:migrate-sqlite": "node scripts/migrate-to-mysql.js",
+    "db:import-schools": "node scripts/import_schools.js",
     "db:inspect": "node scripts/inspect-db.js",
-    "test": "node --test test/",
-    "test:parity": "node test/parity.js"
+    "verify": "node scripts/verify.js",
+    "test:smoke": "node test/smoke.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

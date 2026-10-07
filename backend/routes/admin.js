@@ -55,7 +55,7 @@ router.get('/next-doc-no', auth.requireAuth, async (req, res) => {
     // นับเฉพาะปีปัจจุบัน (เลขหนังสือรันใหม่ทุกปี) — รายการต่างปีต้องไม่มีผลกับเลขถัดไป
     var yCE = simdate.todayISO().slice(0, 4);
     try { var _dm = String(req.query.date || '').match(/^(\d{4})-/); if (_dm) yCE = _dm[1]; } catch (e) {}
-    var sql = "SELECT doc_no FROM documents WHERE doc_type = 'outgoing' AND sender_type = 'registered' AND doc_no IS NOT NULL AND doc_no != '' AND substr(date,1,4) = ?";
+    var sql = "SELECT doc_no FROM documents WHERE doc_type = 'outgoing' AND sender_type = 'registered' AND doc_no IS NOT NULL AND doc_no != '' AND SUBSTRING(date,1,4) = ?";
     if (isSchool && schoolCode) {
       // นับจาก school_code ของหนังสือโดยตรง (ไม่นับหนังสือของโรงเรียนอื่นที่ user เคยสร้างไว้)
       sql += " AND school_code = '" + schoolCode + "'";
@@ -116,7 +116,7 @@ router.get('/cert-staff', auth.requireAdmin, async (req, res) => {
 router.post('/cert-staff', auth.requireAdmin, async (req, res) => {
   const ids = req.body.userIds || [];
   if (!ids.length) return res.status(400).json({ error: 'กรุณาเลือกเจ้าหน้าที่' });
-  const ins = db.prepare("INSERT OR IGNORE INTO document_staff (staff_type, user_id) VALUES ('certificate', ?)");
+  const ins = db.prepare("INSERT IGNORE INTO document_staff (staff_type, user_id) VALUES ('certificate', ?)");
   let added = 0;
   for (const uid of ids) { if ((await ins.run(Number(uid))).changes) added++; };
   res.json({ ok: true, message: 'เพิ่มเจ้าหน้าที่เรียบร้อย (' + added + ' คน)' });
@@ -166,12 +166,12 @@ function getCurrentYearBE() { return simdate.todayISO().slice(0, 4) - 0 + 543; }
 function docYearClause(year) {
   const yBE = Number(year);
   if (!yBE) return null;
-  return { clause: ' AND substr(d.date, 1, 4) = ?', arg: String(yBE - 543) };
+  return { clause: ' AND SUBSTRING(d.date, 1, 4) = ?', arg: String(yBE - 543) };
 }
 
 /** รายชื่อปี พ.ศ. ที่มีหนังสืออยู่จริง + ปีปัจจุบัน (ปีปัจจุบันขึ้นแรกเสมอ — เมื่อขึ้นปีใหม่ 1 ม.ค. รายการจะเพิ่มปีใหม่อัตโนมัติ) */
 router.get('/document-years', auth.requireAuth, async (req, res) => {
-  const rows = await db.prepare("SELECT DISTINCT substr(date, 1, 4) AS y FROM documents WHERE date IS NOT NULL AND date != ''").all();
+  const rows = await db.prepare("SELECT DISTINCT SUBSTRING(date, 1, 4) AS y FROM documents WHERE date IS NOT NULL AND date != ''").all();
   const years = rows.map(r => Number(r.y) + 543);
   const cur = getCurrentYearBE();
   if (!years.includes(cur)) years.push(cur);
@@ -230,7 +230,7 @@ router.put('/sim-date', auth.requireAdmin, async (req, res) => {
   const b = req.body || {};
   const val = b.date == null ? '' : String(b.date).trim();
   if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) return res.status(400).json({ error: 'รูปแบบวันที่ไม่ถูกต้อง (ต้องเป็น ค.ศ. YYYY-MM-DD เช่น 2027-01-01)' });
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('sim_today', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value").run(val);
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('sim_today', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)").run(val);
   const applied = await simdate.reload();
   res.json({ ok: true, sim_today: applied || null, message: applied ? ('เปิดโหมดจำลอง: ระบบถือว่าวันนี้คือ ' + applied) : 'ปิดโหมดจำลอง — กลับสู่เวลาจริงแล้ว' });
 });
@@ -337,7 +337,7 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
     }
   } else if (senderType === 'school') {
     // School sending to office - only the designated office registry clerks (สารบัญเขต) receive it
-    const insertRecip = db.prepare('INSERT OR IGNORE INTO document_recipients (document_id, user_id) VALUES (?, ?)');
+    const insertRecip = db.prepare('INSERT IGNORE INTO document_recipients (document_id, user_id) VALUES (?, ?)');
     let clerks = (await db.prepare("SELECT user_id FROM document_staff WHERE staff_type = 'office'").all()).map(r => r.user_id);
     if (!clerks.length && req.user.role === 'admin') clerks = [req.user.id];
     for (const s of clerks) { return  await insertRecip.run(docId, s) };
@@ -538,9 +538,9 @@ router.get('/document-staff', auth.requireAdmin, async (req, res) => {
 router.post('/document-staff/office', auth.requireAdmin, async (req, res) => {
   const ids = req.body.userIds || [];
   if (!ids.length) return res.status(400).json({ error: 'กรุณาเลือกเจ้าหน้าที่' });
-  const ins = db.prepare('INSERT OR IGNORE INTO document_staff (staff_type, user_id) VALUES (?, ?)');
+  const ins = db.prepare('INSERT IGNORE INTO document_staff (staff_type, user_id) VALUES (?, ?)');
   // สารบัญคนใหม่ต้องเห็นหนังสือที่สถานศึกษาส่งมาทั้งหมดที่เคยมี (sync ผู้รับย้อนหลัง)
-  const syncRecip = db.prepare("INSERT OR IGNORE INTO document_recipients (document_id, user_id) SELECT id, ? FROM documents WHERE sender_type = 'school'");
+  const syncRecip = db.prepare("INSERT IGNORE INTO document_recipients (document_id, user_id) SELECT id, ? FROM documents WHERE sender_type = 'school'");
   let added = 0;
   for (const uid of ids) { const r = await ins.run('office', Number(uid)); if (r.changes) { added++; await syncRecip.run(Number(uid)); } };
   res.json({ ok: true, message: 'เพิ่มเจ้าหน้าที่เรียบร้อย (' + added + ' คน)' });
@@ -568,7 +568,7 @@ router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
   const ins = db.prepare('INSERT INTO document_staff (staff_type, user_id, school_code) VALUES (?, ?, ?)');
   for (const uid of ids) { return  await ins.run('school', uid, school_code) };
   // sync ผู้รับหนังสือที่ สพป. ส่งถึงสถานศึกษานี้ (ย้อนหลังทั้งหมด)
-  const syncRecip = db.prepare("INSERT OR IGNORE INTO document_recipients (document_id, user_id) SELECT d.id, ? FROM documents d WHERE d.sender_type = 'office' AND (d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id WHERE dr.document_id = d.id AND u.user_group = 'school' AND (u.school_code = ? OR u.workplace LIKE ?)))");
+  const syncRecip = db.prepare("INSERT IGNORE INTO document_recipients (document_id, user_id) SELECT d.id, ? FROM documents d WHERE d.sender_type = 'office' AND (d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id WHERE dr.document_id = d.id AND u.user_group = 'school' AND (u.school_code = ? OR u.workplace LIKE ?)))");
   const syncArgs = [school_code + '%', school_code, school_code + '%'];
   for (const uid of ids) { return  await syncRecip.run(uid, ...syncArgs) };
   // ถอดผู้รับที่ถูกปลด (เคยเป็นสารบัญของโรงเรียนนี้ แต่ไม่อยู่ในรายการใหม่) — ถอดเฉพาะหนังสือของโรงเรียนนี้ เพื่อไม่กระทบสิทธิ์ของโรงเรียนอื่นที่ยังดูแลอยู่
@@ -583,7 +583,7 @@ router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
 router.post('/document-reads/:docId', auth.requireAuth, async (req, res) => {
   const docId = Number(req.params.docId);
   const userId = req.user.id;
-  await db.prepare('INSERT OR IGNORE INTO document_reads (doc_id, user_id) VALUES (?, ?)').run(docId, userId);
+  await db.prepare('INSERT IGNORE INTO document_reads (doc_id, user_id) VALUES (?, ?)').run(docId, userId);
   res.json({ ok: true });
 });
 
@@ -701,7 +701,7 @@ router.get('/staff', auth.requireAdmin, async (req, res) => {
   if (user_group) { sql += ' AND user_group = ?'; args.push(user_group); }
   if (q) { sql += ' AND (username LIKE ? OR full_name LIKE ? OR position LIKE ? OR workplace LIKE ? OR citizen_id LIKE ?)'; const p = `%${q}%`; args.push(p, p, p, p, p); }
   // เรียงตามลำดับเจ้าหน้าที่ (staff_no) น้อย → มาก บนลงล่าง — ผู้ที่ยังไม่กำหนดลำดับอยู่ท้ายสุด (เรียงตาม id)
-  sql += ' ORDER BY CASE WHEN staff_no IS NULL OR staff_no = \'\' THEN 1 ELSE 0 END, CAST(staff_no AS INTEGER) ASC, id ASC';
+  sql += ' ORDER BY CASE WHEN staff_no IS NULL OR staff_no = \'\' THEN 1 ELSE 0 END, CAST(staff_no AS SIGNED) ASC, id ASC';
   res.json({ staff: (await db.prepare(sql).all(...args)).map(auth.publicUser) });
 });
 
@@ -712,7 +712,7 @@ router.get('/office-staff', auth.requireAuth, async (req, res) => {
     FROM users
     WHERE user_group != 'school' AND status = 'active'
     ORDER BY CASE WHEN staff_no IS NULL OR staff_no = '' THEN 1 ELSE 0 END,
-             CAST(staff_no AS INTEGER) ASC, id ASC
+CAST(staff_no AS SIGNED) ASC, id ASC
   `).all();
   res.json({ staff });
 });
@@ -842,7 +842,7 @@ router.put('/settings/approvals', auth.requireAdmin, async (req, res) => {
   for (const k of keys) {
     if (b[k] !== undefined) {
       const n = Math.min(3, Math.max(1, parseInt(b[k], 10) || 1));
-      await db.prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value').run(k, String(n));
+      await db.prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value = VALUES(value)').run(k, String(n));
     }
   }
   res.json({ ok: true, message: 'บันทึกการตั้งค่าการอนุมัติเรียบร้อย' });
@@ -863,7 +863,7 @@ router.put('/settings/leave-approvers', auth.requireAdmin, async (req, res) => {
   for (const lvl of [1, 2, 3]) {
     data[lvl] = Array.isArray(b[lvl]) ? b[lvl].map(Number).filter((n) => n > 0) : [];
   }
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('leave_approvers', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value").run(JSON.stringify(data));
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('leave_approvers', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)").run(JSON.stringify(data));
   res.json({ ok: true, message: 'บันทึกเจ้าหน้าที่การลาเรียบร้อย' });
 });
 
@@ -882,7 +882,7 @@ router.put('/settings/leave-group-approvers', auth.requireAdmin, async (req, res
   for (const [group, userId] of Object.entries(b)) {
     if (group && userId) data[group] = Number(userId);
   }
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('leave_group_approvers', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value").run(JSON.stringify(data));
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('leave_group_approvers', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)").run(JSON.stringify(data));
   res.json({ ok: true, message: 'บันทึกการตั้งค่าผู้อนุมัติขั้นต้นตามกลุ่มงานเรียบร้อย' });
 });
 
@@ -901,7 +901,7 @@ router.put('/settings/leave-final-approvers', auth.requireAdmin, async (req, res
   for (const [lvl2Uid, lvl3Uid] of Object.entries(b)) {
     if (lvl2Uid && lvl3Uid) data[String(lvl2Uid)] = Number(lvl3Uid);
   }
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('leave_final_approvers', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value").run(JSON.stringify(data));
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('leave_final_approvers', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)").run(JSON.stringify(data));
   res.json({ ok: true, message: 'บันทึกการตั้งค่าผู้อนุมัติเรียบร้อย' });
 });
 
@@ -920,7 +920,7 @@ router.put('/settings/travel-approvers', auth.requireAdmin, async (req, res) => 
   for (const [uid, val] of Object.entries(b)) {
     if (uid && val) data[String(uid)] = { supervisor: Number(val.supervisor) || 0, approver: Number(val.approver) || 0 };
   }
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('travel_approvers', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value").run(JSON.stringify(data));
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('travel_approvers', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)").run(JSON.stringify(data));
   res.json({ ok: true, message: 'บันทึกการตั้งค่าผู้อนุมัติไปราชการเรียบร้อย' });
 });
 
@@ -939,7 +939,7 @@ router.put('/settings/travel-approvers-school', auth.requireAdmin, async (req, r
   for (const [uid, val] of Object.entries(b)) {
     if (uid && val) data[String(uid)] = { reviewer: Number(val.reviewer) || 0, supervisor: Number(val.supervisor) || 0, approver: Number(val.approver) || 0 };
   }
-  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('travel_approvers_school', ?) ON CONFLICT(`key`) DO UPDATE SET value = excluded.value").run(JSON.stringify(data));
+  await db.prepare("INSERT INTO settings (`key`, value) VALUES ('travel_approvers_school', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)").run(JSON.stringify(data));
   res.json({ ok: true, message: 'บันทึกการตั้งค่าผู้อนุมัติไปราชการของสถานศึกษาเรียบร้อย' });
 });
 
@@ -1053,12 +1053,12 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
   const activeCode = String(req.user.current_school || '').trim().split(' ')[0];
   if (req.user.user_group === 'school' && /^\d{7,8}$/.test(activeCode)) {
     await db.prepare(`
-      UPDATE document_recipients SET is_read = 1, read_at = datetime('now')
+      UPDATE document_recipients SET is_read = 1, read_at = NOW()
       WHERE document_id = ? AND user_id = ? AND (as_school = ? OR as_school IS NULL OR as_school = '')
     `).run(docId, userId, activeCode);
   } else {
     await db.prepare(`
-      UPDATE document_recipients SET is_read = 1, read_at = datetime('now')
+      UPDATE document_recipients SET is_read = 1, read_at = NOW()
       WHERE document_id = ? AND user_id = ?
     `).run(docId, userId);
   }

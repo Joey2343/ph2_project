@@ -13,7 +13,7 @@
 |---|---|
 | Frontend | Vue 3 + Vite (JavaScript ไม่มี TypeScript) + Pinia |
 | Backend | Node.js + Express + CommonJS |
-| ฐานข้อมูล | SQLite (`node:sqlite`) หรือ MySQL 8 / MariaDB |
+| ฐานข้อมูล | MariaDB 11.4 ตัวเดียว (ตรงกับเซิร์ฟเวอร์จริง) |
 | Router | `createWebHashHistory()` → เส้นทางเป็น `#/documents` |
 | พอร์ต | backend 3000 · frontend dev 5173 · MySQL 3307 · MariaDB 3308 |
 
@@ -122,18 +122,21 @@ cd ../frontend && npm install
 > ไฟล์นี้บังคับ `registry.npmjs.org` เพราะ registry ภายในองค์กรแคช tarball ของ
 > `mysql2` และ `leaflet.markercluster` ไม่ครบ (404)
 
-### 3.2 ทางเลือก A — SQLite (ค่าเริ่มต้น ไม่ต้องติดตั้งอะไร)
+### 3.2 ทางเลือก A — MariaDB ผ่าน Docker (แนะนำ)
 
 ```bash
 # เทอร์มินัล 1
+docker compose up -d             # MariaDB 11.4 ที่พอร์ต 3308
+cp backend/.env.example backend/.env   # แก้ค่าให้ชี้ฐาน
 cd backend && npm start          # http://localhost:3000
 # เทอร์มินัล 2
 cd frontend && npm run dev       # http://localhost:5173
 ```
 
-ใช้ไฟล์ `backend/data.db`
+> ระบบใช้ MariaDB อย่างเดียว ไม่มี SQLite หรือ MySQL แยกอีกแล้ว
+> ไม่ตั้ง `DATABASE_URL` = ระบบจะไม่ยอมเริ่มทำงาน
 
-### 3.3 ทางเลือก B — MySQL 8.4 (Docker)
+### 3.3 MariaDB โดยตรง (ถ้ามีเซิร์ฟเวอร์ของตัวเอง)
 
 ```bash
 docker compose up -d                      # MySQL ที่พอร์ต 3307
@@ -148,10 +151,10 @@ cd backend && npm start
 
 ค่าใน `backend/.env`:
 ```
-DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
+DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
 ```
 
-**ทำไมต้องเป็น 3307** — กันชนกับ MySQL ที่อาจมีอยู่แล้วในเครื่อง
+**ทำไมต้องเป็น 3308** — กันชนกับ MySQL/MariaDB ที่อาจมีอยู่แล้วในเครื่อง
 ถ้าจะใช้ 3306 ให้แก้ทั้ง `docker-compose.yml` (ports) และ `DATABASE_URL` ให้ตรงกัน
 
 > ⚠️ **ชื่อฐานข้อมูลมาจาก 2 ที่** — `backend/db/config.js:71` อ่าน `DB_NAME` ก่อน
@@ -162,47 +165,52 @@ DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
 > ถ้าเปลี่ยนชื่อฐานบน volume เดิม ระบบจะไม่สร้างฐานใหม่ และไม่ rename ฐานเดิม
 > ต้อง `docker compose down -v` แล้ว `up -d` ใหม่ (หรือสร้างฐานด้วย SQL เอง)
 
-### 3.4 MariaDB (ตัวเลือก ทดสอบความเข้ากันได้)
+### 3.4 ฐานทดสอบ
+
+ตัวทดสอบ (`npm run verify`) เขียนและลบข้อมูลจริง เช่น POST /api/time/check
+จึง**ต้องชี้ฐานที่ลงท้าย `_test` เสมอ** โค้ดจะปฏิเสธทำงานถ้าชื่อไม่ตรง
 
 ```bash
-docker compose --profile mariadb up -d mariadb   # พอร์ต 3308
-# แก้ DATABASE_URL เป็น mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
+# docker/mariadb-init/ สร้างฐานนี้ให้อัตโนมัติตอน container เริ่ม
+SMOKE_DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2_test
 ```
+
+> เคยมีบั๊กร้ายแรง: เดิม `test/smoke.js` ลบ record ลงเวลาของ "วันนี้" ทิ้ง
+> โดยไม่ตรวจว่าเป็น record ที่ตัวทดสอบสร้างเอง → ข้อมูลจริงหาย
+> ตอนนี้จับ `id` ที่ POST สร้างแล้วลบเฉพาะตัวนั้น
 
 > เวอร์ชันใน `docker-compose.yml` คือ `mariadb:11.4` ซึ่งตรงกับเซิร์ฟเวอร์จริง (11.4 LTS)
 > MariaDB **ไม่มี `RENAME DATABASE`** ถ้าเปลี่ยนชื่อฐานบนเซิร์ฟเวอร์ด้วยการย้ายตาราง
 > grant ในตาราง `mysql.db` จะ**ไม่ย้ายตาม** ต้อง `GRANT` ใหม่เอง
 
-### 3.5 ทางเลือก C — ย้ายข้อมูลจาก SQLite ไป MySQL
+### 3.5 โหลดข้อมูลโรงเรียนจริง
 
 ```bash
-docker compose up -d
-cp backend/.env.example backend/.env
-cd backend && npm run db:migrate-sqlite -- --force
+cd backend && npm run db:import-schools
 ```
 
-อ่านจาก `backend/data.db` → เขียนเข้า MySQL ทีละตาราง
-ถ้าข้อมูลมีปัญหาจะย้อนกลับทั้งหมด (ทำงานใน transaction เดียว)
+`seed()` สร้างโรงเรียนตัวอย่างแค่ 9 แห่ง ข้อมูลจริงทั้งหมดอยู่ใน
+`backend/pikud/Definition.csv` (อยู่ใน git แล้ว) สคริปต์นี้อ่านไฟล์นั้นเข้าฐาน
 
-> เคยมี 23 ตาราง · 444 แถว (ย้ายสำเร็จทั้ง MySQL 8.4 และ MariaDB 11.4)
-> ชื่อฐานและ user ปัจจุบัน: `admin_ph2` / `admin_ph2` / รหัส `admin_ph2pass`
-> รหัสผ่านเปลี่ยนแล้วถ้า Docker ยังจำของเดิมอยู่ ต้องล้าง volume (ดูหมายเหตุข้างล่าง)
+ฐานว่างที่ `seed()` สร้างมี 23 ตาราง · ~440 แถว
+ชื่อฐานและ user: `admin_ph2` / `admin_ph2` / รหัส `admin_ph2pass`
 
-> ⚠️ **`data.db` เปิดโหมด WAL** — ข้อมูลที่เพิ่งเขียนจะอยู่ในไฟล์ `data.db-wal`
-> ยังไม่ถูก merge เข้าไฟล์หลัก จนกว่าจะ checkpoint หรือปิดแบบสะอาด
-> **ถ้าจะ copy `data.db` ไปที่อื่น ต้อง `PRAGMA wal_checkpoint(TRUNCATE)` ก่อน**
-> ไม่งั้นจะได้ฐานที่ตัดข้อมูลออก — `test/parity.js` และ `test/smoke.js`
-> ตอนนี้ checkpoint ให้แล้วทั้งสองไฟล์
-> (อาการคือ parity ไม่ผ่านเฉพาะตารางที่เพิ่งเขียน เช่น `time_records`)
+> ข้อมูลตั้งต้นที่ `seed()` สร้าง: settings 9 ค่า · admin · office_sections 5 ข้อ (หน้าสาธารณะ)
+> · โรงเรียนตัวอย่าง 9 · ยาน 6 · ห้องประชุม 6 · งบปี 4 · งานวิชาการ 3
+> อีก 15 ตารางเป็นตาราง transaction จะว่างจนกว่าจะมีการใช้งาน
 
 > ⚠️ **เปลี่ยนรหัสผ่าน/ชื่อฐานใน compose แล้วต้องล้าง volume ด้วย**
-> `MYSQL_PASSWORD` / `MARIADB_PASSWORD` มีผลตอน datadir ว่างเท่านั้นเหมือนกัน
-> และ `docker compose down -v` **ไม่ลบ service ที่อยู่หลัง profile**
-> ต้องระบุ profile ด้วย:
+> `MARIADB_PASSWORD` / `MARIADB_DATABASE` มีผลตอน datadir ว่างเท่านั้น
+> ถ้าเปลี่ยนบน volume เดิม ระบบจะไม่สร้างฐานใหม่และไม่ rename ฐานเดิม
 > ```bash
-> docker compose --profile mariadb down -v
+> docker compose down -v && docker compose up -d
 > ```
 > ไม่งั้นจะเจอ `ER_ACCESS_DENIED_ERROR` ทั้งที่ compose อ่านค่าใหม่แล้ว
+>
+> **สำรองก่อนล้างเสมอ**
+> ```bash
+> docker exec ph2-mariadb mariadb-dump -uadmin_ph2 -padmin_ph2pass admin_ph2 > backup.sql
+> ```
 
 ### 3.6 โหมด dev ของ backend
 
@@ -226,8 +234,8 @@ cd backend  && npm start       # Express เสิร์ฟเองที่ ht
 | ตัวแปร | ค่าเริ่มต้น | หมายเหตุ |
 |---|---|---|
 | `PORT` | `3000` | พอร์ต backend |
-| `DATABASE_URL` | ว่าง = ใช้ SQLite | `mysql://user:pass@host:port/db` |
-| `SQLITE_FILE` | `data.db` | ไฟล์ SQLite |
+| `DATABASE_URL` | — | **บังคับ** `mysql://user:pass@host:port/db` — ไม่ตั้งจะไม่เริ่ม |
+| `SMOKE_DATABASE_URL` | — | ฐานทดสอบ ต้องลงท้าย `_test` (ใช้ตอนรัน verify) |
 | `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | — | ใช้แทน `DATABASE_URL` ได้ |
 | `DB_CONNECTION_LIMIT` | — | จำนวน connection สูงสุดของ pool |
 | `DB_CHARSET` `DB_COLLATION` | — | ต้องเป็น `utf8mb4` เพื่อให้ไทย + emoji ใช้ได้ |
@@ -411,7 +419,7 @@ password: Joey2343**
 ph2_project/
 ├── backend/
 │   ├── server.js              entry point · เสิร์ฟ API + static
-│   ├── db.js                  schema · migration · seed · สลับ SQLite/MySQL
+│   ├── db.js                  SCHEMA_SQL · COLUMN_MIGRATIONS · seed() (MariaDB)
 │   ├── lib/
 │   │   ├── db-adapter.js      async DB ที่ใช้ร่วมกันได้ทั้ง 2 dialect
 │   │   ├── year-filter.js     ตัวช่วยกรองปี พ.ศ.
@@ -421,8 +429,8 @@ ph2_project/
 │   ├── routes/                auth · content · ops · requests · admin
 │   ├── public/                uploads · logo.png
 │   ├── font/ form/            ฟอนต์ + แบบเอกสาร เสิร์ฟที่ /fonts และ /form
-│   ├── scripts/               verify.js · migrate-to-mysql.js · inspect-db.js
-│   └── test/                  smoke.js · parity.js
+│   ├── scripts/               verify.js · check-syntax.js · check-sql-schema.js · inspect-db.js
+│   └── test/                  smoke.js (ต้องใช้ฐาน _test)
 ├── frontend/
 │   ├── src/
 │   │   ├── main.js            bootstrap (Pinia · router · global เดิมบน window)
@@ -453,12 +461,11 @@ ph2_project/
 |---|---|
 | `npm start` | เปิดเซิร์ฟเวอร์ |
 | `npm run dev` | `node --watch` เปิดใหม่เองเมื่อไฟล์เปลี่ยน |
-| `npm test` | ทดสอบ endpoint บน SQLite |
-| `npm run test:parity` | เทียบผลลัพธ์ SQLite ↔ MySQL |
+| `npm run verify` | ตรวจทั้งระบบ (ต้องมี DATABASE_URL + SMOKE_DATABASE_URL) |
+| `npm run test:smoke` | ทดสอบ endpoint บนฐานทดสอบ |
 | `npm run db:inspect` | ดูตาราง/คอลัมน์/จำนวนแถว |
 | `npm run db:init` | สร้าง schema + migration + seed |
-| `npm run db:migrate-sqlite` | ย้ายข้อมูล SQLite → MySQL |
-| `node scripts/verify.js --with-mysql` | ตรวจครบทั้ง 2 dialect |
+| `npm run db:import-schools` | โหลดข้อมูลโรงเรียนจริงจาก pikud/Definition.csv |
 
 ### frontend
 
@@ -493,8 +500,8 @@ ph2_project/
 - **ปี พ.ศ.** — ทุก endpoint ที่มีตัวกรองปีรับ `year` เป็น พ.ศ. และกรองด้วยช่วงวันที่จริง
   (เคยพบบั๊กที่ใช้ `doc_no LIKE '%/2569%'` ซึ่งผิด เพราะเลขที่หนังสือไม่ได้ผูกกับปีเสมอ)
   ใช้ `backend/lib/year-filter.js` เสมอ
-- **หมายเหตุเรื่องปี** — ย้ายข้อมูล SQLite → MySQL ต้องรัน `npm run db:migrate-sqlite`
-  ปัจจุบันมี 247 แถว จาก 23 ตาราง ผ่าน parity check แล้ว
+- **หมายเหตุเรื่องปี พ.ศ.** — ทุก endpoint ที่มีตัวกรองปีรับ `year` เป็น พ.ศ.
+  และกรองด้วยช่วงวันที่จริง (ใช้ `backend/lib/year-filter.js` เสมอ)
 - **ไฟล์อัปโหลด** — เก็บที่ `backend/public/uploads/` เสิร์ฟที่ `/uploads/...`
 - **สิทธิ์แก้ไขรายการ** — admin · สารบัญเขต · เจ้าของรายการเท่านั้น
   (หนังสือรับรอง: เจ้าหน้าที่หนังสือรับรองเท่านั้นที่แก้ได้)
@@ -542,7 +549,7 @@ npm run verify:auth
 
 # 3) backend (MySQL ต้องรันอยู่ก่อน)
 cd ../backend
-node scripts/verify.js --with-mysql
+npm run verify
 ```
 
 **ผลที่ถือว่าผ่าน (ยืนยันล่าสุด)**
@@ -555,7 +562,7 @@ node scripts/verify.js --with-mysql
 | `verify-vue-pages --all` | ผ่าน **183** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend/verify.js --with-mysql` | ผ่าน 15/15 (SQLite ↔ MySQL parity) |
+| `backend: npm run verify` | ผ่าน 14/14 (MariaDB 11.4) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
 ให้เพิ่ม `--dump <keys>` เพื่อดู DOM/runtime จริง:

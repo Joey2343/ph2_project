@@ -1,39 +1,52 @@
 'use strict';
 /**
- * ตรวจสอบ schema จริงในฐานข้อมูล และเทียบกับคอลัมน์ที่โค้ดคาดว่าจะมี
+ * ดูโครงสร้างฐานข้อมูลจริง — ตาราง คอลัมน์ ชนิดข้อมูล และจำนวนแถว
  *
- * จุดประสงค์: จับคอลัมน์ที่ถูกสร้าง "นอกโค้ด" เช่น จาก live-migration ที่ไม่มีในซอร์สแล้ว
- * ถ้าไม่ย้ายมาไว้ในรายการ migration การติดตั้ง MySQL ใหม่จะ query ไม่ผ่านทันที
+ * ใช้ตอนตรวจว่า schema ที่ประกาศใน db.js ตรงกับฐานจริงหรือไม่
+ * และดูว่ามีข้อมูลอะไรบ้าง
  *
- * ใช้: node scripts/inspect-db.js [พาธ/data.db]
+ * ใช้: node scripts/inspect-db.js
  */
-const path = require('path');
-const { DatabaseSync } = require('node:sqlite');
+const db = require('../db');
 
-const target = process.argv[2] || path.join(__dirname, '..', 'data.db');
-const db = new DatabaseSync(target);
+async function main() {
+  await db.init();
+  console.log(`\n${db.connectionInfo}`);
+  console.log(`MariaDB: ${db.driverVersion || 'n/a'}\n`);
 
-const tables = db
-  .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-  .all()
-  .map((r) => r.name);
+  const tables = await db.tables();
+  console.log(`${'ตาราง'.padEnd(24)} ${'คอลัมน์'.padStart(6)} ${'แถว'.padStart(8)}`);
+  console.log('─'.repeat(42));
 
-let total = 0;
-const schema = {};
-
-for (const t of tables) {
-  const cols = db.prepare(`PRAGMA table_info("${t}")`).all();
-  schema[t] = cols.map((c) => c.name);
-  let count = 0;
-  try {
-    count = db.prepare(`SELECT COUNT(*) AS c FROM "${t}"`).get().c;
-  } catch (e) {
-    count = -1;
+  let totalRows = 0;
+  for (const t of tables) {
+    const cols = await db.columns(t);
+    const row = await db.prepare(`SELECT COUNT(*) AS n FROM \`${t}\``).get();
+    totalRows += Number(row.n);
+    console.log(`${t.padEnd(24)} ${String(cols.length).padStart(6)} ${String(row.n).padStart(8)}`);
   }
-  total += count;
-  console.log(`${t} (${count} แถว, ${cols.length} คอลัมน์)`);
-  console.log(`   ${cols.map((c) => c.name).join(', ')}`);
+
+  console.log('─'.repeat(42));
+  console.log(`รวม ${tables.length} ตาราง · ${totalRows} แถว\n`);
+
+  // แสดงรายละเอียดตารางที่สั่งมา (ถ้ามี)
+  const only = process.argv[2];
+  if (only && tables.includes(only)) {
+    const cols = await db.columns(only);
+    console.log(`── ${only} ──`);
+    for (const c of cols) {
+      console.log(
+        `  ${c.name.padEnd(24)} ${String(c.type).padEnd(14)}` +
+        `${c.notnull ? 'NOT NULL' : '         '}${c.pk ? '  PRIMARY KEY' : ''}`
+      );
+    }
+    console.log('');
+  }
+
+  await db.close();
 }
 
-console.log(`\nรวม ${tables.length} ตาราง · ${total} แถว`);
-db.close();
+main().catch((e) => {
+  console.error('ผิดพลาด:', e.message);
+  process.exit(1);
+});

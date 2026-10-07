@@ -3,20 +3,21 @@
  * ทดสอบ endpoint ทั้งหมดอัตโนมัติ โดยดึงรายการ route จากซอร์สจริง (ไม่ต้องดูแลคงไว้)
  *
  * วิธีทำงาน
- *   1. คัดลอกฐานข้อมูลไปไฟล์ชั่วคราว (ไม่แตะข้อมูลจริง)
- *   2. สตาร์ทเซิร์ฟเวอร์ด้วย SQLITE_FILE ที่ชี้ไฟล์สำเนา
- *   3. ยิงทุก GET endpoint (มี session ของ admin) แล้วรายงานผล
- *   4. ปิดเซิร์ฟเวอร์ ลบไฟล์สำเนา
+ *   1. สตาร์ทเซิร์ฟเวอร์ด้วยฐานทดสอบ (ต้องลงท้ายด้วย _test)
+ *   2. ยิงทุก GET endpoint (มี session ของ admin) แล้วรายงานผล
+ *   3. ทดสอบ POST ที่เขียนข้อมูล แล้วลบเฉพาะ record ที่รอบนี้สร้าง
+ *   4. ปิดเซิร์ฟเวอร์
+ *
+ * ต้องใช้ฐานทดสอบเสมอ เพราะตัวทดสอบนี้เขียนและลบข้อมูล
+ *   ถ้าชี้ผิดฐานจะลบบันทึกลงเวลาของพนักงานได้ — โค้ดจะปฏิเสธถ้าชื่อไม่ลงท้าย _test
  *
  * ตั้งค่า:
- *   PORT=3111 node test/smoke.js
+ *   SMOKE_DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2_test node test/smoke.js
  *   node test/smoke.js --verbose     แสดงทุก endpoint
  *   node test/smoke.js --only=leave  ทดสอบเฉพาะเส้นทางที่มีคำนี้
  */
 const { spawn } = require('child_process');
-const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const acorn = require('acorn');
 const walk = require('acorn-walk');
@@ -108,23 +109,32 @@ async function waitForServer(port, timeoutMs = 25000) {
 }
 
 async function main() {
-  // 1) สำเนาฐานข้อมูล
+  // 1) ต้องมี DATABASE_URL ของฐานทดสอบ
   //
-  // ⚠️ ต้อง checkpoint WAL ก่อนคัดลอก ไม่งั้นข้อมูลหาย
-  //   data.db เปิดโหมด WAL ข้อมูลที่เพิ่งเขียนอยู่ใน data.db-wal
-  //   ถ้า copy แค่ไฟล์หลัก จะได้ฐานที่ตัดข้อมูลล่าสุดออก
-  const src = path.join(BACKEND, 'data.db');
-  const tmp = path.join(os.tmpdir(), `ph2-smoke-${Date.now()}.db`);
-  {
-    const db = new DatabaseSync(src);
-    try {
-      db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-    } finally {
-      db.close();
-    }
+  // ⚠️ ทดสอบบนฐานทิ้งชื่อลงท้าย _test เท่านั้น เพื่อไม่ให้ไปแตะข้อมูลจริง
+  //   โค้ดนี้เขียน (POST) และลบข้อมูล ถ้าชี้ผิดฐานจะลบข้อมูลลงเวลาของพนักงานได้
+  const dbUrl = process.env.SMOKE_DATABASE_URL || process.env.DATABASE_URL || '';
+
+  // ชื่อฐานต้องอ่านจาก path ของ URL เท่านั้น
+  // ถ้าใช้ regex ตรง ๆ จะไปจับส่วน user:pass@host ซึ่งอยู่หลัง "//" แทน
+  let dbName = '';
+  try {
+    dbName = decodeURIComponent(new URL(dbUrl).pathname.replace(/^\//, ''));
+  } catch {
+    dbName = '';
   }
-  fs.copyFileSync(src, tmp);
-  console.log(`ฐานข้อมูลสำเนา: ${tmp}`);
+
+  if (!dbName) {
+    console.error('✖ ต้องตั้ง SMOKE_DATABASE_URL (หรือ DATABASE_URL) ที่ชี้ฐานทดสอบ');
+    console.error('  ต้องลงท้ายด้วย _test เช่น admin_ph2_test');
+    process.exit(1);
+  }
+  if (!dbName.endsWith('_test')) {
+    console.error(`✖ ปฏิเสธทำงาน — ฐาน "${dbName}" ไม่ลงท้ายด้วย _test`);
+    console.error('  ตัวทดสอบนี้เขียนและลบข้อมูล ใช้กับฐานจริงไม่ได้');
+    process.exit(1);
+  }
+  console.log(`ฐานข้อมูลทดสอบ: ${dbName}`);
 
   const port = Number(process.env.PORT) || 3111;
   const base = `http://127.0.0.1:${port}`;
@@ -135,7 +145,8 @@ async function main() {
     env: {
       ...process.env,
       PORT: String(port),
-      SQLITE_FILE: tmp,
+      SMOKE_DATABASE_URL: dbUrl,
+      DATABASE_URL: dbUrl,
       NODE_NO_WARNINGS: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -216,9 +227,9 @@ async function main() {
   // → cfg.ips เป็น Promise → .trim() ไม่ใช่ฟังก์ชัน → uncaught → process ตาย
   // GET test จับไม่ได้เพราะไม่ยิง endpoint นี้ จึงต้องทดสอบแยก
   //
-  // สำคัญ: ต้องลบบันทึกที่สร้างออกทุกครั้ง
-  //   ถ้าไม่ล้าง ข้อมูลจะค้างใน MySQL จริง ทำให้ parity เทียบ SQLite ↔ MySQL ไม่ตรง
-  //   (SQLite ใช้ไฟล์ชั่วคราวที่ถูกลบทิ้ง แต่ MySQL เขียนลงฐานจริงถาวร)
+  // ปลอดภัย: ทดสอบบนฐานทิ้งชื่อลงท้าย _test เท่านั้น จึงไม่แตะข้อมูลจริง
+  //   และลบเฉพาะ record ที่รอบนี้สร้าง (ดู createdRecordId ท้ายฟังก์ชัน)
+  let createdRecordId = null;
   if (!ONLY || '/api/time/check'.includes(ONLY)) {
     const writeTests = [
       {
@@ -250,9 +261,18 @@ async function main() {
     for (const t of writeTests) {
       try {
         const res = await t.run();
-        await res.text();
+        const body = await res.text();
         results.pass += 1;
         console.log(`  ✔ ${t.name} → ${res.status}`);
+
+        // จับ id ของ record ที่ POST แรกสร้างขึ้น เพื่อเอาไปลบตอนจบ
+        // ถ้า POST ได้ 200 แปลว่า "ลงเวลาเข้างานสำเร็จ" = ฐานว่างเป็นของเราแน่นอน
+        if (!createdRecordId && res.status === 200) {
+          const today = await fetch(base + '/api/time/today', { headers: { Cookie: cookie } })
+            .then((r) => r.json())
+            .catch(() => ({}));
+          if (today.record && today.record.id) createdRecordId = today.record.id;
+        }
       } catch (err) {
         // fetch ล้มเหลว = ตัวเชื่อมขาด = server ตาย
         results.fail += 1;
@@ -262,26 +282,27 @@ async function main() {
     }
 
     // ---- ล้างข้อมูลที่สร้างจากการทดสอบ ----
+    //
+    // ⚠️ ลบเฉพาะ record ที่ "POST /api/time/check" ในรอบนี้สร้างขึ้น
+    //   เดิมใช้ /api/time/today แล้วลบ record ของวันนี้ทิ้งทั้งอัน
+    //   ถ้ามีใครลงเวลาจริงในวันนี้อยู่ก่อน ข้อมูลจะหายไปด้วย
     console.log('\nล้างข้อมูลที่ทดสอบสร้าง:');
     try {
-      const today = await fetch(base + '/api/time/today', { headers: { Cookie: cookie } })
-        .then((r) => r.json())
-        .catch(() => ({}));
-      if (today.record && today.record.id) {
-        const del = await fetch(`${base}/api/time/${today.record.id}`, {
+      if (!createdRecordId) {
+        console.log('  – รอบนี้ไม่ได้สร้างบันทึกใหม่ (น่าจะมีของวันนี้อยู่แล้ว) ไม่ลบอะไร');
+      } else {
+        const del = await fetch(`${base}/api/time/${createdRecordId}`, {
           method: 'DELETE',
           headers: { Cookie: cookie },
         });
         await del.text();
         if (del.status === 200) {
           results.pass += 1;
-          console.log(`  ✔ ลบบันทึกลงเวลา id=${today.record.id}`);
+          console.log(`  ✔ ลบบันทึกลงเวลาที่สร้างในรอบนี้ id=${createdRecordId}`);
         } else {
           results.fail += 1;
           console.log(`  ✖ ลบบันทึกลงเวลาไม่สำเร็จ → ${del.status}`);
         }
-      } else {
-        console.log('  – ไม่มีบันทึกให้ล้าง');
       }
     } catch (err) {
       results.fail += 1;
@@ -311,10 +332,6 @@ async function main() {
   // 6) เก็บกวาด
   child.kill();
   await new Promise((r) => setTimeout(r, 300));
-  for (const suffix of ['', '-wal', '-shm']) {
-    const f = tmp + suffix;
-    if (fs.existsSync(f)) fs.unlinkSync(f);
-  }
 
   process.exit(results.fail === 0 ? 0 : 1);
 }

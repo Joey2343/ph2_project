@@ -32,8 +32,8 @@ router.put('/office', auth.requireAdmin, async (req, res) => {
   await db.transaction(async (tx) => {
     const upsert = tx.prepare(
       'INSERT INTO office_sections (`key`, title, content, sort)' +
-        ' VALUES (?,?,?,?) ON CONFLICT(`key`) DO UPDATE SET' +
-        ' title = excluded.title, content = excluded.content, sort = excluded.sort'
+        ' VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE' +
+        ' title = VALUES(title), content = VALUES(content), sort = VALUES(sort)'
     );
     for (const s of sections) {
       if (!s.title) continue;
