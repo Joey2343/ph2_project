@@ -73,7 +73,7 @@ async function main() {
 
   if (!process.env.DATABASE_URL) {
     console.error('✖ ต้องตั้ง DATABASE_URL ของ MySQL ก่อน');
-    console.error('  เช่น DATABASE_URL=mysql://ph2:ph2pass@127.0.0.1:3307/ph2');
+    console.error('  เช่น DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2');
     process.exit(1);
   }
 

@@ -14,6 +14,7 @@
  *   node test/smoke.js --only=leave  ทดสอบเฉพาะเส้นทางที่มีคำนี้
  */
 const { spawn } = require('child_process');
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -108,8 +109,20 @@ async function waitForServer(port, timeoutMs = 25000) {
 
 async function main() {
   // 1) สำเนาฐานข้อมูล
+  //
+  // ⚠️ ต้อง checkpoint WAL ก่อนคัดลอก ไม่งั้นข้อมูลหาย
+  //   data.db เปิดโหมด WAL ข้อมูลที่เพิ่งเขียนอยู่ใน data.db-wal
+  //   ถ้า copy แค่ไฟล์หลัก จะได้ฐานที่ตัดข้อมูลล่าสุดออก
   const src = path.join(BACKEND, 'data.db');
   const tmp = path.join(os.tmpdir(), `ph2-smoke-${Date.now()}.db`);
+  {
+    const db = new DatabaseSync(src);
+    try {
+      db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    } finally {
+      db.close();
+    }
+  }
   fs.copyFileSync(src, tmp);
   console.log(`ฐานข้อมูลสำเนา: ${tmp}`);
 

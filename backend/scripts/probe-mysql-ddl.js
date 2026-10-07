@@ -8,7 +8,7 @@
 const mysql = require('mysql2/promise');
 
 const DB_URL =
-  process.env.DATABASE_URL || 'mysql://ph2:ph2pass@127.0.0.1:3307/ph2';
+  process.env.DATABASE_URL || 'mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2';
 
 const CASES = [
   ['varchar literal default', "CREATE TABLE {T} (a VARCHAR(255) NOT NULL DEFAULT 'x')"],

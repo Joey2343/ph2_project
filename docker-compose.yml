@@ -8,10 +8,15 @@
 #   docker compose down -v        ปิดและลบข้อมูลทั้งหมด
 #
 # จากนั้นใส่ค่าใน backend/.env:
-#   DATABASE_URL=mysql://ph2:ph2pass@127.0.0.1:3307/ph2
+#   DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3307/admin_ph2
 #
 # หมายเหตุเรื่องพอร์ต: ใช้ 3307 เพื่อไม่ชนกับ MySQL ที่อาจมีอยู่แล้วในเครื่อง
 # ถ้าต้องการใช้ 3306 ให้แก้ทั้ง ports และ DATABASE_URL ให้ตรงกัน
+#
+# ⚠️ MYSQL_DATABASE / MARIADB_DATABASE มีผลเฉพาะตอน datadir ว่างเท่านั้น
+#    (docker-entrypoint รันครั้งแรกเท่านั้น) ถ้าเปลี่ยนชื่อฐานบน volume เดิม
+#    ระบบจะไม่สร้างฐานใหม่ให้ และไม่ rename ฐานเดิม — ต้อง `docker compose down -v`
+#    แล้ว up ใหม่ หรือไปสร้างฐานด้วย SQL เอง
 
 services:
   mysql:
@@ -22,14 +27,16 @@ services:
       - '3307:3306'
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: ph2
-      MYSQL_USER: ph2
-      MYSQL_PASSWORD: ph2pass
+      MYSQL_DATABASE: admin_ph2
+      MYSQL_USER: admin_ph2
+      MYSQL_PASSWORD: admin_ph2pass
       # สำคัญสำหรับภาษาไทย + emoji
       TZ: Asia/Bangkok
     command:
       - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
+      # ต้องตรงกับ backend/db/config.js (DB_COLLATION) ไม่งั้นลำดับการเรียง
+      # ของรายชื่อจะต่างจาก SQLite ตอนเทียบ parity
+      - --collation-server=utf8mb4_bin
       - --default-time-zone=+07:00
       # ให้สคริปต์ของระบบ (doc_number ยาว) ทำงานได้
       - --max-allowed-packet=64M
@@ -42,10 +49,11 @@ services:
       retries: 20
       start_period: 30s
 
-  # ตัวเลือก: MariaDB 10.11 สำหรับทดสอบความเข้ากันได้
+  # ตัวเลือก: MariaDB สำหรับทดสอบความเข้ากันได้
+  # เวอร์ชันนี้ตรงกับเซิร์ฟเวอร์จริงของระบบ (11.4 LTS)
   # (เปิดใช้ด้วย: docker compose --profile mariadb up -d mariadb)
   mariadb:
-    image: mariadb:10.11
+    image: mariadb:11.4
     container_name: ph2-mariadb
     profiles: ['mariadb']
     restart: unless-stopped
@@ -53,12 +61,12 @@ services:
       - '3308:3306'
     environment:
       MARIADB_ROOT_PASSWORD: rootpass
-      MARIADB_DATABASE: ph2
-      MARIADB_USER: ph2
-      MARIADB_PASSWORD: ph2pass
+      MARIADB_DATABASE: admin_ph2
+      MARIADB_USER: admin_ph2
+      MARIADB_PASSWORD: admin_ph2pass
     command:
       - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
+      - --collation-server=utf8mb4_bin
     volumes:
       - ph2-mariadb-data:/var/lib/mysql
     healthcheck:
