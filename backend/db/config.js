@@ -10,6 +10,8 @@
  *   DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME DB_CONNECTION_LIMIT DB_COLLATION
  *   DB_SQL_MODE               กำหนด sql_mode ของ session (ดูค่าเริ่มต้นด้านล่าง)
  */
+require('dotenv').config();
+
 const path = require('path');
 
 const BACKEND_ROOT = path.join(__dirname, '..');

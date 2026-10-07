@@ -15,7 +15,7 @@
 | Backend | Node.js + Express + CommonJS |
 | ฐานข้อมูล | MariaDB 11.4 ตัวเดียว (ตรงกับเซิร์ฟเวอร์จริง) |
 | Router | `createWebHashHistory()` → เส้นทางเป็น `#/documents` |
-| พอร์ต | backend 3000 · frontend dev 5173 · MySQL 3307 · MariaDB 3308 |
+| พอร์ต | backend 3000 · frontend dev 5173 · MariaDB 3308 |
 
 **สถานะการย้าย:** ทุกหน้าเป็น Vue SFC แล้ว (14 เมนู, `vue 14 · legacy 0`)
 เหลือโมดุลเดิมแค่ `frontend/src/views/DocumentsView.js` (684 บรรทัด) สำหรับ 2 ฟอร์มที่สร้าง PDF
@@ -136,32 +136,23 @@ cd frontend && npm run dev       # http://localhost:5173
 > ระบบใช้ MariaDB อย่างเดียว ไม่มี SQLite หรือ MySQL แยกอีกแล้ว
 > ไม่ตั้ง `DATABASE_URL` = ระบบจะไม่ยอมเริ่มทำงาน
 
-### 3.3 MariaDB โดยตรง (ถ้ามีเซิร์ฟเวอร์ของตัวเอง)
+### 3.3 จัดการ container
 
 ```bash
-docker compose up -d                      # MySQL ที่พอร์ต 3307
 docker compose ps                         # ดูสถานะ
-docker compose logs -f mysql              # ดู log
+docker compose logs -f mariadb            # ดู log
 docker compose down                       # หยุด (เก็บข้อมูลไว้)
 docker compose down -v                    # หยุด + ลบข้อมูลทั้งหมด
-
-cp backend/.env.example backend/.env      # แก้ค่าให้ชี้ MySQL
-cd backend && npm start
-```
-
-ค่าใน `backend/.env`:
-```
-DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
 ```
 
 **ทำไมต้องเป็น 3308** — กันชนกับ MySQL/MariaDB ที่อาจมีอยู่แล้วในเครื่อง
 ถ้าจะใช้ 3306 ให้แก้ทั้ง `docker-compose.yml` (ports) และ `DATABASE_URL` ให้ตรงกัน
 
-> ⚠️ **ชื่อฐานข้อมูลมาจาก 2 ที่** — `backend/db/config.js:71` อ่าน `DB_NAME` ก่อน
+> ⚠️ **ชื่อฐานข้อมูลมาจาก 2 ที่** — `backend/db/config.js` อ่าน `DB_NAME` ก่อน
 > path ใน `DATABASE_URL` ดังนั้น**ถ้าเคยแตะ `DB_NAME` ต้องแก้ให้ตรงกันด้วย**
 > ถ้าไม่ได้ใช้แยกตัวแปร ให้ลบบรรทัด `DB_NAME` ทิ้ง จะได้ไม่ต้องคอยแก้สองที่ให้ตรงกัน
 
-> ⚠️ **`MYSQL_DATABASE` มีผลตอน datadir ว่างเท่านั้น** (docker-entrypoint รันครั้งแรก)
+> ⚠️ **`MARIADB_DATABASE` มีผลตอน datadir ว่างเท่านั้น** (docker-entrypoint รันครั้งแรก)
 > ถ้าเปลี่ยนชื่อฐานบน volume เดิม ระบบจะไม่สร้างฐานใหม่ และไม่ rename ฐานเดิม
 > ต้อง `docker compose down -v` แล้ว `up -d` ใหม่ (หรือสร้างฐานด้วย SQL เอง)
 
@@ -192,12 +183,21 @@ cd backend && npm run db:import-schools
 `seed()` สร้างโรงเรียนตัวอย่างแค่ 9 แห่ง ข้อมูลจริงทั้งหมดอยู่ใน
 `backend/pikud/Definition.csv` (อยู่ใน git แล้ว) สคริปต์นี้อ่านไฟล์นั้นเข้าฐาน
 
-ฐานว่างที่ `seed()` สร้างมี 23 ตาราง · ~440 แถว
+ฐานว่างที่ `seed()` สร้างมี **23 ตาราง · 39 แถว**
 ชื่อฐานและ user: `admin_ph2` / `admin_ph2` / รหัส `admin_ph2pass`
 
-> ข้อมูลตั้งต้นที่ `seed()` สร้าง: settings 9 ค่า · admin · office_sections 5 ข้อ (หน้าสาธารณะ)
-> · โรงเรียนตัวอย่าง 9 · ยาน 6 · ห้องประชุม 6 · งบปี 4 · งานวิชาการ 3
+> ข้อมูลตั้งต้นที่ `seed()` สร้าง (8 ตาราง):
+> settings 9 ค่า · admin 1 · office_sections 5 ข้อ (หน้าสาธารณะ)
+> · โรงเรียนตัวอย่าง 9 · ยาน 3 · ห้องประชุม 3 · งบปี 4 · งานวิชาการ 3
+> · รายการจองยานพาหนะ 1 · รายการจองห้องประชุม 1
+>
 > อีก 15 ตารางเป็นตาราง transaction จะว่างจนกว่าจะมีการใช้งาน
+> หลังรัน `db:import-schools` จะมีโรงเรียนจริง **104 แห่ง** รวมเป็น **134 แถว**
+> (ไม่นับ `sessions` / `time_records` ที่เป็นข้อมูลตอนใช้งานจริง)
+
+> ⚠️ **วันที่ของรายการจองต้องเป็น ค.ศ. (YYYY-MM-DD) ไม่ใช่ พ.ศ.**
+> `applyYearFilter()` แปลงปี พ.ศ. → ช่วง ค.ศ. ก่อนเทียบกับคอลัมน์วันที่
+> ถ้าใส่ปี พ.ศ. รายการจะถูกกรองทิ้ง หน้าจองจะดูว่างเปล่า
 
 > ⚠️ **เปลี่ยนรหัสผ่าน/ชื่อฐานใน compose แล้วต้องล้าง volume ด้วย**
 > `MARIADB_PASSWORD` / `MARIADB_DATABASE` มีผลตอน datadir ว่างเท่านั้น
@@ -448,7 +448,7 @@ ph2_project/
 ├── docs/legacy/
 │   ├── source-v1/             ต้นฉบับระบบเดิม (อ้างอิง + เทียบ CSS)
 │   └── ported-views/          ผลลัพธ์ npm run port (ไม่ได้ import)
-└── docker-compose.yml         MySQL 3307 + MariaDB 3308
+└── docker-compose.yml         MariaDB 11.4 ที่พอร์ต 3308 (+ docker/mariadb-init/)
 ```
 
 ---
@@ -547,7 +547,7 @@ npm run verify:runtime
 npm run verify:auth
 # หรือทุกอย่างรวดเดียว:  npm run verify:all
 
-# 3) backend (MySQL ต้องรันอยู่ก่อน)
+# 3) backend (MariaDB ต้องรันอยู่ก่อน)
 cd ../backend
 npm run verify
 ```

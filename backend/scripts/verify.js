@@ -11,6 +11,8 @@
  * ใช้: node scripts/verify.js
  */
 
+require('dotenv').config();
+
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
