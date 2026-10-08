@@ -91,7 +91,9 @@ const pendingStats = computed(() => {
     { icon: '❋', label: 'ขอลารออนุมัติ', value: d.pendingLeave, color: 'var(--danger-light)' },
     { icon: '⊕', label: 'รออนุมัติสมาชิกใหม่', value: d.pendingUsers, color: 'var(--accent-light)' },
     { icon: '◷', label: 'รออนุมัติทั้งหมด', value: d.pendingTotal, color: 'var(--warning-light)' },
-    { icon: '▭', label: 'มาทำงานวันนี้', value: d.todayClockedIn, color: 'var(--success-light)' },
+    // ไม่มีการ์ด "มาทำงานวันนี้" ตรงนี้ เพราะ todayCards มีอยู่แล้ว
+    // (นับคนเดียวกันจาก /api/today-summary และคลิกเปิดรายชื่อได้)
+    // ถ้าใส่ทั้งสองใบจะขึ้นซ้ำติดกันในแถวเดียว
   ].filter((s) => s.value > 0);
 });
 

@@ -21,6 +21,7 @@ import { Auth } from '../stores/auth.js';
 import { ExportFilterDialog } from '../ui/ExportFilter.js';
 import AppModal from '../components/ui/AppModal.vue';
 import StatusBadge from '../components/ui/StatusBadge.vue';
+import ApprovalPill from '../components/ui/ApprovalPill.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import BookingCalendar from '../components/ui/BookingCalendar.vue';
 import ThaiDateField from '../components/ui/ThaiDateField.vue';
@@ -885,7 +886,7 @@ function canCancelRow(r) {
                   <div>
                     <StatusBadge :status="r.status" />
                     <div style="cursor: pointer" title="ดูความคืบหน้าการอนุมัติ" @click="progressFor = r">
-                      {{ UI.approvalPill(r) }}
+                      <ApprovalPill :row="r" />
                     </div>
                   </div>
                 </td>
