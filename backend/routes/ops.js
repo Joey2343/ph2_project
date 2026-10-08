@@ -31,8 +31,10 @@ async function nextDocNo(table, idCol, yearBE) {
   return `${max + 1}/${yearBE}`;
 }
 
-// ---------- ฟอนต์สำหรับเครื่องมือจัดการข้อความ (จากโฟล์เดอร์ font/) ----------
-const FONT_DIR = path.join(__dirname, '..', 'font');
+// ---------- ฟอนต์สำหรับเครื่องมือจัดการข้อความ ----------
+// โฟลเดอร์ฟอนต์ย้ายไปฝั่ง frontend แล้ว ให้ Vite copy เข้า dist/
+// เพื่อให้ Apache เสิร์ฟ /fonts/* ได้เองโดยไม่ต้อง proxy (เดิม backend/font/)
+const FONT_DIR = path.join(__dirname, '..', '..', 'frontend', 'public', 'fonts');
 // ต่อท้ายชื่อไฟล์ เช่น Bold Italic / BoldItalic / -Regular / -Medium → แยกเป็นน้ำหนัก + เอียง
 const FONT_TOKENS = ['Bold Italic', 'BoldItalic', 'ExtraBold', 'SemiBold', 'Light', 'Medium', 'Regular', 'Bold', 'Italic'];
 
