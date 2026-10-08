@@ -54,5 +54,35 @@ const logoSrc = '/logo.png';
 </template>
 
 <style>
-/* ไม่เพิ่มสไตล์ใด ๆ — ทุกอย่างมาจาก styles/theme.css (style.css ของระบบเดิม) */
+/* ทุกอย่างมาจาก styles/theme.css (style.css ของระบบเดิม)
+   ยกเว้นความกว้างแถบบนด้านล่างซึ่ง override ไว้ที่นี่ */
+
+/* ---- ให้แถบบนกว้างเท่าเนื้อหา ----
+ *
+ * theme.css กำหนด .topbar-inner = 1200px แต่ .app = 1400px
+ * แถบบนจึงกว้างแคบกว่าเนื้อหา 200px ทำให้โลโก้ชิดขวากว่ากล่องนาฬิกา
+ * และปุ่มฝั่งขวาชิดซ้ายกว่าขอบเนื้อหา ดูไม่เข้ากัน
+ *
+ * ค่า 1200px เป็นค่าของระบบเดิม (docs/legacy/source-v1/css/style.css:46)
+ * แต่ theme.css ห้ามแก้ เพราะ verify-build เทียบ SHA256 กับไฟล์นั้น
+ * จึงต้อง override ที่นี่แทน
+ *
+ * ⚠️ ต้องเขียนเป็น ".topbar .topbar-inner" ไม่ใช่ ".topbar-inner" เดี่ยว ๆ
+ * เพราะ theme.css กับไฟล์นี้มี specificity เท่ากัน (0,1,0)
+ * ถ้าใช้ชื่อเดียว ผลจะขึ้นกับว่า CSS ไหนโหลดทีหลัง และมันต่างกันระหว่างสองโหมด
+ *   dev  : Vite inject ตามลำดับ import ใน main.js
+ *          App.vue อยู่บรรทัด 15 แต่ theme.css อยู่บรรทัด 25
+ *          → theme.css ทับกลับ ได้ 1200px
+ *   build: แยกเป็นไฟล์ CSS คนละไฟล์ <link> theme มาก่อน main
+ *          → 1400px ชนะ
+ * การเขียน selector 2 ชั้นทำให้ชนะเสมอไม่ว่าโหมดไหน
+ * (0,2,0) > (0,1,0)
+ */
+.topbar .topbar-inner { max-width: 1400px; }
+
+/* จอแคบ: .app ลด padding จาก 20px เหลือ 12px (theme.css:714)
+   ต้องลดขอบแถบบนตามด้วย ไม่งั้นแถบบนจะเว้นขอบมากกว่าเนื้อหา 8px ทั้งสองด้าน */
+@media (max-width: 640px) {
+  .topbar .topbar-inner { padding: 10px 12px; }
+}
 </style>
