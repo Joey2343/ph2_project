@@ -160,6 +160,41 @@ docker compose down -v                    # หยุด + ลบข้อมู
 > ถ้าเปลี่ยนชื่อฐานบน volume เดิม ระบบจะไม่สร้างฐานใหม่ และไม่ rename ฐานเดิม
 > ต้อง `docker compose down -v` แล้ว `up -d` ใหม่ (หรือสร้างฐานด้วย SQL เอง)
 
+### 3.3.1 phpMyAdmin (ดูฐานข้อมูลแบบเว็บ)
+
+`docker compose up -d` จะเปิด phpMyAdmin พร้อม MariaDB โดยอัตโนมัติ
+
+| | |
+|---|---|
+| URL | **http://localhost:8080** |
+| ผู้ใช้ | `admin_ph2` |
+| รหัสผ่าน | `admin_ph2pass` |
+| เห็นฐาน | `admin_ph2` (จริง) และ `admin_ph2_test` (ทดสอบ) |
+
+```bash
+docker compose stop phpmyadmin     # ปิด phpMyAdmin (MariaDB ยังทำงาน)
+docker compose start phpmyadmin    # เปิดอีกครั้ง
+docker compose logs -f phpmyadmin  # ดู log
+```
+
+> 🔒 **ผูกพอร์ตไว้ที่ `127.0.0.1` เท่านั้น** จึงเข้าได้จากเครื่องนี้เครื่องเดียว
+> คนอื่นใน LAN เข้าไม่ได้ ถ้าต้องการเข้าจากเครื่องอื่น (เช่นทดสอบบนมือถือ)
+> ให้แก้ `docker-compose.yml` บรรทัด ports เป็น `'8080:80'` แล้ว `docker compose up -d`
+> **อย่าทำบนเครื่องที่ใช้งานจริง** เพราะจะเปิดหน้า admin ฐานข้อมูลออกเครือข่าย
+
+จุดที่ตั้งค่าไว้และต้องระวัง:
+
+| ค่า | ทำไม |
+|---|---|
+| `PMA_HOST: mariadb` | ต้องเป็น **ชื่อ service** ไม่ใช่ `127.0.0.1` — ถ้าใส่ IP จะไปหาฐานที่ตัวเองแล้วไม่เจอ |
+| `PMA_DATABASES` | จำกัดให้เห็นแค่ 2 ฐาน ไม่เห็น `mysql`, `information_schema` |
+| `image: phpmyadmin:5.2.1-apache` | **ตรึงเวอร์ชัน** ไม่ใช้ `latest` — ถ้าดึงเวอร์ชันใหม่แล้วเข้ากับ MariaDB 11.4 ไม่ได้ ระบบ dev/test จะพัง |
+| `condition: service_healthy` | รอ MariaDB ผ่าน healthcheck ก่อน ไม่งั้นขึ้น `connection refused` |
+| `.phpmyadmin/` ใน `.gitignore` | phpMyAdmin เขียนไฟล์ config ตัวเองตอนรัน |
+
+> 💡 ฐานนี้ใช้ `collation=utf8mb4_bin` ถ้า phpMyAdmin แสดงลำดับชื่อผิด
+> ให้เช็คว่า `PMA_HOST` ชี้ถูก container (ดูรายการฐานด้านซ้าย)
+
 ### 3.4 ฐานทดสอบ
 
 ตัวทดสอบ (`npm run verify`) เขียนและลบข้อมูลจริง เช่น POST /api/time/check

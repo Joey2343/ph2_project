@@ -1,11 +1,21 @@
 # MariaDB 11.4 สำหรับ dev/test — ตัวเดียวกับเซิร์ฟเวอร์จริง
+# พร้อม phpMyAdmin สำหรับดูข้อมูลในฐานแบบเว็บ
 #
 # ใช้:
-#   docker compose up -d                    เริ่ม MariaDB (พอร์ต 3308)
+#   docker compose up -d                    เริ่ม MariaDB + phpMyAdmin
 #   docker compose ps                       ดูสถานะ
 #   docker compose logs -f mariadb           ดู log
 #   docker compose down                     ปิด (เก็บข้อมูลไว้ใน volume)
 #   docker compose down -v                  ปิดและลบข้อมูลทั้งหมด
+#
+# ดูฐานข้อมูลผ่านเว็บ:
+#   http://localhost:8080                    ล็อกอิน admin_ph2 / admin_ph2pass
+#   docker compose stop phpmyadmin           ปิด phpMyAdmin (เก็บ MariaDB ไว้)
+#   docker compose start phpmyadmin          เปิดอีกครั้ง
+#
+# ⚠️ phpMyAdmin ผูกพอร์ตไว้ที่ 127.0.0.1 จึงเข้าได้จากเครื่องนี้เท่านั้น
+#    ถ้าจะให้เข้าจากเครื่องอื่นใน LAN ต้องแก้ '127.0.0.1:8080:80' เป็น '8080:80'
+#    ซึ่งจะเปิดหน้า admin ฐานข้อมูลออกเครือข่าย ไม่แนะนำบนเครื่องที่ใช้งานจริง
 #
 # จากนั้นใส่ค่าใน backend/.env:
 #   DATABASE_URL=mysql://admin_ph2:admin_ph2pass@127.0.0.1:3308/admin_ph2
@@ -49,6 +59,33 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+
+  # ---------- phpMyAdmin (ดูฐานข้อมูลแบบเว็บ) ----------
+  phpmyadmin:
+    # ตรึงเวอร์ชันไว้ ไม่ใช้ latest
+    # เพราะถ้าดึงเวอร์ชันใหม่มาแล้วเข้ากับ MariaDB 11.4 ไม่ได้ ระบบ dev/test จะพัง
+    # เวลาอัปเกรดจึงต้องแก้บรรทัดนี้เอง ทดสอบก่อนเสมอ
+    image: phpmyadmin:5.2.1-apache
+    container_name: ph2-phpmyadmin
+    restart: unless-stopped
+    ports:
+      # ผูกเฉพาะ 127.0.0.1 = เข้าได้จากเครื่องนี้เท่านั้น คนอื่นใน LAN เข้าไม่ได้
+      - '127.0.0.1:8080:80'
+    environment:
+      # ล็อกอินด้วย admin_ph2 เห็นแค่ admin_ph2 กับ admin_ph2_test ไม่แตะ root
+      PMA_USER: admin_ph2
+      PMA_PASSWORD: admin_ph2pass
+      # ต้องเป็นชื่อ service ใน compose นี้ ("mariadb")
+      # ถ้าใส่ 127.0.0.1 phpMyAdmin จะไปหาฐานที่ตัวเองแล้วไม่เจอ
+      PMA_HOST: mariadb
+      PMA_PORT: '3306'
+      # ระบุฐานที่อยากให้แสดง (คั่นด้วย ; ไม่ต้องมี ; ต่อท้าย)
+      PMA_DATABASES: admin_ph2;admin_ph2_test
+      TZ: Asia/Bangkok
+    depends_on:
+      mariadb:
+        # รอจน MariaDB ผ่าน healthcheck ก่อน ไม่งั้นจะขึ้น "connection refused"
+        condition: service_healthy
 
 volumes:
   ph2-mariadb-data:
