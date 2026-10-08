@@ -702,7 +702,11 @@ router.get('/staff', auth.requireAdmin, async (req, res) => {
   if (q) { sql += ' AND (username LIKE ? OR full_name LIKE ? OR position LIKE ? OR workplace LIKE ? OR citizen_id LIKE ?)'; const p = `%${q}%`; args.push(p, p, p, p, p); }
   // เรียงตามลำดับเจ้าหน้าที่ (staff_no) น้อย → มาก บนลงล่าง — ผู้ที่ยังไม่กำหนดลำดับอยู่ท้ายสุด (เรียงตาม id)
   sql += ' ORDER BY CASE WHEN staff_no IS NULL OR staff_no = \'\' THEN 1 ELSE 0 END, CAST(staff_no AS SIGNED) ASC, id ASC';
-  res.json({ staff: (await db.prepare(sql).all(...args)).map(auth.publicUser) });
+  // auth.publicUser เป็น async → คืน Promise
+  // ถ้าใช้ rows.map(auth.publicUser) ตรง ๆ จะได้ Promise[] ซึ่ง JSON.stringify แปลงเป็น {}
+  // ทำให้หน้าเว็บเห็นแถวเปล่า (ชื่อ-นามสกุล ตำแหน่ง กลุ่มงาน ว่างหมด)
+  // จุดอื่นในไฟล์นี้ใช้ await ถูกต้องแล้ว เช่นบรรทัด 723, 803, 814
+  res.json({ staff: await Promise.all((await db.prepare(sql).all(...args)).map(auth.publicUser)) });
 });
 
 // Route สำหรับดึงรายชื่อเจ้าหน้าที่สพป. (ใช้ได้ทุก user สำหรับส่งไปรษณีย์)
