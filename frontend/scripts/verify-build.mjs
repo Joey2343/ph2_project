@@ -117,6 +117,59 @@ check(
 const worker = chunks.find((c) => c.startsWith('pdf.worker.min-'));
 check(!!worker, `pdf.js worker ถูก bundle มาแล้ว${worker ? ` (${Math.round(statSync(join(assetsDir, worker)).size / 1024)} KB)` : ' — ไม่พบ'}`);
 
+// ---- 7. ไฟล์ static ที่ย้ายมาจาก backend ----
+//
+// logo.png, form/ และ fonts/ เดิมอยู่ใน backend/public, backend/form, backend/font
+// แล้วย้ายมาที่ frontend/public/ เพื่อให้ Vite copy เข้า dist/ โดยไม่ตัดชื่อ
+// ทำให้ Apache ที่ public_html เสิร์ฟ URL เดิม (/logo.png, /form/*, /fonts/*) ได้เอง
+//
+// เช็คตรงนี้เพราะถ้าย้ายแล้ว publicDir ไม่ถูก copy จะได้ 404 บนเซิร์ฟเวอร์
+// ขณะที่ตอน dev ที่รัน Vite ตรง ๆ ยังใช้ได้ ทำให้พลาดตอน deploy
+const PUBLIC_ASSETS = [
+  'logo.png',
+  'form/krut.png',
+  'form/big_krut.png',
+  'form/red_krut.png',
+  'form/pumprub.png',
+  'form/form_bunteugkokeam.pdf',
+  'form/certificate/1.png',
+  'form/certificate/2.png',
+];
+for (const rel of PUBLIC_ASSETS) {
+  const p = join(DIST, ...rel.split('/'));
+  check(existsSync(p), `dist มี ${rel}${existsSync(p) ? '' : ' — ไม่พบ (publicDir ไม่ถูก copy?)'}`);
+}
+
+/** นับไฟล์ทั้งหมดในโฟลเดอร์ (นับซ้ำเมื่อมีโฟลเดอร์ย่อย) */
+function countFiles(dir) {
+  if (!existsSync(dir)) return 0;
+  let n = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    n += e.isDirectory() ? countFiles(join(dir, e.name)) : 1;
+  }
+  return n;
+}
+
+// fonts/ ต้องครบตามที่ frontend/public/fonts มี (ชื่อไฟล์มีตัวเลขไทย ๙ ด้วย)
+const srcFonts = join(FRONTEND, 'public', 'fonts');
+const distFonts = join(DIST, 'fonts');
+const srcFontCount = countFiles(srcFonts);
+const distFontCount = countFiles(distFonts);
+check(
+  srcFontCount > 0 && distFontCount === srcFontCount,
+  `dist/fonts มีครบ ${distFontCount} จาก ${srcFontCount} ไฟล์`,
+);
+
+// ไฟล์ฟอนต์ที่ theme.css อ้างต้องมีจริง ไม่งั้นหน้าเว็บจะใช้ฟอนต์สำรองเงียบ ๆ
+const themeCss = readFileSync(join(FRONTEND, 'src', 'styles', 'theme.css'), 'utf8');
+const referencedFonts = [...new Set([...themeCss.matchAll(/url\('(\/fonts\/[^']+)'\)/g)].map((m) => m[1]))];
+check(referencedFonts.length > 0, `theme.css อ้างฟอนต์ ${referencedFonts.length} ไฟล์`);
+for (const url of referencedFonts) {
+  const rel = url.replace(/^\//, '');
+  const p = join(DIST, ...rel.split('/'));
+  check(existsSync(p), `theme.css อ้าง ${url} และมีไฟล์จริง`);
+}
+
 // ---- 7. server เสิร์ฟได้จริง (ถ้าเปิด --server) ----
 if (USE_SERVER) {
   console.log('');

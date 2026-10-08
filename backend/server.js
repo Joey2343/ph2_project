@@ -26,11 +26,16 @@ const app = express();
 const PORT = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 3000;
 
 // ── ไฟล์สถานะ ────────────────────────────────────────────────────────────────
-// โฟลเดอร์ public/ ของ backend (uploads, logo, ฟอนต์, แบบฟอร์ม)
+// โฟลเดอร์ public/ ของ backend — เหลือแค่ uploads/ (ไฟล์ที่ผู้ใช้อัปโหลดระหว่างใช้งาน)
+// logo.png, form/ และ fonts/ ย้ายไปอยู่ที่ frontend/public/ แล้ว เพื่อให้ Vite
+// copy เข้า dist/ แล้ว Apache ที่ public_html เสิร์ฟได้เองโดยไม่ต้อง proxy
 const BACKEND_PUBLIC = path.join(__dirname, 'public');
 // ผลลัพธ์ build ของ frontend (npm run build ในโฟลเดอร์ frontend)
 const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
 const FRONTEND_EXISTS = fs.existsSync(path.join(FRONTEND_DIST, 'index.html'));
+// ไฟล์ static ฝั่ง frontend (ย้ายมาจาก backend เดิม) — ใช้เป็น fallback
+// ตอนรันแบบ dev ที่ยังไม่ได้ build หรืออ้าง path ที่ไม่ได้อยู่ใน dist
+const FRONTEND_PUBLIC = path.join(__dirname, '..', 'frontend', 'public');
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -45,11 +50,12 @@ app.use('/api', require('./routes/ops'));
 app.use('/api', require('./routes/requests'));
 app.use('/api', require('./routes/admin'));
 
-// ฟอนต์สำหรับเครื่องมือจัดการข้อความ (โฟลเดอร์ font/)
-app.use('/fonts', express.static(path.join(__dirname, 'font')));
-
-// แบบฟอร์มเอกสาร (โฟลเดอร์ form/ เช่น ครุฑ, ฟอร์มต้นฉบับ)
-app.use('/form', express.static(path.join(__dirname, 'form')));
+// ไฟล์ static ฝั่ง frontend — logo.png, fonts/ (ฟอนต์เครื่องมือจัดการข้อความ)
+// และ form/ (รูปครุฑ แบบฟอร์มต้นฉบับ)
+// ทั้งสามกลุ่มนี้เดิมอยู่ใน backend แล้วย้ายมาที่ frontend/public/
+// เพื่อให้ Vite copy เข้า dist/ แล้ว Apache ที่ public_html เสิร์ฟได้เอง
+// ตัวนี้เป็น fallback สำหรับตอนยังไม่ได้ build (เช่น ตอน dev ที่ใช้ Vite ตรง ๆ)
+app.use(express.static(FRONTEND_PUBLIC, { index: false }));
 
 // ไฟล์จาก frontend ที่ build แล้ว (มี hash ชื่อไฟล์ จึง cache ได้ยาว)
 if (FRONTEND_EXISTS) {
@@ -65,7 +71,7 @@ if (FRONTEND_EXISTS) {
   );
 }
 
-// uploads, logo.png และไฟล์อื่นใน backend/public (cache ได้)
+// uploads/ และไฟล์อื่นใน backend/public (cache ได้) — ตอนนี้เหลือแค่ uploads
 app.use(
   express.static(BACKEND_PUBLIC, {
     index: false,

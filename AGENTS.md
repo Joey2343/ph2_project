@@ -40,7 +40,11 @@
   // ✓ ถูก
   function goTo(key) { window.__P2_GO__(key); }
   ```
-- รูปที่ backend เสิร์ฟ (`logo.png`, `/form/krut.png`) ต้องเป็น **runtime URL**
+- รูปจาก `frontend/public/` (`logo.png`, `/form/krut.png`, `/fonts/*`) ต้องเป็น **runtime URL**
+  - ไฟล์พวกนี้อยู่ใน `publicDir` ของ Vite จึงถูก copy ไปที่ `dist/` **โดยไม่ตัดชื่อ**
+    URL เดิมจึงใช้ได้ทั้งตอน dev และ production โดยไม่ต้อง import
+  - ⚠️ **ห้ามเปลี่ยนเป็น `import`** เพราะจะกลายเป็น asset ที่มี hash ในชื่อ แล้ว
+    `theme.css` (ซึ่งอ้าง `/fonts/...` และ**ห้ามแก้**) จะหาไฟล์ไม่เจอ
   ```vue
   ✗ <img src="logo.png" />        <!-- Vite จะหาไฟล์ตอน build แล้ว fail -->
   ✓ <img :src="'logo.png'" />    <!-- ผูกเป็น runtime -->
@@ -427,11 +431,13 @@ ph2_project/
 │   │   ├── auth.js            hash / session
 │   │   └── simdate.js         นาฬิกาจำลอง (ต้อง install ก่อนโค้ดที่ใช้ Date)
 │   ├── routes/                auth · content · ops · requests · admin
-│   ├── public/                uploads · logo.png
-│   ├── font/ form/            ฟอนต์ + แบบเอกสาร เสิร์ฟที่ /fonts และ /form
+│   ├── public/uploads/        ไฟล์ที่ผู้ใช้อัปโหลด (ไม่ได้อยู่ใน git)
 │   ├── scripts/               verify.js · check-syntax.js · check-sql-schema.js · inspect-db.js
 │   └── test/                  smoke.js (ต้องใช้ฐาน _test)
+│   (โฟลเดอร์ logo/ เป็นของตกเหลือ ไม่มีโค้ดอ้างถึง)
 ├── frontend/
+│   ├── public/                logo.png · form/ · fonts/ → copy ไป dist/ โดยไม่ตัดชื่อ
+│   │                           (เดิมอยู่ที่ backend — ย้ายมาเพื่อให้ Apache เสิร์ฟเอง)
 │   ├── src/
 │   │   ├── main.js            bootstrap (Pinia · router · global เดิมบน window)
 │   │   ├── App.vue
