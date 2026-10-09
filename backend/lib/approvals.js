@@ -176,7 +176,7 @@ async function getUserSystemLevels(user, system) {
 async function userGroupOf(userId) {
   const u = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(Number(userId));
   if (!u) return 'office';
-  return u.user_group || (u.school_code === '54020000' ? 'office' : 'school');
+  return u.user_group || 'office';
 }
 
 /** เป็นเจ้าหน้าที่ สพป.แพร่ เขต 2 หรือไม่ */
@@ -247,8 +247,8 @@ async function sameTravelGroup(approverId, requesterId) {
   const a = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(Number(approverId));
   const r = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(Number(requesterId));
   if (!a || !r) return false;
-  var ga = a.user_group || (a.school_code === '54020000' ? 'office' : 'school');
-  var gr = r.user_group || (r.school_code === '54020000' ? 'office' : 'school');
+  var ga = a.user_group || 'office';
+  var gr = r.user_group || 'office';
   return ga === gr;
 }
 

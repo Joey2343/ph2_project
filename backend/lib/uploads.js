@@ -142,7 +142,8 @@ function deleteUploadedFile(name) {
   }
   for (const sub of SUBFOLDERS) {
     const p = path.join(UPLOAD_DIR, sub, name);
-    if (fs.existsSync(p)) { fs.unlinkSync(p); return; }
+    // loop-exit: ลบจากโฟลเดอร์ย่อยแรกที่เจอแล้วจบ ไม่ลบซ้ำทั้งหมด
+    if (fs.existsSync(p)) { fs.unlinkSync(p); return; } // loop-exit
   }
   const p = path.join(UPLOAD_DIR, name);
   if (fs.existsSync(p)) fs.unlinkSync(p);

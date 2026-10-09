@@ -193,9 +193,10 @@ router.get('/memo/approvers', auth.requireAuth, async (req, res) => {
   const approvers = await approvals.getSystemApprovers('memo');
   // แผนที่รายบุคคล: approvers[level][staffId] = approverId
   let perPerson = await approvals.getMemoApproversPerPerson();
-  // เฉพาะเจ้าหน้าที่ สพป.แพร่ เขต 2 (รหัส 54020000) — ไม่รวมเจ้าหน้าที่สถานศึกษา
+  // เฉพาะเจ้าหน้าที่ฝั่งสำนักงานเขต — ไม่รวมเจ้าหน้าที่สถานศึกษา
+  // แยกด้วย user_group ไม่ใช่รหัสโรงเรียน (รหัสสำนักงานเขตถูกถอดจาก schools ไปแล้ว)
   const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, role FROM users
-    WHERE status = 'active' AND school_code = '54020000' ORDER BY full_name`).all();
+    WHERE status = 'active' AND COALESCE(user_group, 'office') = 'office' ORDER BY full_name`).all();
   // ยังไม่เคยบันทึกรายบุคคล → ใช้ค่า effective จากลำดับรวมเดิม (คนแรกของแต่ละขั้น) ให้ทุกคน เพื่อไม่ให้ตารางว่าง
   const hasPer = ['1', '2', '3'].some((lv) => Object.keys(perPerson[lv] || {}).length);
   if (!hasPer) {
@@ -219,10 +220,10 @@ router.put('/memo/approvers', auth.requireAdmin, async (req, res) => {
     return out;
   };
   const per = { 1: toMap(b['1'] || b.per1), 2: toMap(b['2'] || b.per2), 3: toMap(b['3'] || b.per3) };
-  // ตรวจว่าทุก id เป็นเจ้าหน้าที่ สพป.แพร่ เขต 2 ที่ active เท่านั้น
+  // ตรวจว่าทุก id เป็นเจ้าหน้าที่ฝั่งสำนักงานเขตที่ active เท่านั้น
   const all = [...new Set([...Object.keys(per[1]), ...Object.keys(per[2]), ...Object.keys(per[3]).concat(Object.values(per[3]))].map(Number).concat(Object.values(per[1]), Object.values(per[2])))];
   if (all.length) {
-    const rows = await db.prepare(`SELECT id FROM users WHERE id IN (${all.map(() => '?').join(',')}) AND status = 'active' AND school_code = '54020000'`).all(...all);
+    const rows = await db.prepare(`SELECT id FROM users WHERE id IN (${all.map(() => '?').join(',')}) AND status = 'active' AND COALESCE(user_group, 'office') = 'office'`).all(...all);
     const valid = new Set(rows.map((r) => r.id));
     for (const lv of ['1', '2', '3']) {
       for (const sid in per[lv]) {
@@ -621,8 +622,8 @@ router.get('/travel', auth.requireAuth, async (req, res) => {
   // if (!isAdmin) { sql += ' AND t.user_id = ?'; args.push(req.user.id); }
   // แยกหน้าตามกลุ่มผู้ใช้: group=office → เฉพาะเจ้าหน้าที่ สพป.แพร่ เขต 2 (user_group=office)
   //                       group=school → เฉพาะเจ้าหน้าที่สถานศึกษา (user_group=school)
-  if (group === 'office') { sql += " AND COALESCE(u.user_group, CASE WHEN u.school_code = '54020000' THEN 'office' ELSE 'school' END) = 'office'"; }
-  if (group === 'school') { sql += " AND COALESCE(u.user_group, CASE WHEN u.school_code = '54020000' THEN 'office' ELSE 'school' END) = 'school'"; }
+  if (group === 'office') { sql += " AND COALESCE(u.user_group, 'office') = 'office'"; }
+  if (group === 'school') { sql += " AND COALESCE(u.user_group, 'office') = 'school'"; }
   if (status) { sql += ' AND t.status = ?'; args.push(status); }
   sql = applyYearFilter(sql, args, 't.date_from', year);
   sql += ' ORDER BY t.id DESC';
@@ -736,8 +737,8 @@ router.get('/leaves', auth.requireAuth, async (req, res) => {
     args.push((y - 1) + '-10-01', y + '-09-30');
   }
   // แยกรายการตามกลุ่มผู้ใช้: ugroup=office → เจ้าหน้าที่ สพป.แพร่ เขต 2 | ugroup=school → เจ้าหน้าที่สถานศึกษา
-  if (ugroup === 'office') { sql += " AND COALESCE(u.user_group, CASE WHEN u.school_code = '54020000' THEN 'office' ELSE 'school' END) = 'office'"; }
-  if (ugroup === 'school') { sql += " AND COALESCE(u.user_group, CASE WHEN u.school_code = '54020000' THEN 'office' ELSE 'school' END) = 'school'"; }
+  if (ugroup === 'office') { sql += " AND COALESCE(u.user_group, 'office') = 'office'"; }
+  if (ugroup === 'school') { sql += " AND COALESCE(u.user_group, 'office') = 'school'"; }
   if (status) { sql += ' AND l.status = ?'; args.push(status); }
   // ปีงบประมาณ (ปี พ.ศ.): 1 ต.ค. ปีก่อน - 30 ก.ย. ปีที่เลือก (เช่น ปีงบประมาณ 2569 = 1 ต.ค. 2568 - 30 ก.ย. 2569)
   if (year) { const yCE = Number(year) - 543; sql += " AND l.date_from >= ? AND l.date_from <= ?"; args.push((yCE - 1) + '-10-01', yCE + '-09-30'); }
@@ -1149,7 +1150,7 @@ function leaveApproverKey(scope) {
 async function requesterApproverKey(userId) {
   const u = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(userId);
   if (!u) return 'leave_approvers';
-  const group = u.user_group || (u.school_code === '54020000' ? 'office' : 'school');
+  const group = u.user_group || 'office';
   return group === 'school' ? 'leave_approvers_school' : 'leave_approvers';
 }
 router.get('/settings/leave-approvers', auth.requireAuth, auth.requireAdmin, async (req, res) => {

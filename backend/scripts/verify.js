@@ -87,6 +87,9 @@ function main() {
     run('acorn parse', [path.join(__dirname, 'check-syntax.js')])
   );
 
+  console.log('\n[ตรวจ return ที่หลุดออกจากลูป]');
+  results.push(run('check-returns', [path.join(__dirname, 'check-returns.js')]));
+
   console.log('\n[ตรวจ SQL เทียบ schema จริง]');
   results.push(run('check-sql-schema', [path.join(__dirname, 'check-sql-schema.js')]));
 

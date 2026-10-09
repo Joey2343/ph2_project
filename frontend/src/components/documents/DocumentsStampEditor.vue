@@ -227,7 +227,7 @@ function onSourceUp(e) {
     const r = wraps[i].getBoundingClientRect();
     if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
       addStamp(i + 1, e.clientX - r.left, e.clientY - r.top);
-      return;
+      return; // loop-exit — ลงตราประทับได้หน้าเดียวต่อคลิก
     }
   }
 }

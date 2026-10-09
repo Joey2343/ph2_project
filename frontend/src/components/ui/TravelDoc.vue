@@ -106,11 +106,7 @@ const vehicleLine = computed(() => {
  * สายสถานศึกษา แสดง ขั้น2 = ผู้บังคับบัญชาขั้นต้น, ขั้น3 = ผู้อนุมัติ
  * (ไม่แสดงความเห็นของผู้ตรวจสอบ เพราะเป็นแค่การเสนอเรื่อง)
  */
-const reqIsSchool = computed(
-  () =>
-    (props.record.user_group ||
-      (String(props.record.school_code || '') === '54020000' ? 'office' : 'school')) === 'school',
-);
+const reqIsSchool = computed(() => (props.record.user_group || 'office') === 'school');
 
 function approvalAt(level) {
   return (props.record.approvals || []).find((a) => a.level === level) || null;
