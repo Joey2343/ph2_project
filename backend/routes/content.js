@@ -45,8 +45,11 @@ router.put('/office', auth.requireAdmin, async (req, res) => {
 });
 
 // ---------- เมนู 2: พิกัดโรงเรียนในสังกัด ----------
+// เรียงตามรหัสโรงเรียนจากน้อยไปมาก
+// เรียง LENGTH ก่อนเพราะ code เป็น mediumtext (เรียงแบบข้อความ)
+// ถ้าไม่เรียงความยาวก่อน รหัส 10 หลักจะไปอยู่หน้ารหัส 8 หลักทั้งหมด
 router.get('/schools', async (req, res) => {
-  const rows = await db.prepare('SELECT * FROM schools ORDER BY district, name').all();
+  const rows = await db.prepare('SELECT * FROM schools ORDER BY LENGTH(code), code').all();
   res.json({ schools: rows });
 });
 
