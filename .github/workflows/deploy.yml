@@ -116,19 +116,25 @@ jobs:
             #   เช่น รูปภาพโรงเรียน ข้อมูลภัยพิบัติ หมายเหตุ และกลุ่มงาน
             node scripts/import_schools.js --if-seed
 
-            echo ">>> 5. โหลดโค้ดใหม่เข้า process"
+            echo ">>> 5. เรียงรหัสโรงเรียนเป็น 8 หลัก (54020001, 54020002, ...)"
+            # ปลอดภัยเมื่อรันซ้ำ
+            #   - ถ้ารหัสเรียง 8 หลักอยู่แล้วและไม่มีหน่วยงานค้าง จะข้ามไปเงียบ ๆ
+            #   - เป็น UPDATE เฉพาะคอลัมน์ code ไม่ลบตาราง
+            node scripts/migrate_school_codes.js --apply
+
+            echo ">>> 6. โหลดโค้ดใหม่เข้า process"
             pm2 reload ph2-api --update-env
 
-            echo ">>> 6. Build Frontend"
+            echo ">>> 7. Build Frontend"
             cd ../frontend
             npm ci
             npm run build
 
-            echo ">>> 7. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
+            echo ">>> 8. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
             # คัดลอกเฉพาะไฟล์ที่ build ได้ไปวางที่ public_html โดยไม่ลบ .htaccess
             cp -r dist/* $WEB_DIR/
 
-            echo ">>> 8. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
+            echo ">>> 9. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
             for i in $(seq 1 10); do
               if curl -fsS -o /dev/null http://127.0.0.1:3000/api/office; then
                 echo "    ตอบกลับแล้ว (รอบที่ $i)"

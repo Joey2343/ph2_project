@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 
+/** หน้าต่างรหัสโรงเรียนที่ระบบใช้ (54020001, 54020002, ...) */
+const CODE_PREFIX = '5402';
+
 /**
  * คำสั่งบำรุงรักษาฐานข้อมูล — port มาใช้ DB adapter แบบ async แล้ว
  *
@@ -93,15 +96,24 @@ async function main() {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
 
   let ok = 0, noLat = 0;
+  // รหัส 8 หลักตามรูปแบบที่ระบบใช้ (54020001, 54020002, ...)
+  // เรียงตามลำดับแถวใน CSV บ้านน้ำรินจึงได้ 54020001
+  // รหัสเดิมจากกระทรวงจะเก็บไว้ใน notes เพื่อให้ย้อนตรวจได้
+  let seq = 0;
   for (const line of lines.slice(1)) {
     if (!line.trim()) continue;
     const c = line.split(',');
     if (c.length !== hdr.length) { console.warn(`[skip] แถวคอลัมน์ไม่ครบ: ${c[col.name]}`); continue; }
+    // ไม่มีประเภทโรงเรียน = ไม่ใช่โรงเรียน (เช่น สำนักงานเขตพื้นที่การศึกษา)
+    const type = (c[col.type] || '').trim();
+    if (!type) { console.log(`[skip] ไม่ใช่โรงเรียน: ${(c[col.name] || '').trim()}`); continue; }
+    seq += 1;
+    const code = CODE_PREFIX + String(seq).padStart(4, '0');
     const address = [c[col.address], c[col.village] ? `หมู่ ${c[col.village]}` : '', c[col.road] ? `ถนน${c[col.road]}` : '', c[col.tambon] ? `ต.${c[col.tambon]}` : '', c[col.district] ? `อ.${c[col.district]}` : '', c[col.province] ? `จ.${c[col.province]}` : '', c[col.zip] ? c[col.zip] : ''].filter(Boolean).join(' ');
     const level = c[col.levelMin] && c[col.levelMax] ? `${c[col.levelMin]} - ${c[col.levelMax]}` : (c[col.levelMin] || c[col.levelMax] || '');
-    const notes = [c[col.type] ? `ประเภท: ${c[col.type]}` : '', c[col.group] ? `กลุ่ม: ${c[col.group]}` : ''].filter(Boolean).join(' | ');
+    const notes = [type ? `ประเภท: ${type}` : '', c[col.group] ? `กลุ่ม: ${c[col.group]}` : '', (c[col.code] || '').trim() ? `รหัสเดิม: ${(c[col.code] || '').trim()}` : ''].filter(Boolean).join(' | ');
     await ins.run(
-      (c[col.code] || '').trim(),
+      code,
       (c[col.name] || '').trim(),
       (c[col.district] || '').trim(),
       address,
