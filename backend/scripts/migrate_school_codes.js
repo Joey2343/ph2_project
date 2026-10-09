@@ -1,49 +1,126 @@
 'use strict';
 /**
- * เปลี่ยนรหัสโรงเรียน จาก 10 หลัก (รหัสกระทรวง) เป็น 8 หลัก
+ * ตั้งรหัสโรงเรียนตามทะเบียนจริง (backend/pikud/school_codes.csv)
  *
- * ทำไมต้องเปลี่ยน
- * --------------
+ * ทำไมต้องมี
+ * -----------
  * รหัสเดิมคือรหัสกระทรวง 10 หลัก (เช่น 1054390223) ซึ่งขึ้นต้นด้วย 10 = กรมส่งเสริม
- * และ 54 = จังหวัดแพร่ ทำให้ยาวและอ่านยาก
- * ระบบนี้ต้องการรหัส 8 หลักตามรูปแบบเดียวกับ 54020000 เดิม
- *   54020001, 54020002, ... เรียงจากน้อยไปมากตามลำดับเดิมของข้อมูล
+ * และ 54 = จังหวัดแพร่ ยาวและอ่านยาก ระบบนี้ต้องการรหัส 8 หลัก
  *
- * แถวไหนได้เรียงใหม่
- * -------------------
- * เรียงตาม id เดิม ซึ่งตรงกับลำดับแถวใน Definition.csv
- * บ้านน้ำริน (แถวแรกของ CSV) จึงได้ 54020001
- *
- * ข้อมูลที่ถูกลบออก
+ * รหัสใหม่มาจากไหน
  * ----------------
+ * ไม่ได้เรียงเอง แต่อ่านจาก pikud/school_codes.csv ซึ่งเป็นทะเบียนที่ได้รับมา
+ * ตัวเลขจึงเว้นตรงที่ทะเบียนไม่มี (เช่น ไม่มี 54020004, 54020009, 54020016)
+ * ห้ามสร้างเลขที่ทะเบียนไม่มี — จะทำให้รหัสไม่ตรงกับเอกสารราชการ
+ *
+ * จับคู่โรงเรียนด้วยชื่อ ไม่ใช่ด้วยรหัสเดิม
+ * ------------------------------------
+ * เพราะรหัสเดิมกับรหัสใหม่ไม่มีความสัมพันธ์กันเลย
+ * จับคู่ 2 รอบเพื่อให้ครอบคลุมชื่อที่เขียนต่างกันเล็กน้อย:
+ *   รอบ 1 ชื่อเต็มตรงกัน (ตัดช่องว่างทิ้ง)
+ *         แยกกรณีชื่อซ้ำ เช่น "บ้านเหล่า" มี 2 แห่ง ต่างกันที่วงเล็บท้าย
+ *   รอบ 2 ชื่อส่วนต้น (ก่อนวงเล็บ) ตรงกัน
+ *         ครอบคลุมกรณีทะเบียนเขียนชื่อสั้นกว่า
+ * ถ้ายังจับไม่ได้ ให้หยุดทันที ไม่เดา
+ *
+ * หน่วยงานที่ไม่ใช่โรงเรียน
+ * -----------------------
  * "สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2" ไม่ใช่โรงเรียน
- * แต่ติดมากับ Definition.csv แถวสุดท้าย (รหัส 54020000)
- * จึงถอดออกจากตาราง ไม่ให้แสดงเป็นโรงเรียนหนึ่งแห่งบนแผนที่
+ * แต่ติดมากับ Definition.csv แถวสุดท้าย จึงถอดออกจากตาราง
  * (ระบุด้วย notes IS NULL เพราะเฉพาะแถวนี้ที่ไม่มีประเภทโรงเรียน)
  *
  * การใช้
  * ------
- *   node scripts/migrate_school_codes.js            # ดูแผน (ยังไม่ทำอะไร)
- *   node scripts/migrate_school_codes.js --apply    # ทำจริง
+ *   node scripts/migrate_school_codes.js           # ดูแผน (ยังไม่ทำอะไร)
+ *   node scripts/migrate_school_codes.js --apply   # ทำจริง
  *
- * ⚠️ สคริปต์นี้เขียนข้อมูลจริง ควรสำรองฐานก่อนเสมอ
- *    แต่การเปลี่ยนครั้งนี้เป็น UPDATE เฉพาะคอลัมน์ code (ไม่ลบตาราง)
- *    และเก็บสำรองไว้ที่ pikud/schools_backup_before_code_migration.json
+ * ⚠️ สคริปต์นี้เขียนข้อมูลจริง สำรองไว้ที่ pikud/schools_backup_before_code_migration.json
+ *    และซ้ำได้อย่างปลอดภัย (ถ้ารหัสตรงทะเบียนแล้วจะข้าม)
  */
 
 const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 
-/** หน้าต่างรหัสที่ใช้ */
-const CODE_PREFIX = '5402';
+/** ทะเบียนรหัสโรงเรียนที่ได้รับมา */
+const REGISTRY = path.join(__dirname, '..', 'pikud', 'school_codes.csv');
 
 /** ข้อมูลจริงก่อนเปลี่ยน */
 const BACKUP = path.join(__dirname, '..', 'pikud', 'schools_backup_before_code_migration.json');
 
-/** จัดรูปแบบ 54020001 */
-function formatCode(n) {
-  return CODE_PREFIX + String(n).padStart(4, '0');
+/** คอลัมน์ที่เก็บรหัสโรงเรียนไว้ — ต้องแก้ตามเมื่อรหัสเปลี่ยน */
+const REFS = [
+  ['users', 'school_code'],
+  ['users', 'current_school'],
+  ['documents', 'school_code'],
+  ['document_staff', 'school_code'],
+  ['document_recipients', 'as_school'],
+];
+
+/** ตัดช่องว่างออก เพื่อให้เทียบชื่อได้แม้เขียนต่างกัน */
+const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, '');
+
+/** ชื่อส่วนต้นก่อนวงเล็บ เช่น "บ้านน้ำโค้ง(นนทราษฎร์รัฐบำรุง)" -> "บ้านน้ำโค้ง" */
+const baseName = (s) => norm(String(s == null ? '' : s).split('(')[0]);
+
+/** อ่านทะเบียนจาก CSV */
+function readRegistry() {
+  const raw = fs.readFileSync(REGISTRY, 'utf8').replace(/^\uFEFF/, '');
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+  const out = [];
+  for (const line of lines.slice(1)) {
+    const i = line.indexOf(',');
+    if (i < 0) continue;
+    const code = line.slice(0, i).trim();
+    const name = line.slice(i + 1).trim();
+    if (!code) continue;
+    out.push({ code, name });
+  }
+  return out;
+}
+
+/** จับคู่ทะเบียนกับโรงเรียนในฐานข้อมูล */
+function matchRegistry(registry, schools) {
+  const used = new Set();
+  const pairs = [];
+  const rest = [];
+
+  const byFull = new Map();
+  for (const s of schools) {
+    const k = norm(s.name);
+    if (!byFull.has(k)) byFull.set(k, []);
+    byFull.get(k).push(s);
+  }
+  for (const r of registry) {
+    const cands = byFull.get(norm(r.name)) || [];
+    if (cands.length === 1 && !used.has(cands[0].id)) {
+      pairs.push({ reg: r, school: cands[0], how: 'ชื่อเต็ม' });
+      used.add(cands[0].id);
+    } else {
+      rest.push(r);
+    }
+  }
+
+  const byBase = new Map();
+  for (const s of schools) {
+    if (used.has(s.id)) continue;
+    const k = baseName(s.name);
+    if (!byBase.has(k)) byBase.set(k, []);
+    byBase.get(k).push(s);
+  }
+  const failed = [];
+  for (const r of rest) {
+    const cands = (byBase.get(baseName(r.name)) || []).filter((s) => !used.has(s.id));
+    if (cands.length === 1) {
+      pairs.push({ reg: r, school: cands[0], how: 'ชื่อส่วนต้น' });
+      used.add(cands[0].id);
+    } else {
+      failed.push({ reg: r, cands });
+    }
+  }
+
+  const orphans = schools.filter((s) => !used.has(s.id));
+  return { pairs, failed, orphans };
 }
 
 async function main() {
@@ -52,101 +129,109 @@ async function main() {
   await db.init();
   await db.bootstrap();
 
-  // เรียงตาม id เดิม = ลำดับแถวใน CSV
-  const rows = (await db.prepare('SELECT id, code, name, notes FROM schools ORDER BY id').all());
-
-  // แยกหน่วยงานที่ไม่ใช่โรงเรียนออก (notes IS NULL = ไม่มีประเภทโรงเรียน)
-  const offices = rows.filter((r) => r.notes == null);
-  const schools = rows.filter((r) => r.notes != null);
-
-  console.log(`[ตรวจ] schools ทั้งหมด ${rows.length} แถว`);
-  console.log(`[ตรวจ] โรงเรียน ${schools.length} แห่ง · หน่วยงานที่ไม่ใช่โรงเรียน ${offices.length} แห่ง`);
-  if (offices.length) {
-    for (const o of offices) console.log(`        - ถอดออก: ${o.code} ${o.name}`);
+  const registry = readRegistry();
+  console.log(`[ทะเบียน] ${path.basename(REGISTRY)} — ${registry.length} แถว`);
+  const regCodes = registry.map((r) => r.code);
+  if (new Set(regCodes).size !== regCodes.length) {
+    throw new Error('ทะเบียนมีรหัสซ้ำ — ตรวจสอบไฟล์ CSV ก่อน');
   }
 
-  const nextCodes = schools.map((_, i) => formatCode(i + 1));
+  const rows = await db.prepare('SELECT id, code, name, notes FROM schools ORDER BY id').all();
+  const offices = rows.filter((r) => r.notes == null);
+  const schools = rows.filter((r) => r.notes != null);
+  console.log(`[ตรวจ] schools ทั้งหมด ${rows.length} แถว · โรงเรียน ${schools.length} แห่ง · ไม่ใช่โรงเรียน ${offices.length} แห่ง`);
+  for (const o of offices) console.log(`        - ${o.code} ${o.name}`);
 
-  // ตรวจก่อนว่าเปลี่ยนไปแล้วหรือยัง
-  // ถ้าตรงกับลำดับที่จะตั้งอยู่ครบทุกแถว แปลว่างานเสร็จไปแล้ว
-  // (ต้องเช็กก่อนการตรวจชน เพราะรหัสใหม่จะชนกับตัวเองทั้งหมด)
-  const alreadyDone = schools.length > 0 && schools.every((s, i) => s.code === nextCodes[i]);
-  if (alreadyDone) {
-    console.log(`[ตรวจ] รหัสเรียง 8 หลักครบแล้ว (${nextCodes[0]} - ${nextCodes[nextCodes.length - 1]})`);
-    if (offices.length === 0) {
-      console.log('[ข้าม] ไม่ต้องทำอะไร');
-      return;
+  const { pairs, failed, orphans } = matchRegistry(registry, schools);
+
+  if (failed.length) {
+    console.error(`\n[หยุด] จับคู่โรงเรียนไม่ครบ ${failed.length} แห่ง — ไม่เดา ขอข้อมูลเพิ่ม:`);
+    for (const f of failed) {
+      console.error(`  ทะเบียน ${f.reg.code} ${f.reg.name}`);
+      console.error(`    ผู้สมัคร: ${f.cands.map((c) => c.code + ' ' + c.name).join(' / ') || 'ไม่มี'}`);
     }
-    // เหลือแค่ถอดหน่วยงานที่ไม่ใช่โรงเรียนออก ไม่ต้องแตะรหัส
-    if (!apply) {
-      console.log('');
-      console.log('เหลือเพียงถอดหน่วยงานที่ไม่ใช่โรงเรียนออก ถ้าจะทำจริงใช้คำสั่ง:');
-      console.log('  node scripts/migrate_school_codes.js --apply');
-      return;
+    throw new Error('จับคู่ไม่ครบ');
+  }
+  if (orphans.length) {
+    console.error(`\n[หยุด] ในฐานข้อมูลมีโรงเรียนที่ไม่อยู่ในทะเบียน ${orphans.length} แห่ง — ไม่เดา:`);
+    for (const s of orphans) console.error(`  ${s.code} ${s.name}`);
+    throw new Error('ทะเบียนไม่ครอบคลุมฐานข้อมูล');
+  }
+
+  console.log(`[จับคู่] ครบ ${pairs.length} / ${registry.length} แห่ง`);
+  console.log(`         ชื่อเต็มตรง ${pairs.filter((p) => p.how === 'ชื่อเต็ม').length} · ชื่อส่วนต้นตรง ${pairs.filter((p) => p.how === 'ชื่อส่วนต้น').length}`);
+
+  const changed = pairs.filter((p) => p.reg.code !== p.school.code);
+  const renames = pairs.filter((p) => p.reg.name.trim() !== p.school.name.trim());
+
+  if (renames.length) {
+    console.log(`\n[ชื่อต่างกัน] ${renames.length} แห่ง (สคริปต์นี้ไม่แก้ชื่อ ใช้ชื่อที่มีรายละเอียดในฐานข้อมูลไว้)`);
+    for (const p of renames) {
+      console.log(`  ทะเบียน "${p.reg.name}"`);
+      console.log(`  ฐานข้อมูล "${p.school.name}"  (${p.how})`);
     }
-    fs.writeFileSync(BACKUP, JSON.stringify(rows, null, 2), 'utf8');
-    console.log(`[สำรอง] บันทึกข้อมูลเดิม ${rows.length} แถว ไปที่ ${path.basename(BACKUP)}`);
-    for (const o of offices) {
-      await db.prepare('DELETE FROM schools WHERE id = ?').run(o.id);
-      console.log(`[ลบ] ${o.code} ${o.name}`);
-    }
-    const left = (await db.prepare('SELECT COUNT(*) c FROM schools').get()).c;
-    console.log(`[เสร็จ] ถอดหน่วยงานออกแล้ว · โรงเรียนเหลือ ${left} แห่ง (รหัสไม่เปลี่ยน)`);
+  }
+
+  if (!changed.length && offices.length === 0) {
+    console.log('\n[ข้าม] รหัสตรงทะเบียนครบแล้ว ไม่ต้องทำอะไร');
     return;
   }
 
-  // ตรวจว่ารหัสใหม่ชนกับของเดิมหรือไม่
-  const clash = nextCodes.filter((c) => rows.some((r) => r.code === c));
-  if (clash.length) {
-    throw new Error(`รหัสใหม่ชนกับข้อมูลเดิม: ${clash.slice(0, 5).join(', ')}`);
+  console.log(`\n[แผน] เปลี่ยนรหัส ${changed.length} แห่ง · ถอดหน่วยงานที่ไม่ใช่โรงเรียน ${offices.length} แห่ง`);
+  for (const p of changed.slice(0, 8)) {
+    console.log(`  ${p.school.code} -> ${p.reg.code}   ${p.school.name}`);
   }
-  if (new Set(nextCodes).size !== nextCodes.length) {
-    throw new Error('รหัสใหม่ไม่ unique');
-  }
-
-  console.log(`[แผน] รหัสใหม่จะเริ่มที่ ${nextCodes[0]} ถึง ${nextCodes[nextCodes.length - 1]}`);
-  console.log('[แผน] ตัวอย่าง 5 แถวแรก');
-  schools.slice(0, 5).forEach((s, i) => {
-    console.log(`        ${s.code}  ->  ${nextCodes[i]}   ${s.name}`);
-  });
+  if (changed.length > 8) console.log(`  ... อีก ${changed.length - 8} แห่ง`);
 
   if (!apply) {
-    console.log('');
-    console.log('ยังไม่ได้ทำอะไร (โหมดแสดงแผน) — ถ้าจะทำจริงใช้คำสั่ง:');
+    console.log('\nยังไม่ได้ทำอะไร (โหมดแสดงแผน) — ถ้าจะทำจริงใช้คำสั่ง:');
     console.log('  node scripts/migrate_school_codes.js --apply');
     return;
   }
 
-  // สำรองข้อมูลก่อน
   fs.writeFileSync(BACKUP, JSON.stringify(rows, null, 2), 'utf8');
-  console.log(`\n[สำรอง] บันทึกข้อมูลเดิม ${rows.length} แถว ไปที่ ${path.basename(BACKUP)}`);
+  console.log(`\n[สำรอง] ${path.basename(BACKUP)} — ${rows.length} แถว`);
 
-  // ถอดหน่วยงานที่ไม่ใช่โรงเรียนออกก่อน เพื่อไม่ให้รหัสชน
   for (const o of offices) {
     await db.prepare('DELETE FROM schools WHERE id = ?').run(o.id);
     console.log(`[ลบ] ${o.code} ${o.name}`);
   }
 
-  // เปลี่ยนรหัสทีละแถว
-  const upd = db.prepare('UPDATE schools SET code = ? WHERE id = ?');
-  for (let i = 0; i < schools.length; i++) {
-    await upd.run(nextCodes[i], schools[i].id);
+  // แก้คอลัมน์ที่อ้างรหัสโรงเรียนก่อน เพื่อไม่ให้ค่าเก่าค้างหลัง schools ถูกเขียนทับ
+  const oldToNew = new Map();
+  for (const p of pairs) {
+    if (p.school.code !== p.reg.code) oldToNew.set(p.school.code, p.reg.code);
+  }
+  if (oldToNew.size) {
+    for (const [table, column] of REFS) {
+      let touched = 0;
+      for (const [from, to] of oldToNew) {
+        try {
+          const res = await db
+            .prepare(`UPDATE \`${table}\` SET \`${column}\` = ? WHERE \`${column}\` = ?`)
+            .run(to, from);
+          touched += res.changedRows || 0;
+        } catch {
+          // ตาราง/คอลัมน์นี้ไม่มีในสคีมาปัจจุบัน — ข้ามไป
+        }
+      }
+      if (touched) console.log(`[อ้างอิง] ${table}.${column} แก้ ${touched} แถว`);
+    }
   }
 
+  const upd = db.prepare('UPDATE schools SET code = ? WHERE id = ?');
+  for (const p of changed) await upd.run(p.reg.code, p.school.id);
+
   const total = (await db.prepare('SELECT COUNT(*) c FROM schools').get()).c;
-  const first = (await db.prepare('SELECT code FROM schools ORDER BY id LIMIT 1').get()).code;
-  const last = (await db.prepare('SELECT code FROM schools ORDER BY id DESC LIMIT 1').get()).code;
-  console.log(`[เสร็จ] schools เหลือ ${total} แห่ง · รหัส ${first} ถึง ${last}`);
+  const codes = (await db.prepare('SELECT code FROM schools ORDER BY code').all()).map((r) => r.code);
+  console.log(`[เสร็จ] schools เหลือ ${total} แห่ง · รหัส ${codes[0]} ถึง ${codes[codes.length - 1]}`);
 
-  // ยืนยันว่าไม่มีรหัสซ้ำและความยาวถูกต้อง
-  const dup = await db.prepare(
-    'SELECT code, COUNT(*) c FROM schools GROUP BY code HAVING c > 1',
-  ).all();
-  if (dup.length) throw new Error(`พบรหัสซ้ำ ${dup.length} กลุ่ม — ตรวจสอบสำรองที่ ${path.basename(BACKUP)}`);
+  const dup = await db.prepare('SELECT code, COUNT(*) c FROM schools GROUP BY code HAVING c > 1').all();
+  if (dup.length) throw new Error(`พบรหัสซ้ำ ${dup.length} กลุ่ม — ดูสำรองที่ ${path.basename(BACKUP)}`);
 
-  const badLen = await db.prepare('SELECT COUNT(*) c FROM schools WHERE LENGTH(code) <> 8').get();
-  console.log(`[ตรวจ] รหัสที่ไม่ใช่ 8 หลัก: ${badLen.c} รายการ`);
-  console.log('[ตรวจ] ไม่มีรหัสซ้ำ');
+  const badLen = (await db.prepare('SELECT COUNT(*) c FROM schools WHERE LENGTH(code) <> 8').get()).c;
+  const missReg = registry.filter((r) => !codes.includes(r.code));
+  console.log(`[ตรวจ] รหัสไม่ใช่ 8 หลัก: ${badLen} · รหัสซ้ำ: 0 · ทะเบียนที่ยังไม่มีในฐานข้อมูล: ${missReg.length}`);
 }
 
 main()

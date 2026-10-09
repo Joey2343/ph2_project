@@ -30,6 +30,7 @@ backend/public/uploads/
 # สคริปต์ import/migrate เขียนสำเนาข้อมูลโรงเรียนไว้ก่อนลงมือ
 # เป็นข้อมูลจากฐานที่รันไว้ จึงไม่ควรอยู่ใน git
 backend/pikud/schools_backup_before_code_migration.json
+backend/pikud/schools_backup_before_import.json
 
 # ── phpMyAdmin ───────────────────────────────────────────────────────────────
 # phpMyAdmin เขียน config ที่ตัวเองตอนรัน (บันทัก session key)
