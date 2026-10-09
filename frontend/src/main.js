@@ -95,6 +95,11 @@ async function boot() {
   ensureAppFonts();
   app.mount('#app');
   simDate.refresh();
+
+  // เปิดระบบมาแล้วยังไม่ได้ล็อกอิน → ให้หน้าต่างเข้าสู่ระบบแสดงขึ้นทันที
+  // ต้องเช็คหลัง init() เสร็จ ไม่งั้นจะเปิดทั้งที่ยังมี session อยู่
+  // ผู้ที่ยังไม่ล็อกอินยังกด ✕ / ยกเลิก เพื่อดูหน้าสาธารณะ (#/office, #/schools) ได้ตามปกติ
+  if (!auth.loggedIn) auth.openLogin();
 }
 
 boot();
