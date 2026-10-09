@@ -201,7 +201,17 @@ async function deleteRecord(r) {
 
 /* ---------- รายงาน ---------- */
 const reportOpen = ref(false);
-const rp = ref({ year: String(new Date().getFullYear()), month: '', week: '', day: '' });
+
+// ปีที่ผู้ใช้เลือกใน dropdown เป็น พ.ศ. แต่ API (/time/report) รับวันที่เป็น ค.ศ.
+// ต้องแปลงก่อนทุกครั้งที่เอาไปคำนวณด้วย Date หรือส่งไปที่ backend
+const BE_OFFSET = 543;
+/** พ.ศ. → ค.ศ. */
+const beToCe = (yBE) => Number(yBE) - BE_OFFSET;
+
+// ค่าเริ่มต้องเป็นปี พ.ศ. ปัจจุบัน ไม่ใช่ ค.ศ.
+// เดิมใช้ getFullYear() ตรง ๆ ได้ค.ศ. (เช่น 2026) ซึ่งไม่ตรงกับตัวเลือกใน dropdown
+// ที่เป็น พ.ศ. (2564-2570) → ช่องเลือกปีจะไม่ตรงกับค่าใดเลย
+const rp = ref({ year: String(new Date().getFullYear() + BE_OFFSET), month: '', week: '', day: '' });
 const reportLoading = ref(false);
 const reportError = ref('');
 const report = ref(null);
@@ -220,7 +230,7 @@ const reportYears = computed(() => {
 /** สัปดาห์ (จันทร์-อาทิตย์) ของเดือน/ปีที่เลือก */
 const reportWeeks = computed(() => {
   if (!rp.value.month) return [];
-  const y = Number(rp.value.year);
+  const y = beToCe(rp.value.year); // พ.ศ. → ค.ศ. ก่อนคำนวณวันที่
   const mo = Number(rp.value.month);
   const lastDay = new Date(y, mo, 0).getDate();
   const dow1 = (new Date(y, mo - 1, 1).getDay() + 6) % 7; // จันทร์ = 0
@@ -248,7 +258,7 @@ const reportWeeks = computed(() => {
 /** วัน: ถ้าเลือกสัปดาห์ → 7 วันในสัปดาห์นั้น · ไม่เลือก → ทุกวันในเดือน */
 const reportDays = computed(() => {
   if (!rp.value.month) return [];
-  const y = Number(rp.value.year);
+  const y = beToCe(rp.value.year); // พ.ศ. → ค.ศ. ก่อนคำนวณวันที่
   const mo = Number(rp.value.month);
   const names = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
   if (rp.value.week) {
@@ -283,9 +293,9 @@ function onWeekChange() {
   rp.value.day = '';
 }
 
-/** เลือก period/date จากค่าที่เลือก (ตรรกะเดียวกับของเดิม) */
+/** เลือก period/date จากค่าที่เลือก — ส่งไปเป็น ค.ศ. ตามที่ API คาดหวัง */
 function reportQuery() {
-  const y = rp.value.year;
+  const y = beToCe(rp.value.year); // พ.ศ. → ค.ศ.
   const mo = rp.value.month;
   const wk = rp.value.week;
   const d = rp.value.day;
