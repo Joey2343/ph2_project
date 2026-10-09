@@ -1,0 +1,22 @@
+ Volume in drive E has no label.
+ Volume Serial Number is 5C81-7FB0
+
+ Directory of E:\ph2_project
+
+10/09/2026  09:48 AM    <DIR>          .
+10/09/2026  09:41 AM    <DIR>          .github
+10/09/2026  09:41 AM             3,197 .gitignore
+10/09/2026  09:41 AM               770 .npmrc
+10/09/2026  09:41 AM             3,386 1.txt
+10/09/2026  09:41 AM               648 2.txt
+10/09/2026  09:41 AM                 3 3.txt
+10/09/2026  09:48 AM                 0 4.txt
+10/09/2026  09:41 AM            47,737 AGENTS.md
+10/09/2026  09:41 AM    <DIR>          backend
+10/09/2026  09:41 AM    <DIR>          docker
+10/09/2026  09:41 AM             5,671 docker-compose.yml
+10/09/2026  09:41 AM    <DIR>          docs
+10/09/2026  09:41 AM    <DIR>          frontend
+10/09/2026  09:41 AM            25,500 README.md
+               9 File(s)         86,912 bytes
+               6 Dir(s)  210,609,201,152 bytes free
