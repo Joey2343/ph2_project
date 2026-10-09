@@ -20,6 +20,31 @@ import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import AppModal from '../components/ui/AppModal.vue';
 
+/*
+ * บอก Leaflet ว่ารูปหมุดอยู่ที่ไหน
+ *
+ * ปกติ Leaflet หา path ของรูปหมุดเองจากกฎ CSS .leaflet-default-icon-path
+ * โดยเอาส่วนก่อน "marker-icon.png" ออกมาใช้เป็นโฟลเดอร์
+ *
+ * แต่ตอน build Vite จะ "inline" รูปย่อยเป็น base64 ใน CSS
+ * (รูป leaflet เล็กกว่า 4KB ทั้งหมด จึงต่ำกว่า assetsInlineLimit ค่าเริ่มต้น)
+ * กฎจึงกลายเป็น url(data:image/png;base64,...) ไม่ใช่พาธไฟล์
+ * regex ของ Leaflet จึงหาพาธไม่เจอ ได้ imagePath = '' เป็นผล
+ *
+ * ผลคือ <img src="marker-icon.png"> (ไม่มีโฟลเดอร์นำหน้า)
+ * และไฟล์นั้นไม่มีอยู่จริง เซิร์ฟเวอร์จึงตอบกลับเป็นหน้าแถป SPA
+ * รูปเลยเป็นรูปเสีย (naturalWidth = 0) หมุดโรงเรียนจึงไม่แสดง
+ * ส่วนหมุดคลัสเตอร์ยังเห็น เพราะวาดด้วย CSS ล้วนไม่ต้องใช้รูป
+ *
+ * ทางแก้: ก๊อปรูปจาก node_modules/leaflet/dist/images/ ไปไว้ที่ public/leaflet/
+ * (Vite จะ copy ไฟล์ใน public/ ไป dist/ แบบไม่ตัดชื่อ เหมือน logo.png)
+ * แล้วกำหนด path ให้ชัดเจนตรงนี้
+ *
+ * ⚠️ เขียนแบบไม่มี slash นำหน้า เพื่อให้ทำงานได้ทั้งตอน dev และ production
+ *    และไม่ผูกกับโดเมน
+ */
+L.Icon.Default.imagePath = 'leaflet/';
+
 const loading = ref(true);
 const error = ref('');
 const schools = ref([]);
