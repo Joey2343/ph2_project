@@ -558,6 +558,12 @@ function openVehicleCreate() {
   vFormOpen.value = true;
 }
 
+/** คลิกรูปในคอลั่ม "รูป" เพื่อดูขนาดเต็ม (ช่องเล็ก เห็นรายละเอียดไม่ครบ) */
+function viewVehiclePhoto(v) {
+  if (!v || !v.photo) return;
+  window.open('/uploads/' + UI.encodePath(v.photo), '_blank', 'noopener');
+}
+
 function openVehicleEdit(v) {
   editingVehicle.value = v;
   vf.value = {
@@ -754,7 +760,14 @@ function canCancelRow(r) {
         <tbody>
           <tr v-for="v in vehicles" :key="v.id">
             <td class="vehicle-thumb-cell">
-              <img v-if="v.photo" class="vehicle-thumb" :src="'/uploads/' + UI.encodePath(v.photo)" :alt="v.name" />
+              <img
+                v-if="v.photo"
+                class="vehicle-thumb"
+                :src="'/uploads/' + UI.encodePath(v.photo)"
+                :alt="v.name"
+                title="คลิกเพื่อดูรูปขนาดเต็ม"
+                @click="viewVehiclePhoto(v)"
+              />
               <span v-else class="vehicle-thumb ph">🚐</span>
             </td>
             <td>{{ v.name }}</td>
@@ -1492,4 +1505,29 @@ function canCancelRow(r) {
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของระบบเดิมทั้งหมด */
+
+/*
+ * รูปยานพาหนะในคอลั่ม "รูป" ของรายการยานพาหนะ — ให้เห็นรูปเต็ม
+ *
+ * theme.css ตั้งไว้ว่า
+ *   .vehicle-thumb { position:absolute; width:100%; height:100%; object-fit:cover }
+ * คือยืดภาพให้เต็มช่องแล้ว "ตัดส่วนที่เกินออก" ทิ้ง
+ *
+ * ช่องนี้สูงแค่ ~49px รูปแนวนอน 1600x900 จึงถูกตัดทิ้งราว 1 ใน 3
+ * มองไม่ออกว่าเป็นรถคันไหน → เปลี่ยนเป็น contain เพื่อไม่ให้ตัด
+ *
+ * ⚠️ แก้ที่นี่ ไม่แก้ theme.css เพราะไฟล์นั้นห้ามแตะ
+ *    (verify-build เทียบ SHA256 กับ docs/legacy/source-v1/css/style.css)
+ *    scoped ของ SFC เพิ่ม specificity เป็น (0,2,0) จึงชนะ (0,1,0) เสมอ
+ */
+img.vehicle-thumb {
+  object-fit: contain;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+/* ช่องที่ไม่มีรูป (🚐) ไม่ต้องชี้เป็นลิงก์ */
+.vehicle-thumb.ph {
+  cursor: default;
+}
 </style>

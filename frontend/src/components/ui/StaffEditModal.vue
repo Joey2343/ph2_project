@@ -12,6 +12,7 @@
  */
 import { ref, computed, watch, onMounted } from 'vue';
 import api from '../../api/client.js';
+import { session, setUser } from '../../stores/session.js';
 import { UI } from '../../ui/ui.js';
 import { CONSTANTS } from '../../constants/index.js';
 import AppModal from './AppModal.vue';
@@ -184,6 +185,17 @@ async function save() {
   busy.value = true;
   try {
     const res = await api.putForm(`/staff/${u.value.id}`, fd);
+    // ถ้าแก้ไขข้อมูลตัวเอง → ดึงข้อมูลผู้ใช้ใหม่มาใส่ session
+    // ไม่งั้นรูป/ชื่อที่เพิ่งอัปโหลดจะยังไม่โผล่ในหน้าโปรไฟล์และแถบบน
+    // (session.user ถูกดึงตอน login ครั้งเดียว ไม่อัตโนมัติ)
+    if (session.user && session.user.id === u.value.id) {
+      try {
+        const me = await api.get('/auth/me');
+        setUser(me.user);
+      } catch {
+        /* ดึงไม่ได้ก็ปล่อยไป ไม่ทำให้การบันทึกพัง */
+      }
+    }
     UI.toast(res.message);
     emit('saved');
     emit('close');
@@ -310,7 +322,10 @@ async function save() {
 
       <div class="form-group">
         <label>วัน/เดือน/ปี เกิด (พ.ศ.)</label>
-        <ThaiBirthPicker id="ed-birth" v-model="f.birth_date" />
+        <!-- ใช้ prefix ไม่ใช่ id — component เอา prefix ไปต่อเป็น -day/-month/-year
+             ถ้าใส่ id ค่านั้นจะไปตกอยู่ที่ <div> รอบนอก และช่องจะได้ id เป็น birth-*
+             ซึ่งชนกับของเดียวกันในหน้าลงทะเบียน/โปรไฟล์ -->
+        <ThaiBirthPicker prefix="ed-birth" v-model="f.birth_date" />
       </div>
 
       <div class="form-group">

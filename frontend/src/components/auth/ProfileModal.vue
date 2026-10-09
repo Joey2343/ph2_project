@@ -200,7 +200,7 @@ async function changePass() {
       <img
         v-if="u.photo"
         class="profile-photo"
-        :src="'/uploads/' + encodeURIComponent(u.photo)"
+        :src="'/uploads/' + UI.encodePath(u.photo)"
       />
       <div
         v-else
@@ -393,7 +393,7 @@ async function changePass() {
     <!-- ---------- ลายเซ็น ---------- -->
     <div v-if="u.signature" style="margin-top: 18px">
       <div class="card-title">✍️ ลายเซ็นของฉัน</div>
-      <img class="signature-img" :src="'/uploads/' + encodeURIComponent(u.signature)" />
+      <img class="signature-img" :src="'/uploads/' + UI.encodePath(u.signature)" />
     </div>
   </AppModal>
 </template>
