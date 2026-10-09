@@ -174,7 +174,6 @@ Vue SFC ไม่ได้ช่วยอะไรกับส่วนนี้
 | `DocumentsDetailModal` | `openView()` |
 | `DocumentsCertA4Modal` | `certFormA4Html()` + `showCertificateFormA4()` + `printCertificateA4()` |
 | `DocumentsExportModal` | `openExportDialog()` (125) |
-| `DocumentsStaffSettingsModal` | `openStaffSettings()` (119) |
 | `DocumentsCertStaffModal` | `openCertStaffSettings()` (35) |
 | `DocumentsDocStaffSettingsModal` | `openDocStaffSettings()` (121) |
 | `DocumentsSchoolPrefixModal` | `openSetSchoolDocPrefix()` (25) |

@@ -445,15 +445,28 @@ const VUE_PAGES = {
           return document.querySelectorAll('[data-app-modal]').length < before;
         })()`,
       },
+      /*
+       * เปิด dialog กำหนดเจ้าหน้าที่สารบัญสถานศึกษา ผ่าน DocumentsDocStaffSettingsModal
+       *
+       * ปุ่ม "⊛ ตั้งค่าเจ้าหน้าที่หนังสือราชการ" ถูกถอดออกแล้ว (ซ้ำกับ 2 ปุ่ม ⊗ ข้าง ๆ)
+       * การกำหนดสารบัญทำได้ผ่านปุ่ม ⊗ สองปุ่มนั้นแทน
+       */
       {
-        name: 'เปิด dialog ตั้งค่าเจ้าหน้าที่หนังสือราชการได้ (2 ส่วน)',
+        name: 'เปิด dialog กำหนดเจ้าหน้าที่สารบัญสถานศึกษาได้',
         check: `(async () => {
-          const b = [...document.querySelectorAll('#doc-top-actions .btn')].find(x => x.innerText.includes('ตั้งค่าเจ้าหน้าที่หนังสือราชการ'));
+          const b = [...document.querySelectorAll('#doc-top-actions .btn')].find(x => x.innerText.includes('กำหนดเจ้าหน้าที่สารบัญสถานศึกษา'));
           if (!b) return false;
           b.click();
           await new Promise((r) => setTimeout(r, 1200));
-          const t = document.body.innerText;
-          return t.includes('กำหนดเจ้าหน้าที่หนังสือราชการ สพป.แพร่ เขต 2') && t.includes('กำหนดเจ้าหน้าที่หนังสือราชการ สถานศึกษา');
+          return document.body.innerText.includes('กำหนดเจ้าหน้าที่สารบัญสถานศึกษา');
+        })()`,
+      },
+      {
+        /* ปุ่มที่ถอดออก — ต้องไม่โผล่กลับมา */
+        name: 'ปุ่ม "ตั้งค่าเจ้าหน้าที่หนังสือราชการ" ไม่อยู่บนหน้าแล้ว',
+        check: `(() => {
+          return ![...document.querySelectorAll('#doc-top-actions .btn')]
+            .some(x => x.innerText.includes('ตั้งค่าเจ้าหน้าที่หนังสือราชการ'));
         })()`,
       },
       {
@@ -464,7 +477,7 @@ const VUE_PAGES = {
          *   - มีรายชื่อเจ้าหน้าที่ → รายการช่องติ๊ก
          *   - ไม่มีเจ้าหน้าที่ → ข้อความแจ้งว่าไม่มี
          */
-        name: 'dialog ตั้งค่าเจ้าหน้าที่: เลือกสถานศึกษาแล้วส่วนที่ 2 ตอบสนอง',
+        name: 'dialog สารบัญสถานศึกษา: เลือกสถานศึกษาแล้วส่วนที่ 2 ตอบสนอง',
         check: `(async () => {
           const boxes = document.querySelectorAll('[data-app-modal]');
           const modal = boxes[boxes.length - 1];
@@ -483,7 +496,7 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        name: 'ปิด dialog ตั้งค่าเจ้าหน้าที่แล้วไม่มี modal ค้าง',
+        name: 'ปิด dialog สารบัญสถานศึกษาแล้วไม่มี modal ค้าง',
         check: `(async () => {
           const before = document.querySelectorAll('[data-app-modal]').length;
           if (before === 0) return false;

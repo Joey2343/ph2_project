@@ -9,7 +9,6 @@
  *   DocumentsDetailModal            รายละเอียดหนังสือ (แทน openView)
  *   DocumentsCertA4Modal            แบบฟอร์มหนังสือรับรอง A4 (แทน showCertificateFormA4)
  *   DocumentsExportModal            ดาวน์โหลด Excel (แทน openExportDialog)
- *   DocumentsStaffSettingsModal     กำหนดเจ้าหน้าที่หนังสือราชการ (แทน openStaffSettings)
  *   DocumentsCertStaffModal         กำหนดเจ้าหน้าที่หนังสือรับรอง (แทน openCertStaffSettings)
  *   DocumentsDocStaffSettingsModal  กำหนดเจ้าหน้าที่สารบัญเขต/สถานศึกษา (แทน openDocStaffSettings)
  *   DocumentsSchoolPrefixModal      กำหนดเลขหนังสือสถานศึกษา (แทน openSetSchoolDocPrefix)
@@ -36,7 +35,6 @@ import AppModal from '../components/ui/AppModal.vue';
 import DocumentsDetailModal from '../components/documents/DocumentsDetailModal.vue';
 import DocumentsCertA4Modal from '../components/documents/DocumentsCertA4Modal.vue';
 import DocumentsExportModal from '../components/documents/DocumentsExportModal.vue';
-import DocumentsStaffSettingsModal from '../components/documents/DocumentsStaffSettingsModal.vue';
 import DocumentsCertStaffModal from '../components/documents/DocumentsCertStaffModal.vue';
 import DocumentsDocStaffSettingsModal from '../components/documents/DocumentsDocStaffSettingsModal.vue';
 import DocumentsSchoolPrefixModal from '../components/documents/DocumentsSchoolPrefixModal.vue';
@@ -280,7 +278,6 @@ const detailDoc = ref(null);
 /** หนังสือรับรองที่กำลังพิมพ์ */
 const certA4Doc = ref(null);
 const exportOpen = ref(false);
-const staffSettingsOpen = ref(false);
 const certStaffOpen = ref(false);
 /** 'office' | 'school' */
 const docStaffType = ref('office');
@@ -693,9 +690,6 @@ function showAllYears() {
     <button v-if="isAdmin" class="btn btn-primary" style="background: #0891b2" @click="openDocStaffSettings('school')">
       ⊗ กำหนดเจ้าหน้าที่สารบัญสถานศึกษา
     </button>
-    <button v-if="isAdmin" class="btn btn-primary" style="background: #0f766e" @click="staffSettingsOpen = true">
-      ⊛ ตั้งค่าเจ้าหน้าที่หนังสือราชการ
-    </button>
   </div>
 
   <div v-else id="doc-top-actions" class="toolbar" style="gap: 8px; flex-wrap: wrap; margin-bottom: 10px">
@@ -1021,8 +1015,6 @@ function showAllYears() {
     :current-year="year"
     @close="exportOpen = false"
   />
-
-  <DocumentsStaffSettingsModal v-if="staffSettingsOpen" @close="staffSettingsOpen = false" />
 
   <DocumentsCertStaffModal v-if="certStaffOpen" @close="certStaffOpen = false" />
 
