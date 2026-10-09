@@ -9,6 +9,7 @@
 import { computed } from 'vue';
 import { session } from '../stores/session.js';
 import { Auth } from '../stores/auth.js';
+import { UI } from '../ui/ui.js';
 
 const loggedIn = computed(() => Auth.isLoggedIn());
 const u = computed(() => session.user);
@@ -27,7 +28,7 @@ const avatar = computed(() => {
   const x = u.value;
   if (!x) return null;
   if (x.photo) {
-    return { kind: 'img', src: '/uploads/' + encodeURIComponent(x.photo), alt: x.full_name };
+    return { kind: 'img', src: '/uploads/' + UI.encodePath(x.photo), alt: x.full_name };
   }
   return { kind: 'initial', text: (x.full_name || x.username || '?').trim().charAt(0) };
 });

@@ -292,7 +292,7 @@ export const Auth = {
     const u = user || session.user;
     if (!u) return null;
     if (u.photo) {
-      return UI.h('img', { className: 'user-avatar', src: '/uploads/' + encodeURIComponent(u.photo), alt: u.full_name });
+      return UI.h('img', { className: 'user-avatar', src: '/uploads/' + UI.encodePath(u.photo), alt: u.full_name });
     }
     const initial = (u.full_name || u.username || '?').trim().charAt(0);
     return UI.h('div', { className: 'user-avatar' }, initial);

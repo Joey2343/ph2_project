@@ -8,7 +8,7 @@
  * ค่าที่ส่งออก: ISO YYYY-MM-DD (ค.ศ.) ใน v-model
  * ถ้าเลือกไม่ครบสามช่อง จะคืนค่าว่าง
  */
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
   /** ค่าเริ่มต้นรูปแบบ YYYY-MM-DD (ค.ศ.) */
@@ -39,35 +39,65 @@ function parse(iso) {
   return { day: String(parseInt(m[3], 10)), month: String(parseInt(m[2], 10)), year: String(parseInt(m[1], 10) + 543) };
 }
 
-const parts = computed(() => parse(props.modelValue));
+/** รวม วัน/เดือน/ปี กลับเป็น ISO — ต้องครบทั้งสามค่า */
+function toIso(p) {
+  if (!p.day || !p.month || !p.year) return '';
+  const ce = parseInt(p.year, 10) - 543;
+  if (!ce || ce < 1) return '';
+  return `${ce}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+}
+
+/**
+ * ค่าที่เลือกไว้ เก็บไว้ใน component เอง
+ *
+ * ⚠️ ถ้าไม่เก็บไว้ การเลือกทีละช่องจะหายไป
+ *
+ *   ค่า v-model เป็น ISO ก้อนเดียว จึง "เก็บค่าไม่ครบไม่ได้"
+ *   ถ้าเลือกวันก่อน (ยังไม่มีเดือน/ปี) แล้ว emit ค่าว่างกลับไป
+ *   watcher ข้างล่างก็จะมาล้างช่องเดือนและปีทิ้ง → พอเลือกครบทั้ง 3 ช่อง
+ *   กลับได้ค่าว่าง ไม่มีอะไรถูกบันทึก (เจอจริงตอนเพิ่งกรอกวันเกิดให้เจ้าหน้าที่คนใหม่)
+ *
+ * วิธีแก้: เก็บรายช่องไว้ใน draft แล้วค่อย emit เฉพาะตอนครบสามช่อง
+ */
+const draft = ref(parse(props.modelValue));
 
 const day = computed({
-  get: () => parts.value.day,
+  get: () => draft.value.day,
   set: (v) => emitParts({ day: v }),
 });
 const month = computed({
-  get: () => parts.value.month,
+  get: () => draft.value.month,
   set: (v) => emitParts({ month: v }),
 });
 const year = computed({
-  get: () => parts.value.year,
+  get: () => draft.value.year,
   set: (v) => emitParts({ year: v }),
 });
 
-/** รวมสามช่องเป็น ISO แล้วส่งออก — ครบทั้งสามค่อยส่ง */
+/** รวมสามช่องแล้วส่งออก — ครบทั้งสามค่อยส่ง */
 function emitParts(patch) {
-  const next = { ...parts.value, ...patch };
-  if (!next.day || !next.month || !next.year) {
+  const next = { ...draft.value, ...patch };
+  draft.value = next;
+
+  const iso = toIso(next);
+  if (iso) {
+    emit('update:modelValue', iso);
+  } else if (!next.day && !next.month && !next.year) {
+    // ล้างทั้งหมด → คืนค่าว่างจริง ๆ
     emit('update:modelValue', '');
-    return;
   }
-  const ce = parseInt(next.year, 10) - 543;
-  if (ce < 1) {
-    emit('update:modelValue', '');
-    return;
-  }
-  emit('update:modelValue', `${ce}-${String(next.month).padStart(2, '0')}-${String(next.day).padStart(2, '0')}`);
+  // เลือกแล้วยังไม่ครบ → เก็บใน draft เงียบ ๆ ไม่ emit
 }
+
+/** แม่เปลี่ยนค่ามาเอง (เช่นสลับไปแก้เจ้าหน้าที่คนอื่น) → ใช้ค่าใหม่ */
+watch(
+  () => props.modelValue,
+  (v) => {
+    const incoming = parse(v);
+    // ถ้าเป็นค่าที่ตัวเองเพิ่ง emit ไป ไม่ต้องมาทับ draft
+    if (toIso(incoming) !== toIso(draft.value)) draft.value = incoming;
+  },
+);
 
 /** ปี พ.ศ. เรียงจากใหม่ไปเก่า */
 const years = Array.from({ length: maxBE - minBE + 1 }, (_, i) => maxBE - i);
