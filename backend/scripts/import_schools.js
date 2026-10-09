@@ -11,9 +11,33 @@ const db = require('../db');
  * ⚠ สคริปต์นี้เขียน/ลบข้อมูลจริง ควรรันกับสำเนาฐานข้อมูลก่อนเสมอ
  */
 
+/**
+ * ตรวจว่าตาราง schools ยังมีแค่ข้อมูลตัวอย่างจาก seed() เท่านั้นหรือไม่
+ *
+ * seed() ใน db.js ใส่ notes = 'ข้อมูลตัวอย่าง' ทุกแถว
+ * ถ้าทุกแถวยังเป็นข้อมูลตัวอย่างอยู่ แปลว่ายังไม่มีใครแก้ข้อมูลจริง
+ * → การนำเข้าใหม่จึงไม่ทำให้สิ่งที่มีอยู่หาย
+ */
+async function onlySeedData() {
+  const total = (await db.prepare('SELECT COUNT(*) c FROM schools').get()).c;
+  if (!total) return true; // ว่างเปล่า ปลอดภัยที่จะนำเข้า
+  const real = (
+    await db.prepare("SELECT COUNT(*) c FROM schools WHERE notes IS NULL OR notes <> 'ข้อมูลตัวอย่าง'").get()
+  ).c;
+  return real === 0;
+}
+
 async function main() {
   await db.init();
   await db.bootstrap();
+
+  // ป้อยกัน: --if-seed ใช้ตอน deploy อัตโนมัติ
+  // ขั้นตอนนี้ล้างตาราง schools ทั้งตาราง ถ้ามีข้อมูลจริงอยู่แล้วจะหายทั้งหมด
+  // (รูปภาพโรงเรียน ข้อมูลภัยพิบัติ หมายเหตุ และกลุ่มงานที่แอดมินแก้ไว้ในระบบ)
+  if (process.argv.includes('--if-seed') && !(await onlySeedData())) {
+    console.log('[skip] ตาราง schools มีข้อมูลจริงอยู่แล้ว — ไม่นำเข้าซ้ำ เพื่อไม่ให้ทับข้อมูลที่แก้ไว้');
+    return;
+  }
 
   /**
    * นำข้อมูลโรงเรียนจาก pikud/Definition.csv มาเป็นฐานข้อมูลในหน้า "พิกัดโรงเรียนในสังกัด"
@@ -93,7 +117,9 @@ async function main() {
     ok++;
   }
 
-  const total = await db.prepare('SELECT COUNT(*) c FROM schools').get().c;
+  // ต้อง await .get() ให้เสร็จก่อน แล้วค่อยอ่าน .c
+  // ถ้าเขียน await db.prepare(...).get().c จะได้ undefined เพราะ .c ถูกอ่านจาก Promise
+  const total = (await db.prepare('SELECT COUNT(*) c FROM schools').get()).c;
   console.log(`[import] นำเข้า ${ok} แห่ง (ไม่มีพิกัด ${noLat} แห่ง) — ตาราง schools ตอนนี้มี ${total} แห่ง`);
   const districts = await db.prepare('SELECT district, COUNT(*) c FROM schools GROUP BY district ORDER BY c DESC').all();
   console.log('[districts]', districts.map((d) => `${d.district}=${d.c}`).join(', '));

@@ -109,19 +109,26 @@ jobs:
             # เพื่อให้เห็น error ก่อน reload และไม่เสี่ยงทำให้ process ตายวน
             node db.js --init
 
-            echo ">>> 4. โหลดโค้ดใหม่เข้า process"
+            echo ">>> 4. นำเข้าข้อมูลโรงเรียนจริงจาก Definition.csv"
+            # ใส่ --if-seed ไว้เพื่อกันไว้
+            #   ขั้นตอนนี้ "ล้างตาราง schools ทั้งตาราง" แล้วนำเข้าใหม่
+            #   ถ้ามีข้อมูลจริงอยู่แล้ว (คนละ seed) จะข้ามให้ ไม่ทับข้อมูลที่แอดมินแก้ไว้
+            #   เช่น รูปภาพโรงเรียน ข้อมูลภัยพิบัติ หมายเหตุ และกลุ่มงาน
+            node scripts/import_schools.js --if-seed
+
+            echo ">>> 5. โหลดโค้ดใหม่เข้า process"
             pm2 reload ph2-api --update-env
 
-            echo ">>> 5. Build Frontend"
+            echo ">>> 6. Build Frontend"
             cd ../frontend
             npm ci
             npm run build
 
-            echo ">>> 6. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
+            echo ">>> 7. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
             # คัดลอกเฉพาะไฟล์ที่ build ได้ไปวางที่ public_html โดยไม่ลบ .htaccess
             cp -r dist/* $WEB_DIR/
 
-            echo ">>> 7. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
+            echo ">>> 8. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
             for i in $(seq 1 10); do
               if curl -fsS -o /dev/null http://127.0.0.1:3000/api/office; then
                 echo "    ตอบกลับแล้ว (รอบที่ $i)"
