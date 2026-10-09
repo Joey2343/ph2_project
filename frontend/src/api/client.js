@@ -4,7 +4,7 @@
  * port จาก public/js/api.js ของระบบเดิม โดยเปลี่ยนเรียก UI/Auth ให้เข้าผ่าน
  * stores/session.js (ดูคำอธิบายที่ไฟล์นั้นว่าทำไมต้องแยก)
  */
-import { fireSessionExpired } from '../stores/session.js';
+import { fireSessionExpired, session } from '../stores/session.js';
 
 /** ให้ UI kit ลงทะเบียนฟังก์ชัน toast ไว้ (stores/ui.js จะเป็นคนติดตั้ง) */
 let toastFn = null;
@@ -36,8 +36,16 @@ const api = {
     }
 
     if (res.status === 401) {
-      // session หมดอายุหรือยังไม่ได้เข้าสู่ระบบ
-      if (!url.startsWith('/auth/')) {
+      // 401 มีได้ 2 แบบ ต้องแยกให้ชัด ไม่งั้นหน้าต่างเข้าสู่ระบบจะโผล่เองตอนเปิดเว็บ
+      //
+      //   1) เคยล็อกอินอยู่แล้ว แล้ว session หมดอายุ → ต้องพาไปหน้าเข้าสู่ระบบจริง
+      //   2) ยังไม่เคยล็อกอิน (แค่เดินชมหน้าสาธารณะ) → 401 เป็นเรื่องปกติ
+      //      หน้าที่ยังไม่ล็อกอินเรียก endpoint ที่ต้องล็อกอินได้ (เช่น /time/today,
+      //      /dashboard) ตอน mount แล้วได้ 401 ถ้าจัดการเหมือนข้อ 1
+      //      ระบบจะเด้งหน้าต่างเข้าสู่ระบบขึ้นมาตอนเปิดเว็บทันที
+      //      ผู้ใช้ที่ยังไม่ล็อกอินต้องกดปุ่ม "เข้าสู่ระบบ" เองถึงจะเห็นหน้าต่างนั้น
+      const wasLoggedIn = !!session.user;
+      if (wasLoggedIn && !url.startsWith('/auth/')) {
         if (toastFn) toastFn(data && data.error ? data.error : 'กรุณาเข้าสู่ระบบก่อนใช้งาน', 'error');
         fireSessionExpired();
       }
