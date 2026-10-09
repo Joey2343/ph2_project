@@ -82,7 +82,9 @@ onMounted(async () => {
   if (!isSchool.value) return;
   try {
     const d = await api.get('/schools');
-    schools.value = (d.schools || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    // เรียงตามรหัสโรงเรียนจากน้อยไปมาก
+    schools.value = (d.schools || []).slice()
+      .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'th', { numeric: true }));
   } catch {
     schools.value = [];
   }

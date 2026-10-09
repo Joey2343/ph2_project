@@ -168,7 +168,9 @@ export const useAuthStore = defineStore('auth', {
       if (this.schoolsLoaded && !force) return this.schoolOptions;
       try {
         const data = await api.get('/schools');
-        this.schools = (data.schools || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        // เรียงตามรหัสโรงเรียนจากน้อยไปมาก ให้ตรงกับลำดับในหน้าพิกัดโรงเรียน
+        this.schools = (data.schools || []).slice()
+          .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'th', { numeric: true }));
         this.schoolsLoaded = true;
       } catch (e) {
         this.schools = [];
