@@ -69,7 +69,10 @@ function goRegister() {
       <img class="modal-logo" :src="LOGO" alt="สพป.แพร่ เขต 2" />
     </div>
 
-    <form class="form-grid" @submit.prevent="submit">
+    <!-- ปุ่ม "เข้าสู่ระบบ" อยู่ใน #footer ซึ่งอยู่นอก <form> นี้
+         ถ้าไม่ผูก id + form="..." browser จะไม่มีปุ่ม submit ให้กด
+         → กด Enter ในช่องกรอกแล้วไม่เกิดอะไร ต้องใช้เมาส์คลิกปุ่มเท่านั้น -->
+    <form id="login-form" class="form-grid" @submit.prevent="submit">
       <div class="form-group full">
         <label>ชื่อผู้ใช้ (Username)</label>
         <input
@@ -99,7 +102,10 @@ function goRegister() {
 
     <template #footer>
       <button class="btn btn-outline" :disabled="busy" @click="close">ยกเลิก</button>
-      <button id="login-submit" class="btn btn-primary" :disabled="busy" @click="submit">
+      <!-- type="submit" + form="login-form" = ผูกปุ่มนี้เข้ากับฟอร์มข้างบน
+           ทำให้กด Enter ในช่องชื่อผู้ใช้/รหัสผ่านแล้วยืนยันอัตโนมัติ
+           (ไม่ต้องย้ายปุ่มเข้าไปในฟอร์ม ซึ่งจะทำให้ layout ของเดิมเสีย) -->
+      <button id="login-submit" type="submit" form="login-form" class="btn btn-primary" :disabled="busy">
         {{ busy ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ' }}
       </button>
     </template>
