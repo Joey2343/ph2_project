@@ -78,12 +78,16 @@ const files = computed(() => parseFiles(d.value.file));
 /**
  * ลิงก์ไฟล์แนบ
  *
- * ตรงกับ UI.fileLink(): encodeURIComponent เส้นทางก่อนเสมอ
+ * ⚠️ ห้ามใช้ encodeURIComponent กับทั้งเส้นทาง — มันจะเข้ารหัส "/" ด้วย
+ * เช่น documents/abc.pdf → documents%2Fabc.pdf → เซิร์ฟเวอร์ตอบ 404
+ * แล้วส่ง index.html มาให้ → คลิกแล้วเปิดหน้าเว็บแอปแทนที่จะเปิดไฟล์
+ *
+ * ต้องใช้ UI.encodePath() ซึ่งเข้ารหัสทีละส่วนแล้วเก็บ "/" ไว้
  * และใช้ emoji ต่างกันระหว่างรูปภาพกับไฟล์อื่น
  */
 const isImage = (p) => /\.(png|jpe?g|gif|webp)$/i.test(String(p));
 const fileName = (p) => String(p).split('/').pop();
-const fileHref = (p) => '/uploads/' + encodeURIComponent(p);
+const fileHref = (p) => '/uploads/' + UI.encodePath(p);
 
 /** ชื่อ-นามสกุล + โรงเรียน ของเกียรติบัตร */
 const personText = computed(() => {

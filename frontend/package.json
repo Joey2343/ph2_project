@@ -14,8 +14,9 @@
     "verify:runtime": "node scripts/verify-runtime.mjs",
     "verify:auth": "node scripts/verify-runtime.mjs --auth",
       "verify:registry": "node scripts/check-registry.mjs",
+      "verify:uploads": "node scripts/check-upload-paths.mjs",
       "verify:pages": "node scripts/verify-vue-pages.mjs --all",
-      "verify:all": "node scripts/check-registry.mjs && node scripts/verify-build.mjs --server && node scripts/verify-vue-pages.mjs --all && node scripts/verify-runtime.mjs --all && node scripts/verify-runtime.mjs --auth",
+      "verify:all": "node scripts/check-registry.mjs && node scripts/check-upload-paths.mjs && node scripts/verify-build.mjs --server && node scripts/verify-vue-pages.mjs --all && node scripts/verify-runtime.mjs --all && node scripts/verify-runtime.mjs --auth",
     "probe": "node scripts/probe-route.mjs"
   },
   "dependencies": {
