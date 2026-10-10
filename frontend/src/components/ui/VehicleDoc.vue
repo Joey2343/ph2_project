@@ -133,7 +133,9 @@ const sigs = computed(() => {
 function printDoc() {
   const el = document.getElementById('vehicle-doc-print');
   if (!el) return;
-  const css = document.querySelector('link[href*="theme"], link[href*="index-"]');
+  // ⚠️ ต้องระบุ rel="stylesheet" — ไม่งั้นจะไปโดน <link rel="modulepreload" href="theme-xxx.js">
+  // ที่อยู่ก่อนหน้าใน index.html แล้วได้ไฟล์ JS มาประกาศเป็น stylesheet → หน้าต่างพิมพ์ไม่มีสไตล์
+  const css = document.querySelector('link[rel="stylesheet"][href*="theme"], link[rel="stylesheet"][href*="index-"]');
   const styleTag = css ? `<link rel="stylesheet" href="${css.href}">` : '';
   const w = window.open('', '_blank', 'width=900,height=1200');
   if (!w) return UI.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต pop-up', 'error');
@@ -206,7 +208,13 @@ function printDoc() {
 
     <template #footer>
       <button class="btn btn-outline" @click="emit('close')">ปิด</button>
-      <button class="btn btn-primary" :disabled="loading || error" @click="printDoc">⬢ พิมพ์</button>
+      <!--
+  ⚠️ ต้องห่อด้วย !! — Vue ถือว่า '' เป็น "จริง" สำหรับ boolean attribute
+     (vue: includeBooleanAttr = value => !!value || value === '')
+     ถ้าเขียน :disabled เป็น loading || error เมื่อ loading=false และ error=''
+     จะได้ '' → Vue ใส่ disabled="" เสมอ → ปุ่มกดไม่ได้ตลอด
+-->
+<button class="btn btn-primary" :disabled="!!(loading || error)" @click="printDoc">⬢ พิมพ์</button>
     </template>
   </AppModal>
 </template>
