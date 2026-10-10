@@ -96,6 +96,9 @@ function main() {
   console.log('\n[ทดสอบ await precedence]');
   results.push(run('test-await-parens', [path.join(__dirname, 'test-await-parens.js')]));
 
+  console.log('\n[ทดสอบ async route error ไม่ทำให้เซิร์ฟเวอร์ล่ม]');
+  results.push(run('test-async-route', [path.join(__dirname, 'test-async-route.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {

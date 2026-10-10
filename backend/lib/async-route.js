@@ -16,6 +16,17 @@
 
 /**
  * ห่อ handler หนึ่งตัว
+ *
+ * ⚠️ ต้อง "คงจำนวนพารามิเตอร์" ของเดิมไว้ ไม่งั้น Express จะสับสน
+ *
+ * Express 4 ตัดสินว่าจะเรียกฟังก์ชันแบบไหนด้วย fn.length
+ *   - fn.length > 3  → ข้ามไป ไม่เรียกเป็น handler ปกติ (เป็น error middleware)
+ *   - fn.length === 4 → เรียกเป็น (err, req, res, next) เมื่อมี error
+ *
+ * ถ้าห่อด้วย (...args) จะกลายเป็น length = 0 ทำให้ error middleware
+ * อย่าง uploadErrorHandler ถูกเรียกผิดแบบ → "res.status is not a function"
+ * และพังทุก endpoint ที่แนบไฟล์ (หนังสือ · บันทึกข้อความ · ไปราชการ · ลา · ยานพาหนะ)
+ *
  * @param {Function} fn handler เดิม
  * @returns {Function} handler ที่จัดการ error ให้
  */
@@ -24,13 +35,14 @@ function wrapHandler(fn) {
   // ห่อซ้ำได้ (ไม่เป็นไร)
   if (fn.__wrapped) return fn;
 
-  const wrapped = function (...args) {
+  /** เรียก handler เดิม แล้วส่ง error ไปที่ next */
+  function invoke(self, args) {
     const next = args[args.length - 1];
     const canNext = typeof next === 'function';
 
     let result;
     try {
-      result = fn.apply(this, args);
+      result = fn.apply(self, args);
     } catch (err) {
       if (canNext) return next(err);
       throw err;
@@ -44,7 +56,21 @@ function wrapHandler(fn) {
       });
     }
     return result;
-  };
+  }
+
+  // สร้าง wrapper ที่ length ตรงกับของเดิมทุกกรณี
+  let wrapped;
+  if (fn.length >= 4) {
+    wrapped = function (err, req, res, next) { return invoke(this, arguments); };
+  } else if (fn.length === 3) {
+    wrapped = function (req, res, next) { return invoke(this, arguments); };
+  } else if (fn.length === 2) {
+    wrapped = function (req, res) { return invoke(this, arguments); };
+  } else if (fn.length === 1) {
+    wrapped = function (req) { return invoke(this, arguments); };
+  } else {
+    wrapped = function () { return invoke(this, arguments); };
+  }
 
   wrapped.__wrapped = true;
   // คงชื่อไว้เพื่อให้ stack trace อ่านรู้เรื่อง
@@ -92,7 +118,37 @@ function wrapRouter(router) {
     patched.__routerWrapped = true;
     router[method] = patched;
   }
+
+  /*
+   * สำคัญมาก: route ส่วนใหญ่ถูกลงทะเบียนไว้ก่อนเรียก wrapRouter()
+   * การ patch router.get/post จึงไม่กระทบ route ที่ลงทะเบียนไปแล้ว
+   * ต้องไล่ห่อใน router.stack ด้วย ไม่งั้น error จะหลุดเป็น unhandled rejection
+   * แล้ว Node จะปิดทั้งเซิร์ฟเวอร์ (ผู้ใช้ทุกคนหลุดจากระบบพร้อมกัน)
+   *
+   * เคยเจอจริงที่ /my-incoming: ใช้ GLOB ซึ่ง MariaDB ไม่รู้จัก → SQL error
+   * → ไม่มีใคร catch → ทั้งเซิร์ฟเวอร์ล่ม
+   */
+  return wrapExistingRoutes(router);
+}
+
+/** ห่อ handler ที่ลงทะเบียนไว้แล้วใน router.stack (ของ Express 4) */
+function wrapExistingRoutes(router) {
+  const stack = router && router.stack;
+  if (!Array.isArray(stack)) return router;
+
+  for (const layer of stack) {
+    if (layer.route && Array.isArray(layer.route.stack)) {
+      for (const r of layer.route.stack) {
+        if (typeof r.handle === 'function') r.handle = wrapHandler(r.handle);
+      }
+      continue;
+    }
+    // router.use(fn) — ห่อตัว middleware
+    if (!layer.route && typeof layer.handle === 'function') {
+      layer.handle = wrapHandler(layer.handle);
+    }
+  }
   return router;
 }
 
-module.exports = { wrapHandler, wrapRouter };
+module.exports = { wrapHandler, wrapRouter, wrapExistingRoutes };

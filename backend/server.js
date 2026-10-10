@@ -21,6 +21,22 @@ const { wrapHandler } = require('./lib/async-route');
 
 require('./lib/simdate').install(); // นาฬิกาจำลอง (settings: sim_today) — ต้องมาก่อนโค้ดที่ใช้ Date
 
+/*
+ * ตาข่ายนิรภัย: error ที่หลุดไม่ได้ไม่ควรทำให้ทั้งเซิร์ฟเวอร์ล่ม
+ *
+ * เคยเจอจริง — หน้า "หนังสือรับ" ของฝั่งสถานศึกษาใช้คำสั่ง SQL ที่ MariaDB ไม่รู้จัก
+ * error ไม่มีใคร catch → unhandled rejection → Node ปิดตัวเอง
+ * ผลคือผู้ใช้ทุกคนหลุดจากระบบพร้อมกัน แม้จะเป็นบั๊กของหน้าเดียว
+ *
+ * การไม่ให้ Node ตาย ไม่ได้แปลว่าปล่อยให้เกิด — ต้อง log ให้เห็นชัด
+ */
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
 const app = express();
 // ใช้ PORT จาก environment ถ้าเป็นตัวเลขที่ถูกต้องเท่านั้น (ค่าเริ่มต้น 3000)
 const PORT = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 3000;
