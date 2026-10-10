@@ -156,7 +156,7 @@ function sigOf(s) {
 function printDoc() {
   const el = document.getElementById('leave-doc-print');
   if (!el) return;
-  const css = document.querySelector('link[href*="theme"], link[href*="index-"]');
+  const css = document.querySelector('link[rel="stylesheet"][href*="theme"], link[rel="stylesheet"][href*="index-"]');
   const styleTag = css ? `<link rel="stylesheet" href="${css.href}">` : '';
   const w = window.open('', '_blank', 'width=900,height=1200');
   if (!w) return UI.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต pop-up', 'error');

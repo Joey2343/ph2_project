@@ -141,6 +141,34 @@ const VUE_PAGES = {
         name: 'ปุ่มกดดูรายละเอียด (แบบฟอร์มทางการ) มีอยู่',
         check: `[...document.querySelectorAll('.tbl tbody .btn')].some(b => b.innerText.includes('รายละเอียด'))`,
       },
+      {
+        // เคยพัง: :disabled="loading || error" → false || '' = ''
+        // → Vue ถือว่า '' เป็นจริงสำหรับ boolean attribute → disabled="" เสมอ → ปุ่มกดไม่ได้
+        name: 'หน้าต่างบันทึกการขอใช้ยานพาหนะเปิดได้ และปุ่มพิมพ์กดได้',
+        check: `(async () => {
+          const btn = [...document.querySelectorAll('.tbl tbody .btn')].find(b => b.innerText.includes('รายละเอียด'));
+          if (!btn) return true; // ไม่มีรายการให้ทดสอบ — ไม่ตัดสิน
+          btn.click();
+          await new Promise((r) => setTimeout(r, 1200));
+          const print = [...document.querySelectorAll('[data-app-modal] button')].find(b => b.innerText.includes('พิมพ์'));
+          const ok = !!print && print.disabled === false;
+          __clickText('[data-app-modal] .btn', 'ปิด');
+          await new Promise((r) => setTimeout(r, 300));
+          return ok;
+        })()`,
+      },
+      {
+        // ต้องมี <link rel="stylesheet"> ที่ชี้ไฟล์ CSS ของระบบไว้ให้หน้าต่างพิมพ์ดึง
+        // (เคยพังเพราะ selector ไม่ระบุ rel → ไปโดน modulepreload ของไฟล์ .js ที่อยู่ก่อนหน้าใน index.html)
+        // ตัวตรวจว่าซอร์สโค้ดยังไม่หลุดรูปแบบเก่า อยู่ที่ scripts/check-print-windows.mjs
+        name: 'หน้าต่างพิมพ์มีไฟล์ CSS ของระบบให้ดึง',
+        check: `(() => {
+          const good = document.querySelector('link[rel="stylesheet"][href*="theme"], link[rel="stylesheet"][href*="index-"]');
+          if (!good) return false;
+          const href = good.getAttribute('href') || '';
+          return href.endsWith('.css');
+        })()`,
+      },
     ],
   },
 
