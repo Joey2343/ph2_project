@@ -283,8 +283,24 @@ const VUE_PAGES = {
         check: `document.querySelectorAll('.urgency-opt').length === 3`,
       },
       {
-        name: 'ช่องส่งบันทึกข้อความถึงแสดงผู้รับ',
-        check: `!!document.querySelector('.sendto-box')`,
+        // เดิมเป็นกล่องข้อความ .sendto-box → เปลี่ยนเป็น dropdown ตัวเลือกผู้อนุมัติแล้ว
+        name: 'ช่องส่งบันทึกข้อความถึงเป็นตัวเลือกผู้อนุมัติ',
+        check: `(() => {
+          const s = document.querySelector('select.sendto-select');
+          if (!s) return false;
+          if (s.options.length < 1) return false;
+          // ต้องมีตัวเลือกที่มีชื่อจริง (ไม่ใช่แค่ข้อความ "ยังไม่ได้กำหนด")
+          return [...s.options].some((o) => o.value !== '');
+        })()`,
+      },
+      {
+        name: 'ช่องส่งบันทึกข้อความถึงอยู่บรรทัดเดียว ไม่ล้น',
+        check: `(() => {
+          const s = document.querySelector('select.sendto-select');
+          if (!s) return false;
+          const r = s.getBoundingClientRect();
+          return r.height <= 44 && r.width <= 440;
+        })()`,
       },
       {
         name: 'ปิดแบบฟอร์มได้',
