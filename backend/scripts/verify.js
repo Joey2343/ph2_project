@@ -99,6 +99,9 @@ function main() {
   console.log('\n[ทดสอบ async route error ไม่ทำให้เซิร์ฟเวอร์ล่ม]');
   results.push(run('test-async-route', [path.join(__dirname, 'test-async-route.js')]));
 
+  console.log('\n[ทดสอบ array ที่หลุด Promise — ทำให้ API คืน [{}]]');
+  results.push(run('test-async-map', [path.join(__dirname, 'test-async-map.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {
