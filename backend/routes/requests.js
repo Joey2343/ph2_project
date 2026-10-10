@@ -268,7 +268,16 @@ router.get('/memos', auth.requireAuth, async (req, res) => {
       return await approvals.canApproveMemoFor(req.user, r.user_id, next);
     });
   }
-  res.json({ memos: rows.map(async (r) => { return  ({ ...r, required_levels: await memoRequired(r), approvals: approvals.parseApprovals(r.approval_data) }) }) });
+  // ⚠️ ห้าม map(async ...) ตรง ๆ แล้วส่งเข้า res.json
+  // เพราะแต่ละ element จะเป็น Promise → JSON.stringify ได้ [{}]
+  // ผู้ใช้จะเห็นแถวว่างเปล่า กดลบ/แก้ไขไม่ได้ เพราะไม่มี id
+  // (เคยเกิดจริง: หน้าบันทึกข้อความแสดงแถวเปล่า 1 รายการ และลบไม่ได้)
+  const out = await Promise.all(rows.map(async (r) => ({
+    ...r,
+    required_levels: await memoRequired(r),
+    approvals: approvals.parseApprovals(r.approval_data),
+  })));
+  res.json({ memos: out });
 });
 
 const memoUpload = uploadMemosDyn.fields([
@@ -638,12 +647,14 @@ router.get('/travel', auth.requireAuth, async (req, res) => {
     const tasRow = await db.prepare("SELECT value FROM settings WHERE `key` = 'travel_approvers_school'").get();
     travelApproversSchool = JSON.parse(tasRow ? tasRow.value : '{}');
   } catch (e) { /* ignore */ }
+  // ⚠️ ห้าม map(async ...) ตรง ๆ — ดูคำอธิบายที่ GET /memos ด้านบน
+  const out = await Promise.all(rows.map(async (r) => ({
+    ...r,
+    required_levels: await approvals.travelRequiredLevels(r.user_id),
+    approvals: approvals.parseApprovals(r.approval_data),
+  })));
   res.json({
-    requests: rows.map(async (r) => { return  ({
-      ...r,
-      required_levels: await approvals.travelRequiredLevels(r.user_id),
-      approvals: approvals.parseApprovals(r.approval_data),
-    }) }),
+    requests: out,
     travelApprovers,
     travelApproversSchool,
   });
