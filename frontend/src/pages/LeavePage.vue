@@ -191,7 +191,8 @@ async function load() {
       list = list.filter((r) => {
         if (r.user_id === Auth.user.id) return true;
         for (const lv of [1, 2, 3]) {
-          if (Number((perPerson.value[String(lv)] || {})[String(r.user_id)]) === Auth.user.id) return true;
+          // loop-exit: ตรงกับขั้นใดขั้นหนึ่งก็ถือว่าเกี่ยวข้อง ไม่ต้องเช็คขั้นที่เหลือ
+          if (Number((perPerson.value[String(lv)] || {})[String(r.user_id)]) === Auth.user.id) return true; // loop-exit
         }
         return false;
       });

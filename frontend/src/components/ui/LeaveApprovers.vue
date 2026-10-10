@@ -30,7 +30,7 @@ const staff = ref([]);
 const perPerson = ref({ 1: {}, 2: {}, 3: {} });
 
 function groupOf(u) {
-  return u.user_group || (u.school_code === '54020000' ? 'office' : 'school');
+  return u.user_group || 'office';
 }
 
 /** แถวของตาราง = ผู้ขอในกลุ่มของหน้านี้ */

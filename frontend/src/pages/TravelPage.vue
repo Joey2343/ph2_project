@@ -90,9 +90,7 @@ onMounted(load);
  *   สายสถานศึกษา: ขั้น1 reviewer, ขั้น2 supervisor, ขั้น3 approver
  */
 function requestIsSchool(r) {
-  return (
-    r.user_group || (String(r.school_code || '') === '54020000' ? 'office' : 'school')
-  ) === 'school';
+  return (r.user_group || 'office') === 'school';
 }
 
 /** ขั้นถัดไปที่ต้องดำเนินการ */

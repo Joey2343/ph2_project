@@ -73,7 +73,8 @@ function onPick(i, e) {
 const tooLarge = computed(() => {
   for (const r of newRows.value) {
     if (r.file && r.file.size > MAX_BYTES) {
-      return `ไฟล์ "${r.file.name}" ใหญ่เกินไป (สูงสุด 5 MB ต่อไฟล์) — กรุณาเลือกไฟล์เล็กลงหรือบีบอัดก่อนแนบ`;
+      // loop-exit: แสดงข้อความของไฟล์ที่ใหญ่เกินไปไฟล์แรกไฟล์เดียว
+      return `ไฟล์ "${r.file.name}" ใหญ่เกินไป (สูงสุด 5 MB ต่อไฟล์) — กรุณาเลือกไฟล์เล็กลงหรือบีบอัดก่อนแนบ`; // loop-exit
     }
   }
   return '';

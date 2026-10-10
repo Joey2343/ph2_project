@@ -364,7 +364,7 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
         if (levels.length) {
           const rows = await db.prepare(`SELECT t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id
             WHERE t.status = 'pending' AND (t.approval_level + 1) IN (${levels.map(() => '?').join(',')})
-            AND COALESCE(u.user_group, CASE WHEN u.school_code = '54020000' THEN 'office' ELSE 'school' END) = 'office'`).all(...levels);
+            AND COALESCE(u.user_group, 'office') = 'office'`).all(...levels);
           for (const l of levels) out[l] = rows.filter((r) => r.approval_level + 1 === l).length;
         }
         return out;
@@ -376,7 +376,7 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
         let mapping = {};
         try { mapping = JSON.parse(tas ? tas.value : '{}'); } catch (e) {}
         const out = {};
-        const pendingRows = await db.prepare("SELECT t.user_id, t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id WHERE t.status = 'pending' AND COALESCE(u.user_group, CASE WHEN u.school_code = '54020000' THEN 'office' ELSE 'school' END) = 'school'").all();
+        const pendingRows = await db.prepare("SELECT t.user_id, t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id WHERE t.status = 'pending' AND COALESCE(u.user_group, 'office') = 'school'").all();
         for (const r of pendingRows) {
           const entry = mapping[String(r.user_id)];
           if (!entry) continue;
@@ -410,7 +410,7 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
           for (const lv of Object.keys(out[sys])) {
             if (lv === 'group') continue;
             const row = rows.find((r) => r.approval_level + 1 === Number(lv));
-            if (row) out[sys].group = (row.user_group || (row.school_code === '54020000' ? 'office' : 'school'));
+            if (row) out[sys].group = (row.user_group || 'office');
           }
         }
         return out;
@@ -815,7 +815,8 @@ router.put('/vehicle-bookings/:id/approve', auth.requireAuth, async (req, res) =
         WHERE vehicle_id = ? AND date = ? AND status = 'approved' AND id != ?`).all(row.vehicle_id, row.date, row.id);
       for (const c of clash) {
         if (timeOverlap(row.start_time, row.end_time, c.start_time, c.end_time)) {
-          return { error: `ช่วงเวลาซ้อนทับกับการจองที่อนุมัติแล้ว (${c.purpose})`, code: 409 };
+          // loop-exit: เจอรายการที่ชนครั้งแรกก็พอ — คืน error ออกจาก onFinal ให้ approveRequest จัดการ
+          return { error: `ช่วงเวลาซ้อนทับกับการจองที่อนุมัติแล้ว (${c.purpose})`, code: 409 }; // loop-exit
         }
       }
       return null;
@@ -1076,7 +1077,8 @@ router.put('/room-bookings/:id/approve', auth.requireAuth, async (req, res) => {
         WHERE room_id = ? AND date = ? AND status = 'approved' AND id != ?`).all(row.room_id, row.date, row.id);
       for (const c of clash) {
         if (timeOverlap(row.start_time, row.end_time, c.start_time, c.end_time)) {
-          return { error: `ช่วงเวลาซ้อนทับกับการจองที่อนุมัติแล้ว (${c.topic})`, code: 409 };
+          // loop-exit: เจอห้องที่ชนครั้งแรกก็พอ — คืน error ออกจาก onFinal ให้ approveRequest จัดการ
+          return { error: `ช่วงเวลาซ้อนทับกับการจองที่อนุมัติแล้ว (${c.topic})`, code: 409 }; // loop-exit
         }
       }
       return null;

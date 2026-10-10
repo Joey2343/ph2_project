@@ -11,6 +11,8 @@
     "db:import-schools": "node scripts/import_schools.js",
     "db:inspect": "node scripts/inspect-db.js",
     "verify": "node scripts/verify.js",
+    "check:syntax": "node scripts/check-syntax.js",
+    "check:returns": "node scripts/check-returns.js",
     "test:smoke": "node test/smoke.js"
   },
   "dependencies": {

@@ -97,6 +97,33 @@ console.log('errors='+(r.errors||[]).length,
 > เคยเสียเวลาเพราะไฟล์ Vue ขาด `<script setup>` เปิด → build พังด้วย `Invalid end tag`
 > เทสต์ข้อ 2 จับได้ใน 2 วินาที (`descriptor.scriptSetup` จะเป็น `undefined` ถ้าไม่มี `<script setup>`)
 
+### 2.3.1 ห้าม `return` ออกจากลูป (บั๊กที่ทำให้หน้าเว็บค้าง)
+
+`return` ในลูปจะออกจาก **ฟังก์ชันที่อยู่รอบลูปทั้งกลับ** ไม่ใช่ออกจากลูป
+ถ้าฟังก์ชันนั้นคือ route handler ของ Express บรรทัด `res.json(...)` ที่อยู่ถัดไป
+จะไม่เคยถูกเรียก → **เบราว์เซอร์รอจน timeout ผู้ใช้ไม่เห็นข้อความสำเร็จ**
+แถวที่เหลือในลูป (เช่น insert คนที่ 2, 3) ก็ไม่ถูกทำด้วย
+
+```js
+// ✗ ผิด — บันทึกแค่คนเดียว แล้ว request ค้างถึงหมดอายุ
+for (const s of clerks) { return await insertRecip.run(docId, s) };
+
+// ✓ ถูก
+for (const s of clerks) { await insertRecip.run(docId, s) };
+```
+
+> เคยมี 6 จุดใน `routes/admin.js` ที่พังพร้อมกัน อาการคือ
+> "ส่งหนังสือแล้วไม่ปรากฏ" — ข้อมูลบันทึกสำเร็จ แต่หน้าเว็บค้าง ไม่มี toast
+
+**ถ้าตั้งใจออกจากลูปจริง** (เช่น "ค้นหารายการแรกที่เจอแล้วเลิก") ให้เขียน
+`// loop-exit` ไว้ท้ายบรรทัดนั้น แล้วเครื่องมือจะข้าม
+
+```bash
+cd backend && npm run check:returns   # ตรวจทั้ง backend และ frontend/src
+```
+
+รันอยู่ใน `npm run verify` อยู่แล้ว (ข้อ "ตรวจ return ที่หลุดออกจากลูป")
+
 ### 2.4 encoding
 
 ไฟล์ทั้งหมดเป็น UTF-8 ห้ามมีอักขระ U+FFFD (`�`)
@@ -600,12 +627,13 @@ npm run verify
 | ตรวจ | ผล |
 |---|---|
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
-| `npm run build` | ผ่าน 366 modules |
-| `verify-build --server` | ผ่าน 40/40 |
-| `verify-vue-pages --all` | ผ่าน **183** · ไม่ผ่าน 0 |
+| `npm run build` | ผ่าน |
+| `verify-build --server` | ผ่าน 53/53 |
+| `verify-vue-pages --all` | ผ่าน **184** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 14/14 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 15/15 (MariaDB 11.4) |
+| `backend: npm run check:returns` | ผ่าน (98 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
 ให้เพิ่ม `--dump <keys>` เพื่อดู DOM/runtime จริง:

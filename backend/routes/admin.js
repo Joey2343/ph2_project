@@ -312,16 +312,16 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   if (senderType === 'office' && toOrg) {
     const insertRecip = db.prepare('INSERT INTO document_recipients (document_id, user_id) VALUES (?, ?)');
     if (toOrg.startsWith('ทุกคน')) {
-      // Send to all office staff
+      // ส่งถึงเจ้าหน้าที่ฝั่งสำนักงานทุกคน
       const officeStaff = await db.prepare("SELECT id FROM users WHERE user_group != 'school' AND status = 'active'").all();
-      for (const s of officeStaff) { return  await insertRecip.run(docId, s.id) };
+      for (const s of officeStaff) { await insertRecip.run(docId, s.id) };
     } else if (toOrg.startsWith('กลุ่ม:')) {
-      // Send to staff in selected groups
+      // ส่งถึงเจ้าหน้าที่ในกลุ่มที่เลือก
       const groups = toOrg.replace('กลุ่ม:', '').split(',').map(g => g.trim()).filter(Boolean);
       if (groups.length) {
         const placeholders = groups.map(() => '?').join(',');
         const staff = await db.prepare(`SELECT id FROM users WHERE user_group != 'school' AND status = 'active' AND workplace IN (${placeholders})`).all(...groups);
-        for (const s of staff) { return  await insertRecip.run(docId, s.id) };
+        for (const s of staff) { await insertRecip.run(docId, s.id) };
       }
     } else {
       // Send to specific staff (comma-separated names)
@@ -336,11 +336,12 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
     };
     }
   } else if (senderType === 'school') {
-    // School sending to office - only the designated office registry clerks (สารบัญเขต) receive it
+    // โรงเรียนส่งหนังสือมา สพป. → ผู้รับคือเจ้าหน้าที่สารบัญเขตเท่านั้น
+    // (ถ้ายังไม่ได้ตั้งสารบัญเขต ให้ admin เป็นผู้รับชั่วคราว กันหนังสือหาย)
     const insertRecip = db.prepare('INSERT IGNORE INTO document_recipients (document_id, user_id) VALUES (?, ?)');
     let clerks = (await db.prepare("SELECT user_id FROM document_staff WHERE staff_type = 'office'").all()).map(r => r.user_id);
     if (!clerks.length && req.user.role === 'admin') clerks = [req.user.id];
-    for (const s of clerks) { return  await insertRecip.run(docId, s) };
+    for (const s of clerks) { await insertRecip.run(docId, s) };
   } else if (senderType === 'school_to_school' && !b.recipient_schools) {
     // School sending to another school (โรงเรียนเดียว จาก client เก่า) — สารบัญสถานศึกษาของโรงเรียนปลายทางรับ
     const insertRecip2 = db.prepare('INSERT INTO document_recipients (document_id, user_id, as_school) VALUES (?, ?, ?)');
@@ -566,14 +567,15 @@ router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
   const before = (await db.prepare("SELECT user_id FROM document_staff WHERE staff_type = 'school' AND school_code = ?").all(school_code)).map(r => r.user_id);
   await db.prepare('DELETE FROM document_staff WHERE staff_type = ? AND school_code = ?').run('school', school_code);
   const ins = db.prepare('INSERT INTO document_staff (staff_type, user_id, school_code) VALUES (?, ?, ?)');
-  for (const uid of ids) { return  await ins.run('school', uid, school_code) };
+  for (const uid of ids) { await ins.run('school', uid, school_code) };
   // sync ผู้รับหนังสือที่ สพป. ส่งถึงสถานศึกษานี้ (ย้อนหลังทั้งหมด)
   const syncRecip = db.prepare("INSERT IGNORE INTO document_recipients (document_id, user_id) SELECT d.id, ? FROM documents d WHERE d.sender_type = 'office' AND (d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id WHERE dr.document_id = d.id AND u.user_group = 'school' AND (u.school_code = ? OR u.workplace LIKE ?)))");
   const syncArgs = [school_code + '%', school_code, school_code + '%'];
-  for (const uid of ids) { return  await syncRecip.run(uid, ...syncArgs) };
+  for (const uid of ids) { await syncRecip.run(uid, ...syncArgs) };
   // ถอดผู้รับที่ถูกปลด (เคยเป็นสารบัญของโรงเรียนนี้ แต่ไม่อยู่ในรายการใหม่) — ถอดเฉพาะหนังสือของโรงเรียนนี้ เพื่อไม่กระทบสิทธิ์ของโรงเรียนอื่นที่ยังดูแลอยู่
   for (const oldUid of before) {
-  if (ids.indexOf(Number(oldUid)) >= 0) return;
+  // เดิมเป็น `return` → ออกจาก handler ก่อน res.json() ทำให้ค้าง และข้ามการถอดผู้รับคนที่เหลือ
+  if (ids.indexOf(Number(oldUid)) >= 0) continue;
   await db.prepare("DELETE FROM document_recipients WHERE user_id = ? AND document_id IN (SELECT d.id FROM documents d WHERE d.sender_type = 'office' AND (d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id WHERE dr.document_id = d.id AND u.user_group = 'school' AND (u.school_code = ? OR u.workplace LIKE ?))))").run(oldUid, school_code + '%', school_code, school_code + '%');
 };
   res.json({ ok: true, message: 'บันทึกเจ้าหน้าที่สถานศึกษาเรียบร้อย (' + ids.length + ' คน)' });
@@ -1081,9 +1083,13 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   if (isSchool) { sql += " AND (d.school_code = ? OR d.to_org LIKE ?)"; params.push(schoolCode, "%" + schoolCode + "%"); }
   else {
     // เฉพาะสารบัญเขต (หรือ admin) จะเห็นหนังสือที่สถานศึกษาส่งมา (sender_type = 'school')
+    //
+    // "เป็นของสำนักงานเขต" ตัดสินจากฝั่งของผู้สร้างหนังสือ (users.user_group)
+    // ไม่ใช่รหัสโรงเรียน เพราะรหัสสำนักงานเขตถูกถอดออกจากตาราง schools ไปแล้ว
+    // และผู้ใช้ฝั่งสำนักงานไม่มี school_code อยู่แล้ว
     const isOfficeClerk = !!await db.prepare("SELECT id FROM document_staff WHERE staff_type = 'office' AND user_id = ?").get(userId) || req.user.role === 'admin';
-    if (isOfficeClerk) sql += " AND (d.school_code = '54020000' OR d.sender_type = 'school')";
-    else sql += " AND d.school_code = '54020000'";
+    if (isOfficeClerk) sql += " AND (COALESCE(u.user_group, 'office') != 'school' OR d.sender_type = 'school')";
+    else sql += " AND COALESCE(u.user_group, 'office') != 'school'";
   }
   const yc2 = docYearClause(req.query.year); if (yc2) { sql += yc2.clause; params.push(yc2.arg); }
   // ตัวกรองกลุ่มปฏิบัติ (เช่น กลุ่มส่งเสริมการศึกษาทางไกล เทคโนโลยีสารสนเทศฯ)
@@ -1104,7 +1110,10 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
   let sql = "SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'outgoing' AND d.sender_type = 'registered'";
   const params = [];
   if (isSchool) { sql += " AND d.school_code = ?"; params.push(schoolCode || ''); }
-  else { sql += " AND d.school_code = '54020000'"; }
+  // ฝั่งสำนักงานเขต: หนังสือของตัวเอง = ผู้สร้างไม่ใช่เจ้าหน้าที่สถานศึกษา
+  // (เดิมคัดด้วย d.school_code = '54020000' ซึ่งไม่มีผล เพราะรหัสนี้ถูกถอดจาก schools แล้ว
+  //  และผู้ใช้ฝั่งสำนักงานไม่มี school_code → ทำให้ลงทะเบียนแล้วไม่โผล่ในทะเบียนเลย)
+  else { sql += " AND COALESCE(u.user_group, 'office') != 'school'"; }
   const yc3 = docYearClause(req.query.year); if (yc3) { sql += yc3.clause; params.push(yc3.arg); }
   // ตัวกรองกลุ่มปฏิบัติ
   const wg2 = (req.query.workgroup || '').trim();

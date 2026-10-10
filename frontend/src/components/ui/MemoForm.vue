@@ -142,7 +142,7 @@ async function save(mode) {
   // ตรวจขนาดไฟล์แนบก่อน (ทั้ง 3 กลุ่ม)
   for (const g of [refFiles.value, encFiles.value, draftFiles.value]) {
     const big = g && g.tooLarge;
-    if (big) return UI.toast(big, 'error');
+    if (big) return UI.toast(big, 'error'); // loop-exit — เตือนกลุ่มแรกที่มีไฟล์ใหญ่ แล้วหยุด
   }
 
   const isSubmit = mode === 'submit';

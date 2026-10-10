@@ -87,7 +87,9 @@ function resolvePath(p) {
         return '1';
       case 'school_code':
       case 'schoolCode':
-        return '54020000';
+        // ใช้รหัสโรงเรียนที่มีจริงในทะเบียน (backend/pikud/school_codes.csv)
+        // รหัสสำนักงานเขต 54020000 ถูกถอดออกจากตาราง schools ไปแล้ว
+        return '54020001';
       default:
         return '1';
     }

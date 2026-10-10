@@ -704,7 +704,7 @@ function leaveNextLevelText(b, deciderName) {
 async function leaveApproverKeyOf(userId) {
   try {
     const u = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(Number(userId));
-    const group = u ? (u.user_group || (u.school_code === '54020000' ? 'office' : 'school')) : 'office';
+    const group = u ? (u.user_group || 'office') : 'office';
     return group === 'school' ? 'leave_approvers_school' : 'leave_approvers';
   } catch (e) { return 'leave_approvers'; }
 }
@@ -885,7 +885,7 @@ async function notifyTravelSubmitted(id) {
     const text = travelSubmittedText(b);
     // สายอนุมัติตามกลุ่มผู้ขอ: school → ผู้ตรวจสอบ (ขั้น 1) | office → ผู้บังคับบัญชาขั้นต้น (ขั้น 1)
     const gu = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(b.user_id);
-    const isSchool = gu && ((gu.user_group || (gu.school_code === '54020000' ? 'office' : 'school')) === 'school');
+    const isSchool = gu && ((gu.user_group || 'office') === 'school');
     const settingRow = await db.prepare("SELECT value FROM settings WHERE `key` = ?").get(isSchool ? 'travel_approvers_school' : 'travel_approvers');
     let mapping = {};
     try { mapping = JSON.parse(settingRow ? settingRow.value : '{}'); } catch (e) { /* ignore */ }
@@ -910,7 +910,7 @@ async function notifyTravelNextLevel(id, deciderName) {
     const text = travelNextLevelText(b, deciderName);
     // ขั้นถัดไปตามสายของผู้ขอ: school 3 ขั้น (reviewer→supervisor→approver) | office 2 ขั้น (supervisor→approver)
     const gu = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(b.user_id);
-    const isSchool = gu && ((gu.user_group || (gu.school_code === '54020000' ? 'office' : 'school')) === 'school');
+    const isSchool = gu && ((gu.user_group || 'office') === 'school');
     const doneLevels = Math.max(1, Number(b.approval_level) || 1);
     const settingRow = await db.prepare("SELECT value FROM settings WHERE `key` = ?").get(isSchool ? 'travel_approvers_school' : 'travel_approvers');
     let mapping = {};
