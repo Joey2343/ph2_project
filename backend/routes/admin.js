@@ -1032,10 +1032,13 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
   let sql = 'SELECT d.*, u.full_name AS creator_name, dr.is_read, dr.read_at, dr.as_school FROM document_recipients dr JOIN documents d ON d.id = dr.document_id LEFT JOIN users u ON u.id = d.created_by WHERE dr.user_id = ?';
   const params = [req.user.id];
   // ผู้ใช้กลุ่มสถานศึกษา: แยกตามสถานศึกษาที่กำลังใช้งาน (as_school) — ของใครของมัน
+  // "to_org ขึ้นต้นด้วยเลข" ต้องใช้ REGEXP ไม่ใช่ GLOB
+  // GLOB เป็นไวยากรณ์ของ SQLite — MariaDB ไม่รู้จัก คำสั่งจะ error ทันที
+  // (เคยทำให้หน้า "หนังสือรับ" ฝั่งสถานศึกษาพังทันทีที่เลือกสถานศึกษาไว้)
   if (req.user.user_group === 'school' && (req.user.current_school || '').trim()) {
     const activeCode = String(req.user.current_school).trim().split(' ')[0];
     if (/^\d{7,8}$/.test(activeCode)) {
-      sql += " AND (dr.as_school = ? OR (dr.as_school IS NULL AND NOT (d.to_org GLOB '[0-9]*' AND d.to_org NOT LIKE ?)))";
+      sql += " AND (dr.as_school = ? OR (dr.as_school IS NULL AND NOT (d.to_org REGEXP '^[0-9]' AND d.to_org NOT LIKE ?)))";
       params.push(activeCode, activeCode + '%');
     }
   }

@@ -110,6 +110,14 @@ onMounted(async () => {
     } catch {
       schoolPrefix.value = '';
     }
+    /*
+     * ถ้าสารบัญสถานศึกษาตั้งเลขหนังสือไว้แล้ว (เช่น 0001) ให้ใช้ค่านั้นเป็นเลขหลักของหนังสือ
+     *
+     * เดิมโหลดแค่เลขรันจาก /next-doc-no ซึ่งเป็นจำนวนเต็มธรรมดา → 0001 กลายเป็น 1
+     * แถวช่องนี้ถูกล็อกอ่านอย่างเดียว (schoolPrefixLocked) ผู้ใช้จึงแก้เองไม่ได้ด้วย
+     * เทียบกับระบบเดิม: value: savedPrefix || nextNo
+     */
+    if (schoolPrefix.value) noMain.value = schoolPrefix.value;
   }
 
   addFileRow();
