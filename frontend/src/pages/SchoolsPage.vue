@@ -100,7 +100,7 @@ function popupHtml(s) {
       ${s.phone ? '📞 ' + UI.esc(s.phone) + '<br>' : ''}
       ${s.level ? '🎓 ' + UI.esc(s.level) : ''}
       ${dTag}
-      ${s.disaster_image ? `<div style="margin-top:6px"><img src="/uploads/${UI.esc(s.disaster_image)}" alt="รูปความเสียหาย" style="width:100%;max-width:220px;max-height:150px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer" onclick="window.open(this.src,&#39;_blank&#39;)" title="คลิกเพื่อดูรูปเต็ม"></div>` : ''}
+      ${s.disaster_image ? `<div style="margin-top:6px"><img src="/uploads/${UI.esc(UI.encodePath(s.disaster_image))}" alt="รูปความเสียหาย" style="width:100%;max-width:220px;max-height:150px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer" onclick="window.open(this.src,&#39;_blank&#39;)" title="คลิกเพื่อดูรูปเต็ม"></div>` : ''}
     </div>`;
 }
 
@@ -651,7 +651,7 @@ onBeforeUnmount(() => {
         />
         <div v-if="editing && editing.disaster_image && !disasterImage" style="margin-top: 6px">
           <img
-            :src="'/uploads/' + editing.disaster_image"
+            :src="'/uploads/' + UI.encodePath(editing.disaster_image)"
             alt="รูปความเสียหาย"
             style="max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid #e2e8f0"
           />

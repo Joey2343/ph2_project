@@ -8,6 +8,7 @@
  * รุ่นนี้ใช้ pdfjs-dist จาก node_modules ซึ่งตั้ง workerSrc ให้แล้วใน src/lib/pdfjs.js
  */
 import { pdfjsLib } from '../lib/pdfjs.js';
+import { UI } from '../ui/ui.js';
 
 import '../styles/theme.css';
 /* หน้าต่างลงนามในร่างเอกสาร — เปิดจากหน้าอนุมัติบันทึกข้อความ (ผู้อนุมัติขั้นที่ 2/3)
@@ -50,7 +51,7 @@ import '../styles/theme.css';
 
   document.title = `🖊️ ลงนามในร่างเอกสาร — ${memo.doc_no || 'บันทึกข้อความ'}`;
   memoLabel.textContent = `${memo.doc_no || 'บันทึกข้อความ'} — ${memo.title || ''}`;
-  document.getElementById('sig-thumb').src = '/uploads/' + encodeURIComponent(me.signature);
+  document.getElementById('sig-thumb').src = '/uploads/' + UI.encodePath(me.signature);
   const uname = `${me.title || ''}${me.first_name || ''} ${me.last_name || ''}`.trim();
   document.getElementById('sig-user').textContent = uname || me.username || me.full_name || '';
 
@@ -78,7 +79,7 @@ import '../styles/theme.css';
     const stamp = document.createElement('div');
     stamp.className = 'sig-stamp';
     const img = document.createElement('img');
-    img.src = '/uploads/' + encodeURIComponent(me.signature);
+    img.src = '/uploads/' + UI.encodePath(me.signature);
     img.alt = 'ลายเซ็น';
     stamp.append(img);
     const del = document.createElement('button');
@@ -147,7 +148,7 @@ import '../styles/theme.css';
   // workerSrc ตั้งไว้ใน src/lib/pdfjs.js แล้ว
   let pdf = null;
   try {
-    pdf = await pdfjsLib.getDocument({ url: '/uploads/' + encodeURIComponent(draft.file) }).promise;
+    pdf = await pdfjsLib.getDocument({ url: '/uploads/' + UI.encodePath(draft.file) }).promise;
   } catch (e) {
     return fail('ไม่สามารถเปิดไฟล์ร่างหนังสือส่งได้ (รองรับเฉพาะไฟล์ PDF): ' + (e.message || ''));
   }
@@ -192,7 +193,7 @@ import '../styles/theme.css';
     ghost = document.createElement('div');
     ghost.className = 'sig-ghost';
     const gimg = document.createElement('img');
-    gimg.src = '/uploads/' + encodeURIComponent(me.signature);
+    gimg.src = '/uploads/' + UI.encodePath(me.signature);
     gimg.alt = '';
     ghost.append(gimg);
     ghost.style.width = STAMP_W + 'px';

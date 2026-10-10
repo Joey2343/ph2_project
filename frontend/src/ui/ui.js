@@ -31,7 +31,13 @@ function ensureRoot(id) {
 /* Helpers สำหรับสร้าง UI: elements, modal, toast, format ต่าง ๆ */
 
 export const UI = {
-  /** encode file path สำหรับ URL — รักษา / ไว้ (รองรับ subfolder เช่น staff/filename.png) */
+  /**
+   * encode file path สำหรับ URL — รักษา / ไว้ (รองรับ subfolder เช่น staff/filename.png)
+   *
+   * ⚠️ ห้ามแทนที่ด้วย encodeURIComponent() ตรง ๆ
+   * เพราะมันเข้ารหัส "/" เป็น %2F → เซิร์ฟเวอร์ตอบ 404 แล้วส่ง index.html มา
+   * ผู้ใช้คลิกไฟล์แล้วจะเห็นหน้าเว็บแอปเปิดขึ้นมาใหม่ แทนที่จะเปิดไฟล์จริง
+   */
   encodePath(p) { return p ? p.split('/').map(encodeURIComponent).join('/') : ''; },
   /** สร้าง element: h('div', {className:'x', onclick: fn}, ...children) */
   h(tag, attrs, ...children) {
@@ -570,7 +576,13 @@ export const UI = {
     return UI.h('button', { className: `btn btn-xs btn-outline ${cls}`, onclick }, label);
   },
 
-  /** รูปไฟล์หรือลิงก์ดาวน์โหลด */
+  /**
+   * รูปไฟล์หรือลิงก์ดาวน์โหลด
+   *
+   * ⚠️ ต้องใช้ UI.encodePath() ไม่ใช่ encodeURIComponent()
+   * เพราะ encodeURIComponent เข้ารหัส "/" ด้วย → documents%2Fabc.pdf → 404
+   * เซิร์ฟเวอร์จะส่ง index.html มาแทน → คลิกแล้วเปิดหน้าเว็บแอปไม่ใช่ไฟล์
+   */
   fileLink(filename, label) {
     if (!filename) return UI.h('span', { className: 'hint' }, '-');
     var files = [];
@@ -589,9 +601,9 @@ export const UI = {
       var isImg = /.(png|jpe?g|gif|webp)$/i.test(f);
       var name = f.split('/').pop();
       if (isImg) {
-        wrap.append(UI.h('a', { href: '/uploads/' + encodeURIComponent(f), target: '_blank', title: name, style: { fontSize: '12px' } }, '🖼️ ' + name));
+        wrap.append(UI.h('a', { href: '/uploads/' + UI.encodePath(f), target: '_blank', title: name, style: { fontSize: '12px' } }, '🖼️ ' + name));
       } else {
-        wrap.append(UI.h('a', { href: '/uploads/' + encodeURIComponent(f), target: '_blank', title: name, style: { fontSize: '12px' } }, '📎 ' + name));
+        wrap.append(UI.h('a', { href: '/uploads/' + UI.encodePath(f), target: '_blank', title: name, style: { fontSize: '12px' } }, '📎 ' + name));
       }
     });
     return wrap;

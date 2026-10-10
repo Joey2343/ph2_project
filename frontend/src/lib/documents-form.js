@@ -418,7 +418,8 @@ export async function printHonor(data) {
  * พิมพ์จากไฟล์เกียรติบัตรที่บันทึกไว้แล้ว (คอลัมน์ "พิมพ์" ในตาราง)
  */
 export function printHonorFile(filePath) {
-  const w = window.open('/uploads/' + filePath, '_blank', 'width=1100,height=800');
+  const src = '/uploads/' + UI.encodePath(filePath);
+  const w = window.open(src, '_blank', 'width=1100,height=800');
   if (!w) {
     UI.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต pop-up แล้วลองใหม่', 'error');
     return;
@@ -429,8 +430,8 @@ export function printHonorFile(filePath) {
       'html,body { margin:0; padding:0; height:100%; }' +
       'img { width:100%; height:100%; object-fit:contain; }' +
       '</style></head><body>' +
-      '<img src="/uploads/' +
-      filePath +
+      '<img src="' +
+      src +
       '" onload="setTimeout(function(){window.print();},300)" />' +
       '</body></html>',
   );

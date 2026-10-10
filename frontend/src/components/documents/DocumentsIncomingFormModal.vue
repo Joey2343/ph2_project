@@ -133,7 +133,7 @@ function openStamp() {
   }
   if (existingFirstFile.value) {
     // โหลดไฟล์เดิมจากเซิร์ฟเวอร์เพื่อปั้มต่อ
-    fetch('/uploads/' + existingFirstFile.value)
+    fetch('/uploads/' + UI.encodePath(existingFirstFile.value))
       .then((r) => {
         if (!r.ok) throw new Error('โหลดไฟล์ไม่สำเร็จ');
         return r.blob();
@@ -373,7 +373,7 @@ async function save() {
             style="display: flex; align-items: center; gap: 6px; padding: 4px 0 4px 8px; background: #f0f9ff; border-radius: 4px"
           >
             <a
-              :href="'/uploads/' + fp"
+              :href="'/uploads/' + UI.encodePath(fp)"
               target="_blank"
               rel="noopener"
               style="color: #2563eb; text-decoration: underline; font-size: 13px"

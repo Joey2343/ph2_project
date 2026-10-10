@@ -242,7 +242,7 @@ const honorData = computed(() => {
     body: bodyText.value,
     dateTH: dateTH.value ? UI.thaiDate(dateTH.value) : '',
     signer: rec ? attachHonorTitle(((rec.title || '') + rec.full_name).trim()) + (rec.position ? ' (' + rec.position + ')' : '') : '',
-    signerSignature: rec && rec.signature ? '/uploads/' + rec.signature : '',
+    signerSignature: rec && rec.signature ? '/uploads/' + UI.encodePath(rec.signature) : '',
   };
 });
 
@@ -597,7 +597,7 @@ async function save() {
             style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: #f0f9ff; border-radius: 4px"
           >
             <a
-              :href="'/uploads/' + fp"
+              :href="'/uploads/' + UI.encodePath(fp)"
               target="_blank"
               rel="noopener"
               style="color: #2563eb; text-decoration: underline; font-size: 13px"
