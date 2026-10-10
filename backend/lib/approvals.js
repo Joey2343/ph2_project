@@ -282,7 +282,11 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
   }
 
   if (nextLevel >= required && onFinal) {
-    const err = onFinal(row);
+    // ⚠️ ต้อง await — callback ที่ส่งมาหลายตัวเป็น async
+    //   ถ้าไม่ await จะได้ Promise ซึ่ง "truthy เสมอ" → if (err) ผ่านเสมอ
+    //   → return Promise ออกไปก่อนถึงบรรทัด UPDATE → อนุมัติขั้นสุดท้ายไม่เคยบันทึก
+    //   และผู้ใช้ได้ error 500 (เจอจริงที่หน้าจองยานพาหนะ/ห้องประชุม ขั้นสุดท้าย)
+    const err = await onFinal(row);
     if (err) return err;
   }
 
