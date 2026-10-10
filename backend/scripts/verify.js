@@ -102,6 +102,9 @@ function main() {
   console.log('\n[ทดสอบ array ที่หลุด Promise — ทำให้ API คืน [{}]]');
   results.push(run('test-async-map', [path.join(__dirname, 'test-async-map.js')]));
 
+  console.log('\n[ทดสอบ callback ของ approveRequest ถูก await — กันอนุมัติขั้นสุดท้ายพัง]');
+  results.push(run('test-async-callback', [path.join(__dirname, 'test-async-callback.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {
