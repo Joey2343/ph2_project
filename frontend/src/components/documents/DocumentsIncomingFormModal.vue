@@ -414,6 +414,22 @@ async function save() {
                 }
               "
             />
+            <!-- ปุ่มลงเลขหนังสือรับ = อยู่ที่แถวไฟล์แรกเสมอ
+                 ⚠️ เคยเป็นบั๊ก: ปุ่มนี้เขียนเป็น v-else-if ต่อจาก v-if="fileRows.length > 1"
+                 คือเงื่อนไขเดียวกัน → พอมีไฟล์ 2 ช่องขึ้นไป ปุ่มนี้จะไม่มีวันโชว์
+                 เพราะทุกแถวโดน v-if ของปุ่ม ✕ ครอบไว้แล้ว
+                 ของเดิม (legacy) ปุ่มนี้เป็นพี่น้องของ input ไฟล์แรก ไม่มีเงื่อนไขซ่อน -->
+            <button
+              v-if="r.key === fileRows[0].key"
+              type="button"
+              class="btn btn-primary"
+              style="padding: 4px 12px; font-size: 13px; white-space: nowrap"
+              title="ลงเลขหนังสือรับลงในไฟล์แนบ"
+              @click="openStamp"
+            >
+              ✎ ลงเลขหนังสือรับ
+            </button>
+            <!-- ปุ่มลบแถว — โชว์เมื่อมีมากกว่า 1 แถว -->
             <button
               v-if="fileRows.length > 1"
               type="button"
@@ -422,16 +438,6 @@ async function save() {
               @click="removeFileRow(r.key)"
             >
               ✕
-            </button>
-            <button
-              v-else-if="r.key === fileRows[0].key"
-              type="button"
-              class="btn btn-primary"
-              style="padding: 4px 12px; font-size: 13px; white-space: nowrap"
-              title="ลงเลขหนังสือรับลงในไฟล์แนบ"
-              @click="openStamp"
-            >
-              ✎ ลงเลขหนังสือรับ
             </button>
           </div>
 
