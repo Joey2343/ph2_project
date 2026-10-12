@@ -603,10 +603,13 @@ const columns = computed(() => {
   }
 
   // วันที่ — หนังสือคำสั่งย้ายไปต่อจากเลขที่คำสั่ง, หนังสือรับรองย้ายไปต่อจากเลขที่
+  //
+  // ทะเบียนหนังสือรับมี "ลงวันที่" (วันที่ออกเลขหนังสือของต้นทาง) อยู่ข้าง ๆ
+  // จึงต้องระบุชัดว่าคอลัมน์นี้คือ "วันที่รับ" ไม่ใช่แค่ "วันที่"
   if (t === 'order' || t === 'certificate') {
     cols.push({ key: 'date', label: t === 'order' ? 'สั่ง ณ วันที่' : 'วันที่', cell: (r) => ({ text: UI.date(r.date) }) });
   } else {
-    cols.push({ key: 'date', label: 'วันที่', cell: (r) => ({ text: UI.date(r.date) }) });
+    cols.push({ key: 'date', label: t === 'incoming_reg' ? 'วันที่รับ' : 'วันที่', cell: (r) => ({ text: UI.date(r.date) }) });
   }
 
   cols.push({ key: 'title', label: 'เรื่อง' });
