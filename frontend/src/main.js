@@ -15,6 +15,7 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import router, { installLegacyRouterHooks } from './router/index.js';
 import simDate from './composables/simDate.js';
+import { disableBrowserAutofill } from './composables/disableAutofill.js';
 
 import { UI } from './ui/ui.js';
 import api, { setToast } from './api/client.js';
@@ -93,6 +94,9 @@ async function boot() {
   await auth.init();
   simDate.refresh(); // โหลดฟอนต์พื้นหลัง (ไม่บล็อกหน้าแรก)
   ensureAppFonts();
+  // ปิดการเดาข้อความเก่าของเบราว์เซอร์ — ต้องเปิดก่อน mount
+  // แล้วค่อยสแกนซ้ำเองทุกครั้งที่มี modal/ฟอร์มใหม่โผล่ (ดู composables/disableAutofill.js)
+  disableBrowserAutofill();
   app.mount('#app');
   simDate.refresh();
 }
