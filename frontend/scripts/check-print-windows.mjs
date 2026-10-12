@@ -51,7 +51,7 @@ function check(ok, name, detail = '') {
   }
 }
 
-/** ไล่ทุกไฟล์ .js / .vue ใต��� src/ */
+/** ไล่ทุกไฟล์ .js / .vue ใต้ src/ */
 function* walk(dir) {
   for (const name of readdirSync(dir, { withFileTypes: true })) {
     if (name === 'node_modules' || name === 'dist') continue;

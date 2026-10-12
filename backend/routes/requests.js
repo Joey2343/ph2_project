@@ -1083,18 +1083,29 @@ router.get('/my-leave-balance', auth.requireAuth, async (req, res) => {
 });
 
 // ---------- เมนู วันลาพักผ่อนสะสม ----------
+
+/**
+ * สิทธิ์เข้าหน้า "วันลาพักผ่อนสะสม" — ใช้ร่วมกันทั้งการดู (GET) และการบันทึก (PUT)
+ *
+ * ⚠️ เคยเป็นบั๊ก: GET ให้สิทธิ์แก่ admin · can_approve · ผู้ตรวจสอบ (ขั้นที่ 1)
+ *    แต่ PUT ตรวจแค่ admin · ผู้ตรวจสอบ (ขั้นที่ 1) — ไม่เอา can_approve
+ *    ผลคือผู้ที่มี can_approve เห็นตารางและกดปุ่ม ✎ ได้ แต่กดบันทึกแล้วได้ 403
+ *    (หน้าเว็บยังโชว์ปุ่ม ✎ เพราะเงื่อนไขฝั่งหน้าเช็ค leave_approvers ทุกขั้น)
+ *
+ * ต้องใช้ฟังก์ชันนี้ทั้งสองทางเสมอ ไม่งั้นสิทธิ์จะ drift อีก
+ */
+async function canEditLeaveBalance(user) {
+  if (user.role === 'admin') return true;
+  if (user.can_approve) return true;
+  const laRow = await db.prepare("SELECT value FROM settings WHERE `key` = 'leave_approvers'").get();
+  let la = {};
+  try { la = JSON.parse(laRow ? laRow.value : '{}'); } catch (e) { /* ignore */ }
+  const inspectorIds = Array.isArray(la['1']) ? la['1'].map(Number) : [];
+  return inspectorIds.includes(Number(user.id));
+}
+
 router.get('/leave-balances', auth.requireAuth, async (req, res) => {
-  const isAdmin = req.user.role === 'admin';
-  // ตรวจสอบสิทธิ์: admin, can_approve, หรือผู้ตรวจสอบ (leave_approvers level 1)
-  let isLeaveInspector = false;
-  if (!isAdmin && !req.user.can_approve) {
-    const laRow = await db.prepare("SELECT value FROM settings WHERE `key` = 'leave_approvers'").get();
-    let la = {};
-    try { la = JSON.parse(laRow ? laRow.value : '{}'); } catch (e) { /* ignore */ }
-    const inspectorIds = Array.isArray(la['1']) ? la['1'].map(Number) : [];
-    if (inspectorIds.includes(req.user.id)) isLeaveInspector = true;
-  }
-  if (!isAdmin && !req.user.can_approve && !isLeaveInspector) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ ผู้อนุมัติ หรือผู้ตรวจสอบเท่านั้น' });
+  if (!await canEditLeaveBalance(req.user)) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ ผู้อนุมัติ หรือผู้ตรวจสอบเท่านั้น' });
   // ค่าเริ่มต้น = ปีงบประมาณปัจจุบัน (พอถึง 1 ต.ค. เปลี่ยนเป็นปีงบใหม่ทันที) — ข้อมูลปีเก่าเก็บครบตามคอลัมน์ year เรียกดูย้อนหลังได้
   const year = Number(req.query.year) || getFiscalYearBE(); // พ.ศ. (ปีงบประมาณ)
   // ดึงรายชื่อบุคลากรทั้งหมดที่ active
@@ -1128,19 +1139,17 @@ router.get('/leave-balances', auth.requireAuth, async (req, res) => {
 
 router.put('/leave-balances/:userId', auth.requireAuth, async (req, res) => {
   const userId = Number(req.params.userId);
-  const isAdmin = req.user.role === 'admin';
-  // ตรวจสอบสิทธิ์: admin หรือผู้ตรวจสอบ (leave_approvers level 1)
-  let isLeaveInspector = false;
-  const laRow = await db.prepare("SELECT value FROM settings WHERE `key` = 'leave_approvers'").get();
-  let la = {};
-  try { la = JSON.parse(laRow ? laRow.value : '{}'); } catch (e) { /* ignore */ }
-  const inspectorIds = Array.isArray(la['1']) ? la['1'].map(Number) : [];
-  if (inspectorIds.includes(req.user.id)) isLeaveInspector = true;
-  if (!isAdmin && !isLeaveInspector) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบหรือผู้ตรวจสอบเท่านั้น' });
+  // สิทธิ์เดียวกับการดู (ใช้ helper ตัวเดียวกัน — เคย drift ทำให้เห็นตารางแต่บันทึกไม่ได้)
+  if (!await canEditLeaveBalance(req.user)) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ ผู้อนุมัติ หรือผู้ตรวจสอบเท่านั้น' });
   const u = await db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
   if (!u) return res.status(404).json({ error: 'ไม่พบเจ้าหน้าที่' });
   const b = req.body || {};
-  const year = Number(b.year) || getFiscalYearBE();
+  // ปีงบประมาณต้องเป็นตัวเลขจริง — ถ้าฝั่งหน้าส่ง Vue ref (object) มา จะได้ NaN
+  // ซึ่งทำให้บันทึกผิดปีงบประมาณเงียบ ๆ ไม่ใช่ของปีที่เลือกไว้
+  const year = Number(b.year);
+  if (!Number.isInteger(year) || year < 2500 || year > 2600) {
+    return res.status(400).json({ error: 'ปีงบประมาณไม่ถูกต้อง (ต้องเป็น พ.ศ. 4 หลัก เช่น 2570)' });
+  }
   const accumulated = Number(b.vacation_accumulated) || 0;
   const annual = Number(b.vacation_annual) || 0;
   await db.prepare(`INSERT INTO user_leave_balances (user_id, year, vacation_accumulated, vacation_annual)

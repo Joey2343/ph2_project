@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 /**
  * LeaveBalance — แท็บ "วันลาพักผ่อนสะสม"
  *
@@ -56,7 +56,7 @@ async function save() {
   editSaving.value = true;
   try {
     const res = await api.put(`/leave-balances/${editRow.value.id}`, {
-      year,
+      year: year.value,
       vacation_accumulated: editForm.value.accumulated,
       vacation_annual: editForm.value.annual,
     });

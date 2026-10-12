@@ -19,7 +19,15 @@ const api = {
       if (isForm) opts.body = body;
       else {
         opts.headers['Content-Type'] = 'application/json';
-        opts.body = JSON.stringify(body);
+        try {
+          opts.body = JSON.stringify(body);
+        } catch (e) {
+          // มักเกิดจากการส่ง Vue ref/computed เข้า payload โดยลืมแก้ .value
+          // (เช่น { year } แทน { year: year.value }) — ref มี dep เป็นวงจร
+          // ถ้าไม่จับ error ผู้ใช้จะเห็นข้อความอังกฤษยาว ๆ และไม่รู้ว่ากดบันทึกไม่ได้
+          console.error('[api] JSON.stringify ล้มเหลว — ค่าใน payload ไม่ใช่ข้อมูลธรรมดา', body, e);
+          throw new Error('ข้อมูลที่ส่งไม่ถูกต้อง กรุณาแจ้งผู้ดูแลระบบ (รายละเอียดอยู่ใน Console)');
+        }
       }
     }
     let res;

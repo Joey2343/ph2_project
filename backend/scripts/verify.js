@@ -105,6 +105,9 @@ function main() {
   console.log('\n[ทดสอบ callback ของ approveRequest ถูก await — กันอนุมัติขั้นสุดท้ายพัง]');
   results.push(run('test-async-callback', [path.join(__dirname, 'test-async-callback.js')]));
 
+  console.log('\n[ทดสอบสิทธิ์หน้าวันลาพักผ่อนสะสม — GET/PUT ต้องตรงกัน]');
+  results.push(run('test-leave-balance-perm', [path.join(__dirname, 'test-leave-balance-perm.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {
