@@ -75,6 +75,17 @@ const isCert = computed(() => d.value.doc_type === 'certificate');
 /** ไฟล์แนบ — คอลัมน์ file เป็น JSON array หรือ path เดี่ยว */
 const files = computed(() => parseFiles(d.value.file));
 
+/** ชื่อไฟล์ที่ผู้ใช้ตั้งเอง — JSON array เรียงตามลำดับ index ของ file (ไม่บังคับ) */
+const fileNames = computed(() => {
+  if (!d.value.file_names) return [];
+  try {
+    const arr = JSON.parse(d.value.file_names);
+    return Array.isArray(arr) ? arr.map((x) => String(x || '')) : [];
+  } catch {
+    return [];
+  }
+});
+
 /**
  * ลิงก์ไฟล์แนบ
  *
@@ -88,6 +99,9 @@ const files = computed(() => parseFiles(d.value.file));
 const isImage = (p) => /\.(png|jpe?g|gif|webp)$/i.test(String(p));
 const fileName = (p) => String(p).split('/').pop();
 const fileHref = (p) => '/uploads/' + UI.encodePath(p);
+
+/** ชื่อที่แสดง: ถ้าผู้ใช้ตั้งชื่อเองให้ใช้ชื่อนั้น ไม่งั้นใช้ชื่อไฟล์จริง */
+const fileLabel = (p, i) => fileNames.value[i] || fileName(p);
 
 /** ชื่อ-นามสกุล + โรงเรียน ของเกียรติบัตร */
 const personText = computed(() => {
@@ -207,9 +221,9 @@ const MSG_STYLE = {
             :key="i"
             :href="fileHref(f)"
             target="_blank"
-            :title="fileName(f)"
+            :title="fileLabel(f, i)"
             style="font-size: 12px"
-            >{{ (isImage(f) ? '🖼️ ' : '📎 ') + fileName(f) }}</a
+            >{{ (isImage(f) ? '🖼️ ' : '📎 ') + fileLabel(f, i) }}</a
           >
         </div>
       </div>

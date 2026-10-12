@@ -412,6 +412,10 @@ function openEditForm(row) {
  * ปุ่ม "ลงทะเบียนรับ" ในแท็บหนังสือรับ
  *
  * เติมข้อมูลจากรายการหนังสือรับที่เลือกมากรอกให้อัตโนมัติ (เหมือนของเดิม)
+ *
+ * "ลงวันที่" = วันที่ออกเลขหนังสือของต้นทาง
+ * ดึงจากวันที่ของหนังสือที่โรงเรียนส่งเข้ามา (หน้า "ส่งหนังสือไป สพป.แพร่ เขต 2")
+ * ถ้าลงทะเบียนไปแล้วและตั้งค่าเองไว้ ก็คงค่าเดิมไว้ ไม่ทับด้วยวันที่รับ
  */
 function openIncomingRegister(row) {
   openIncomingForm({
@@ -421,10 +425,12 @@ function openIncomingRegister(row) {
     doc_no: row.doc_no || '',
     title: row.title || '',
     date: row.date || '',
+    letter_date: row.letter_date || row.date || '',
     note: row.note || '',
     reg_no: row.reg_no || '',
     workgroup: row.workgroup || '',
     file: row.file || '',
+    file_names: row.file_names || '',
   });
 }
 

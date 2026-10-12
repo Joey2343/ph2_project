@@ -298,10 +298,10 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   }
   const docSchoolCode = (req.user.school_code || '').trim();
   const isRegisteredVal = Number(b.is_registered) ? 1 : 0;
-  const info = await db.prepare(`INSERT INTO documents (doc_type, doc_no, reg_no, title, from_org, to_org, date, letter_date, category, file, note, created_by, body_text, priority, workgroup, sender_type, school_code, person_name, person_school, honor_signer, honor_template, honor_saved_file, is_registered, requester, cert_position, officer, owner_group, order_registrar)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(b.doc_type, (b.doc_no || '').trim(), autoRegNo, String(b.title).trim(),
+  const info = await db.prepare(`INSERT INTO documents (doc_type, doc_no, reg_no, title, from_org, to_org, date, letter_date, category, file, file_names, note, created_by, body_text, priority, workgroup, sender_type, school_code, person_name, person_school, honor_signer, honor_template, honor_saved_file, is_registered, requester, cert_position, officer, owner_group, order_registrar)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(b.doc_type, (b.doc_no || '').trim(), autoRegNo, String(b.title).trim(),
     (b.from_org || '').trim(), (b.to_org || '').trim(), (b.date || simdate.todayISO()), (b.letter_date || '').trim(),
-    (b.category || '').trim(), file, (b.note || '').trim(), req.user.id,
+    (b.category || '').trim(), file, (b.file_names || '').trim(), (b.note || '').trim(), req.user.id,
     (b.body_text || '').trim(), (b.priority || 'normal').trim(), (b.workgroup || '').trim(), (b.sender_type || 'office').trim(), docSchoolCode,
     (b.person_name || '').trim(), (b.person_school || '').trim(), (b.honor_signer || '').trim(), (b.honor_template || '').trim(), (b.honor_saved_file || '').trim(), isRegisteredVal,
     (b.requester || '').trim(), (b.cert_position || '').trim(), (b.officer || '').trim(), (b.owner_group || '').trim(), (b.order_registrar || '').trim());
@@ -428,8 +428,16 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
     if (Number(b.is_registered) === 1 && row.file) {
       var oldFiles = [];
       try { var arr = JSON.parse(row.file); oldFiles = Array.isArray(arr) ? arr : [row.file]; } catch (e) { oldFiles = [row.file]; }
-      oldFiles.forEach(f => { if (!newFiles.includes(f)) newFiles.unshift(f); });
-      file = JSON.stringify(newFiles);
+      /*
+       * ⚠️ ห้ามใช้ unshift ต่อทีละไฟล์
+       *    unshift ดันของเดิมไปหน้าเสมอ → ลำดับไฟล์เดิมกลับด้าน
+       *    เช่น เดิม [a, b] กลายเป็น [b, a, ใหม่]
+       *
+       *    เดิมไม่มีผลกระทบเพราะทุกไฟล์แสดงชื่อจาก path ตัวเอง
+       *    แต่ documents.file_names ผูกชื่อกับไฟล์ด้วยลำดับ index
+       *    ถ้าลำดับเพี้ยน ชื่อจะไปตกกับไฟล์ผิดตัว
+       */
+      file = JSON.stringify(oldFiles.concat(newFiles.filter(function(f) { return !oldFiles.includes(f); })));
     } else {
       if (row.file) deleteUploadedFile(row.file);
       file = newFiles.length === 1 ? newFiles[0] : JSON.stringify(newFiles);
@@ -438,11 +446,11 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
     if (row.file) deleteUploadedFile(row.file);
     file = getSchoolPrefix(req) + 'documents/' + req.file.filename;
   }
-  await db.prepare(`UPDATE documents SET doc_type=?, doc_no=?, title=?, from_org=?, to_org=?, date=?, letter_date=?, category=?, file=?, note=?, body_text=?, priority=?, person_name=?, person_school=?, honor_signer=?, honor_template=?, honor_saved_file=?, reg_no=?, workgroup=?, is_registered=?, requester=?, cert_position=?, officer=?, owner_group=?, order_registrar=? WHERE id=?`)
+  await db.prepare(`UPDATE documents SET doc_type=?, doc_no=?, title=?, from_org=?, to_org=?, date=?, letter_date=?, category=?, file=?, file_names=?, note=?, body_text=?, priority=?, person_name=?, person_school=?, honor_signer=?, honor_template=?, honor_saved_file=?, reg_no=?, workgroup=?, is_registered=?, requester=?, cert_position=?, officer=?, owner_group=?, order_registrar=? WHERE id=?`)
     .run(b.doc_type || row.doc_type, (b.doc_no ?? (row.doc_no || '')).trim(), String(b.title || row.title).trim(),
       (b.from_org ?? (row.from_org || '')).trim(), (b.to_org ?? (row.to_org || '')).trim(),
       b.date || row.date || simdate.todayISO(), (b.letter_date ?? (row.letter_date || '')).trim(), (b.category ?? (row.category || '')).trim(),
-      file, (b.note ?? (row.note || '')).trim(),
+      file, (b.file_names ?? (row.file_names || '')).toString().trim(), (b.note ?? (row.note || '')).trim(),
       (b.body_text ?? (row.body_text || '')).trim(), (b.priority ?? (row.priority || 'normal')).trim(),
       (b.person_name ?? (row.person_name || '')).trim(), (b.person_school ?? (row.person_school || '')).trim(),
       (b.honor_signer ?? (row.honor_signer || '')).trim(), (b.honor_template ?? (row.honor_template || '')).trim(), (b.honor_saved_file ?? (row.honor_saved_file || '')).trim(),

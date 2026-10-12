@@ -108,6 +108,11 @@ function main() {
   console.log('\n[ทดสอบสิทธิ์หน้าวันลาพักผ่อนสะสม — GET/PUT ต้องตรงกัน]');
   results.push(run('test-leave-balance-perm', [path.join(__dirname, 'test-leave-balance-perm.js')]));
 
+  console.log('\n[ทดสอบชื่อไฟล์แนบ — ต้องตรงลำดับไฟล์เสมอ]');
+  results.push(run('test-file-names', [path.join(__dirname, 'test-file-names.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {

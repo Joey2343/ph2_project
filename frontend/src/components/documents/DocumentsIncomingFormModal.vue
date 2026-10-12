@@ -98,12 +98,12 @@ let seq = 1;
 
 const MAX_FILES = 7;
 
-function addFileRow(preset = null) {
+function addFileRow(preset = null, presetName = '') {
   if (fileRows.value.length >= MAX_FILES) {
     UI.toast('แนบไฟล์ได้สูงสุด 7 ไฟล์', 'error');
     return;
   }
-  fileRows.value.push({ key: seq++, file: preset });
+  fileRows.value.push({ key: seq++, file: preset, name: presetName });
 }
 
 function removeFileRow(key) {
@@ -119,6 +119,23 @@ const oldFiles = computed(() => {
   } catch {
     return [d.value.file];
   }
+});
+
+/** ชื่อไฟล์ที่ตั้งไว้เดิม — JSON array เรียงตามลำดับ index ของ file */
+function parseFileNames(raw) {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map((x) => String(x || '')) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** ไฟล์เดิม + ชื่อที่ตั้งไว้ (คู่กันตาม index) — ใช้แสดงช่องตั้งชื่อและตอนบันทึก */
+const oldFileRows = computed(() => {
+  const names = parseFileNames(d.value.file_names);
+  return oldFiles.value.map((path, i) => ({ key: 'old-' + i, path, name: names[i] || '' }));
 });
 
 /* ---------- ตัวปั้มตรา ---------- */
@@ -175,20 +192,30 @@ function onStamped(f) {
   }
 }
 
-/** ไฟล์ที่จะส่งจริง: ถ้ามีไฟล์ที่ปั้มแล้วแต่ยังไม่ได้ใส่ช่อง ให้ใส่ช่องว่างแรก */
-function collectFiles() {
+/**
+ * ไฟล์ที่จะส่งจริง + ชื่อที่ตั้งไว้ (เรียงคู่กัน 1:1)
+ *
+ * ถ้ามีไฟล์ที่ปั้มแล้วแต่ยังไม่ได้ใส่ช่อง ให้ใส่ช่องว่างแรก
+ * คืนเป็นคู่เพื่อกันชื่อกับไฟล์หลุดจากกัน (ต้องเรียงตรงกับลำดับที่ backend เก็บ)
+ */
+function collectEntries() {
   const out = [];
   let stampedPlaced = false;
   for (const r of fileRows.value) {
     if (stampedFile.value && !stampedPlaced && !r.file) {
-      out.push(stampedFile.value);
+      out.push({ file: stampedFile.value, name: '' });
       stampedPlaced = true;
       continue;
     }
-    if (r.file) out.push(r.file);
+    if (r.file) out.push({ file: r.file, name: String(r.name || '').trim() });
   }
-  if (stampedFile.value && !stampedPlaced) out.push(stampedFile.value);
+  if (stampedFile.value && !stampedPlaced) out.push({ file: stampedFile.value, name: '' });
   return out;
+}
+
+/** ไฟล์ที่จะส่งจริง */
+function collectFiles() {
+  return collectEntries().map((e) => e.file);
 }
 
 /* ---------- โหลดข้อมูล ---------- */
@@ -260,8 +287,18 @@ async function save() {
     fd.append('is_registered', '1');
     fd.append('note', note.value.trim());
 
-    const files = collectFiles();
+    const entries = collectEntries();
+    const files = entries.map((e) => e.file);
     for (const f of files) fd.append('files', f);
+
+    /*
+     * ชื่อไฟล์ที่ตั้งเอง (ไม่บังคับ) — เก็บเป็น JSON array เรียงตามลำดับไฟล์
+     *
+     * ตอนแก้ไข (is_registered=1) backend เก็บไฟล์เดิมไว้ก่อน แล้วต่อท้ายด้วยไฟล์ใหม่
+     * ช่องตั้งชื่อก็ต้องเรียงเดียวกัน ไม่งั้นชื่อจะไปตรงกับไฟล์ผิดตัว
+     */
+    const oldNames = editId ? oldFileRows.value.map((o) => String(o.name || '').trim()) : [];
+    fd.append('file_names', JSON.stringify(oldNames.concat(entries.map((e) => e.name))));
 
     if (editId) await api.putForm('/documents/' + editId, fd);
     else await api.postForm('/documents', fd);
@@ -381,38 +418,50 @@ async function save() {
       <div class="form-group full">
         <label>แนบไฟล์</label>
         <div style="display: flex; flex-direction: column; gap: 4px">
-          <!-- ไฟล์เดิม -->
+          <!-- ไฟล์เดิม + ช่องตั้งชื่อ -->
           <div
-            v-for="(fp, i) in oldFiles"
-            :key="'old-' + i"
-            style="display: flex; align-items: center; gap: 6px; padding: 4px 0 4px 8px; background: #f0f9ff; border-radius: 4px"
+            v-for="o in oldFileRows"
+            :key="o.key"
+            style="display: flex; align-items: center; gap: 6px; padding: 4px 0 4px 8px; background: #f0f9ff; border-radius: 4px; flex-wrap: wrap"
           >
             <a
-              :href="'/uploads/' + UI.encodePath(fp)"
+              :href="'/uploads/' + UI.encodePath(o.path)"
               target="_blank"
               rel="noopener"
               style="color: #2563eb; text-decoration: underline; font-size: 13px"
-              >{{ /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fp) ? '🖼️' : '📎' }}
-              {{ String(fp).split('/').pop() }}</a
+              >{{ /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(o.path) ? '🖼️' : '📎' }}
+              {{ o.name || String(o.path).split('/').pop() }}</a
             >
+            <input
+              v-model="o.name"
+              type="text"
+              placeholder="ตั้งชื่อไฟล์ (ไม่บังคับ)"
+              style="flex: 1; min-width: 160px; font-size: 12px; padding: 4px 8px"
+            />
           </div>
 
-          <!-- ช่องไฟล์ใหม่ -->
+          <!-- ช่องไฟล์ใหม่ + ช่องตั้งชื่อ -->
           <div
             v-for="r in fileRows"
             :key="r.key"
-            style="display: flex; align-items: center; gap: 6px"
+            style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"
           >
             <input
               type="file"
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
-              style="flex: 1"
+              style="flex: 1; min-width: 180px"
               @change="
                 (e) => {
                   const row = fileRows.find((x) => x.key === r.key);
                   if (row) row.file = e.target.files[0] || null;
                 }
               "
+            />
+            <input
+              v-model="r.name"
+              type="text"
+              placeholder="ตั้งชื่อไฟล์ (ไม่บังคับ)"
+              style="flex: 1; min-width: 160px; font-size: 12px; padding: 4px 8px"
             />
             <!-- ปุ่มลงเลขหนังสือรับ = อยู่ที่แถวไฟล์แรกเสมอ
                  ⚠️ เคยเป็นบั๊ก: ปุ่มนี้เขียนเป็น v-else-if ต่อจาก v-if="fileRows.length > 1"

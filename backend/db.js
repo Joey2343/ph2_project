@@ -472,6 +472,12 @@ const COLUMN_MIGRATIONS = [
   ['documents', 'reg_no', "reg_no VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   // วันที่ออกเลขหนังสือของหน่วยงานต้นเรื่อง (แยกจาก date = วันที่รับ) — ISO YYYY-MM-DD
   ['documents', 'letter_date', "letter_date VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
+  // ชื่อที่ตั้งเองของแต่ละไฟล์แนบ (JSON array เรียงตามลำดับ index ของ file) — ใส่ไม่บังคับ
+  //
+  // ⚠️ ต้องเป็น TEXT ไม่ใช่ VARCHAR: ตาราง documents มีคอลัมน์ยาว ๆ อยู่แล้วมาก
+  //    ถ้าใช้ VARCHAR(8000) utf8mb4 = 32,000 ไบต์ จะเกินขนาดแถวสูงสุด 65,535
+  //    (ER_TOO_BIG_ROWSIZE) — ส่วน TEXT ไม่ถูกนับในขนาดแถว จึงเพิ่มได้
+  ['documents', 'file_names', "file_names TEXT"],
   ['documents', 'workgroup', "workgroup VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['documents', 'is_registered', "is_registered INT DEFAULT 0"],
   ['documents', 'body_text', "body_text VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
