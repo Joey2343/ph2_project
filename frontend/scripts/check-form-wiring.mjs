@@ -1,0 +1,111 @@
+/**
+ * check-form-wiring.mjs — กันฟอร์มที่ "กรอกแล้วบันทึกไม่ได้"
+ *
+ * บั๊กที่เจอจริง 2 จุดใน DocumentsIncomingFormModal.vue (ลงทะเบียนรับหนังสือ)
+ *
+ * ① ช่อง "หนังสือจาก" ผูกกับ fromInput แต่ตอนตรวจ/บันทึกอ่าน fromOrg คนละตัว
+ *    ทั้งสองตัวไม่เคยเชื่อมกัน → กรอกครบ กดบันทึก ก็ขึ้น
+ *    "กรุณาเลือกหน่วยงานต้นเรื่อง" และไม่ยิง request เลย
+ *
+ * ② ThaiDateField อ่านค่าผ่าน document.getElementById(props.id)
+ *    ถ้าไม่ไส่ id → UI.h ข้าม attribute ที่เป็น undefined → input ไม่มี id
+ *    → getElementById('') = null → onChange return ทิ้ง → ไม่ emit เลย
+ *    ผู้ใช้เลือกวันที่แล้วจอเปลี่ยน แต่ค่าที่บันทึกยังเป็นวันที่เดิม (ข้อมูลผิดเงียบ ๆ)
+ *
+ * ใช้: node scripts/check-form-wiring.mjs
+ */
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+function walk(dir, out = []) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
+    const p = join(dir, e.name);
+    if (e.isDirectory()) walk(p, out);
+    else if (/\.vue$/.test(e.name)) out.push(p);
+  }
+  return out;
+}
+
+let pass = 0;
+let fail = 0;
+function check(ok, name, detail = '') {
+  if (ok) { pass += 1; console.log(`  ✔ ${name}`); }
+  else { fail += 1; console.log(`  ✖ ${name}`); if (detail) console.log(`      ${detail}`); }
+}
+
+/* ── ① ช่องที่ผู้ใช้พิมพ์ ต้องเป็นตัวเดียวกับที่ตรวจและบันทึก ─────────────── */
+console.log('\n① ช่องกรอก ↔ ค่าที่บันทึก ต้องเป็นตัวเดียวกัน');
+
+const incFile = join(ROOT, 'src', 'components', 'documents', 'DocumentsIncomingFormModal.vue');
+const incRaw = readFileSync(incFile, 'utf8');
+const inc = incRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+check(!/const\s+fromOrg\s*=\s*ref\(/.test(inc),
+  'DocumentsIncomingFormModal: ไม่มีตัวแปร fromOrg คนละตัวกับช่องกรอกแล้ว',
+  'ถ้ามีอีกตัว ต้องเชื่อมให้ช่องกรอกเขียนลงตัวเดียวกับที่ตรวจ/บันทึก');
+
+// ตัวแปรที่ผูกกับ input ต้องถูกใช้ทั้งตอนตรวจว่าว่าง และตอน append ลง FormData
+const validateFrom = /if\s*\(\s*!\s*fromInput\.value\.trim\(\)\s*\)/.test(inc);
+const sendFrom = /fd\.append\(\s*'from_org'\s*,\s*fromInput\.value/.test(inc);
+check(validateFrom,
+  'DocumentsIncomingFormModal: ตอนตรวจ "หนังสือจาก" ว่าง ใช้ fromInput',
+  'ต้องอ่านจากตัวเดียวกับที่ v-model ผูกกับช่อง ไม่ใช่ตัวแปรอีกตัวที่ไม่เคยถูกเขียน');
+check(sendFrom,
+  'DocumentsIncomingFormModal: ตอนบันทึก "หนังสือจาก" ใช้ fromInput',
+  'ต้องอ่านจากตัวเดียวกับที่ v-model ผูกกับช่อง');
+
+// ช่องวันที่ใหม่ต้องมีและต้องส่งค่าไปด้วย
+check(/<label>ลงวันที่<\/label>/.test(inc),
+  'DocumentsIncomingFormModal: มีช่อง "ลงวันที่"');
+check(/fd\.append\('letter_date',/.test(inc),
+  'DocumentsIncomingFormModal: ส่ง letter_date ไปกับ FormData');
+check(/letterDate\.value\s*=\s*d\.value\.letter_date/.test(inc),
+  'DocumentsIncomingFormModal: เติมค่า letter_date เดิมตอนแก้ไข');
+
+/* ── ② ThaiDateField ต้องไม่พึ่ง document.getElementById ───────────────── */
+console.log('\n② ThaiDateField ต้องผูกกับ input ของตัวเอง ไม่ใช่ id');
+
+const tdfRaw = readFileSync(join(ROOT, 'src', 'components', 'ui', 'ThaiDateField.vue'), 'utf8');
+// ตัดคอมเมนต์ออกก่อนตรวจ ไม่งั้นบรรทัดที่ "อธิบายบั๊ก" จะทำให้ตรวจผิด
+const tdf = tdfRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+check(!/document\.getElementById\s*\(\s*props\.id\s*\)/.test(tdf),
+  'ThaiDateField: ไม่อ่าน input ผ่าน document.getElementById(props.id)',
+  'ถ้าไม่ใส่ id จะได้ null แล้ว onChange ไม่ emit → เลือกวันที่แล้วค่าไม่เปลี่ยน');
+check(/inputEl\.value\s*=\s*picker\.querySelector\('input'\)/.test(tdf),
+  'ThaiDateField: เก็บ reference ของ input ตัวเอง');
+check(/UI\.readThaiDateInput\(el\)/.test(tdf),
+  'ThaiDateField: อ่านค่าจาก element ที่ถือไว้');
+
+const ui = readFileSync(join(ROOT, 'src', 'ui', 'ui.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/readThaiDateInput\(idOrEl\)/.test(ui),
+  'UI.readThaiDateInput รับได้ทั้ง id และ element');
+
+/* ── ③ ทุกจุดที่ใช้ ThaiDateField ต้องใช้งานได้ ─────────────────────────── */
+console.log('\n③ การใช้งาน ThaiDateField');
+
+const files = walk(join(ROOT, 'src'));
+let usages = 0;
+const withoutId = [];
+for (const f of files) {
+  const src = readFileSync(f, 'utf8');
+  const re = /<ThaiDateField\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(src))) {
+    usages += 1;
+    if (!/\bid=/.test(m[1])) withoutId.push(relative(ROOT, f));
+  }
+}
+check(usages > 0, `พบ ThaiDateField ${usages} จุดในโปรเจกต์`);
+check(withoutId.length === 0,
+  'ไม่มีจุดไหนเรียก ThaiDateField โดยไม่ส่ง id',
+  'ไม่บังคับต้องมี id แล้ว แต่ถ้าไม่มีจะตรวจตอน runtime ไม่ได้ — ควรใส่: ' + withoutId.join(', '));
+
+console.log('');
+console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
+process.exit(fail ? 1 : 0);

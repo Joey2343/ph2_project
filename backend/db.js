@@ -470,6 +470,8 @@ const COLUMN_MIGRATIONS = [
   ['leave_requests', 'reviewed_stats', "reviewed_stats VARCHAR(2000) COLLATE utf8mb4_bin"],
   ['leave_requests', 'cancel_status', "cancel_status VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT ''"],
   ['documents', 'reg_no', "reg_no VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
+  // วันที่ออกเลขหนังสือของหน่วยงานต้นเรื่อง (แยกจาก date = วันที่รับ) — ISO YYYY-MM-DD
+  ['documents', 'letter_date', "letter_date VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['documents', 'workgroup', "workgroup VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['documents', 'is_registered', "is_registered INT DEFAULT 0"],
   ['documents', 'body_text', "body_text VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],

@@ -7,6 +7,13 @@
  *
  *   v-model            → ISO YYYY-MM-DD (ค.ศ.)  เหมือนเดิม
  *   value เดิมจาก API → แสดงเป็น วว/ดด/ปปปป (พ.ศ.)
+ *
+ * ⚠️ ห้ามอ่านค่าผ่าน document.getElementById(props.id)
+ *    ตอนไม่ได้ใส่ id → UI.h ข้าม attribute ที่เป็น undefined → input ไม่มี id
+ *    → getElementById('') คืน null → onChange return ทิ้ง → ไม่ emit เลย
+ *    ผลคือผู้ใช้เลือกวันที่แล้วหน้าจอเปลี่ยน แต่ค่าที่บันทึกยังเป็นวันที่เดิม (ข้อมูลผิดเงียบ ๆ)
+ *    ตอนนี้ถือ reference ของ input ตัวเองแทน จึงใส่ id หรือไม่ก็ทำงานถูก
+ *    และในหน้าต่างเดียวกันใช้หลายช่องได้โดยไม่ชนกัน
  */
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
 import { UI } from '../../ui/ui.js';
@@ -22,6 +29,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 
 const host = ref(null);
+/** ช่อง input ของปฏิทินตัวนี้ — ถือ reference ตรง ๆ ไม่พึ่ง document.getElementById */
+const inputEl = ref(null);
 
 onMounted(() => {
   if (!host.value) return;
@@ -29,12 +38,13 @@ onMounted(() => {
     value: props.modelValue,
     min: props.min || undefined,
     onChange: () => {
-      const el = document.getElementById(props.id);
+      const el = inputEl.value;
       if (!el) return;
-      emit('update:modelValue', UI.readThaiDateInput(props.id));
+      emit('update:modelValue', UI.readThaiDateInput(el));
     },
   });
   host.value.append(picker);
+  inputEl.value = picker.querySelector('input');
 });
 
 /** เมื่อค่าจากภายนอกเปลี่ยน (เช่น โหลดข้อมูลใหม่) ให้อัปเดตช่องในปฏิทิน */
@@ -42,8 +52,7 @@ watch(
   () => props.modelValue,
   async (v) => {
     await Promise.resolve();
-    if (!props.id) return;
-    const el = document.getElementById(props.id);
+    const el = inputEl.value;
     if (el && el.value !== UI.isoToBE(v)) el.value = UI.isoToBE(v);
   },
 );

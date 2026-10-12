@@ -404,9 +404,11 @@ export const UI = {
     return wrap;
   },
 
-  /** อ่านค่าวันที่จากช่องกรอกแบบไทย (DD/MM/BBBB) → ISO — คืน '' ถ้าไม่ครบ */
-  readThaiDateInput(id) {
-    const el = document.getElementById(id);
+  /** อ่านค่าวันที่จากช่องกรอกแบบไทย (DD/MM/BBBB) → ISO — คืน '' ถ้าไม่ครบ
+   *  รับได้ทั้ง id (ของเดิม) และ element ตรง ๆ (สำหรับ component ที่ถือ element ของตัวเองไว้แล้ว)
+   */
+  readThaiDateInput(idOrEl) {
+    const el = (typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl) || null;
     if (!el) return '';
     const v = String(el.value || '').trim();
     if (!v) return '';

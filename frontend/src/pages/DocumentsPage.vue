@@ -597,6 +597,11 @@ const columns = computed(() => {
 
   cols.push({ key: 'doc_no', label: t === 'order' ? 'เลขที่คำสั่ง' : t === 'honor' ? 'เลขเกียรติบัตร' : 'เลขที่หนังสือ' });
 
+  // ลงวันที่ = วันที่ออกเลขหนังสือของหน่วยงานต้นเรื่อง (ต่อจากเลขที่หนังสือในฟอร์มลงทะเบียนรับ)
+  if (t === 'incoming_reg') {
+    cols.push({ key: 'letter_date', label: 'ลงวันที่', cell: (r) => ({ text: UI.date(r.letter_date) }) });
+  }
+
   // วันที่ — หนังสือคำสั่งย้ายไปต่อจากเลขที่คำสั่ง, หนังสือรับรองย้ายไปต่อจากเลขที่
   if (t === 'order' || t === 'certificate') {
     cols.push({ key: 'date', label: t === 'order' ? 'สั่ง ณ วันที่' : 'วันที่', cell: (r) => ({ text: UI.date(r.date) }) });

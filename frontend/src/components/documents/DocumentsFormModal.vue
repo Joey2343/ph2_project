@@ -430,7 +430,7 @@ async function save() {
 
         <div class="form-group">
           <label>วันที่ออกเกียรติบัตร<span class="req"> *</span></label>
-          <ThaiDateField v-model="dateTH" />
+          <ThaiDateField id="df-honor-date" v-model="dateTH" />
         </div>
 
         <div class="form-group">
@@ -494,7 +494,7 @@ async function save() {
       <template v-else>
         <div class="form-group">
           <label>{{ isOrder ? 'สั่ง ณ วันที่' : 'วันที่' }}<span class="req"> *</span></label>
-          <ThaiDateField v-model="dateTH" />
+          <ThaiDateField id="df-order-cert-date" v-model="dateTH" />
         </div>
 
         <div class="form-group full">

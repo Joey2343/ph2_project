@@ -694,6 +694,103 @@ const VUE_PAGES = {
         })()`,
       },
       {
+        name: 'ฟอร์มลงทะเบียนรับหนังสือ: มีช่อง "ลงวันที่" ต่อจาก "เลขที่หนังสือ"',
+        check: `(async () => {
+          location.hash = '#/documents?tab=incoming_reg';
+          await new Promise(r => setTimeout(r, 1800));
+          const open = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === '▭ ลงทะเบียนหนังสือรับ');
+          if (!open) return false;
+          open.click();
+          await new Promise(r => setTimeout(r, 1800));
+          const boxes = document.querySelectorAll('[data-app-modal]');
+          const modal = boxes[boxes.length - 1];
+          if (!modal) return false;
+          const labels = [...modal.querySelectorAll('.form-group label')].map(l => l.innerText.trim());
+          const iNo = labels.indexOf('เลขที่หนังสือ');
+          const iLetter = labels.indexOf('ลงวันที่');
+          if (iNo === -1 || iLetter === -1) return false;
+          // ต้องอยู่ติดกันทันที
+          if (iLetter !== iNo + 1) return false;
+          // ปิดทิ้ง ไม่บันทึกอะไร
+          const cancel = [...modal.querySelectorAll('.modal-foot .btn')].find(b => b.innerText.trim() === 'ยกเลิก');
+          if (cancel) cancel.click();
+          await new Promise(r => setTimeout(r, 700));
+          return true;
+        })()`,
+      },
+      {
+        /* กันบั๊ก "เลือกวันที่แล้วค่าไม่เปลี่ยน"
+         *
+         * ThaiDateField เคยอ่านค่าผ่าน document.getElementById(props.id)
+         * ตอนไม่ได้ใส่ id → input ไม่มี id → getElementById('') = null → ไม่ emit
+         * ผู้ใช้เห็นวันที่ที่เลือก แต่ระบบบันทึกวันที่เดิม (ข้อมูลผิดเงียบ ๆ)
+         *
+         * หลักการพิสูจน์: ช่องในจอเปลี่ยน แต่ "hint" ที่อ่านจาก model ต้องเปลี่ยนตาม
+         */
+        name: 'ช่องวันที่: เลือกวันแล้วค่าที่ระบบได้รับเปลี่ยนตาม',
+        check: `(async () => {
+          // เช็กก่อนหน้าปิด modal ไปแล้ว ต้องเปิดฟอร์มใหม่เอง
+          if (!document.querySelector('[data-app-modal]')) {
+            const open = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === '▭ ลงทะเบียนหนังสือรับ');
+            if (!open) return false;
+            open.click();
+            await new Promise(r => setTimeout(r, 1800));
+          }
+          /*
+           * ใช้ช่อง "วันที่รับ" เพราะมีค่าอยู่เสมอ (วันนี้) → มี element .hint ให้เทียบ
+           * ช่องที่ว่างจะไม่มี .hint เลย (v-if ที่ display)
+           * ทั้งสองช่องใช้ component เดียวกัน ทดสอบบั๊กเดียวกัน
+           */
+          const groups = [...document.querySelectorAll('[data-app-modal] .form-group')];
+          const g = groups.find(x => {
+            const l = x.querySelector('label');
+            return l && l.innerText.trim().indexOf('วันที่รับ') === 0;
+          });
+          if (!g) return false;
+          const inp = g.querySelector('input');
+          const hintEl = g.querySelector('.hint');
+          if (!inp || !hintEl) return false;
+          const beforeHint = (hintEl.innerText || '').trim();
+          const dayNum = (s) => parseInt(String(s || '').split('/')[0], 10);
+          inp.click();
+          await new Promise(r => setTimeout(r, 400));
+          const pops = [...document.querySelectorAll('[data-app-modal] .thai-cal-pop')];
+          const vi = pops.findIndex(p => p.style.display !== 'none');
+          if (vi === -1) return false;
+          const days = [...pops[vi].querySelectorAll('.cal-pick-day')];
+          if (days.length < 2) return false;
+          // เลือกวันที่ต่างจากเดิมเสมอ
+          const cur = dayNum(inp.value);
+          const target = days.find(d => dayNum(d.innerText.trim()) !== cur);
+          if (!target) return false;
+          const pick = dayNum(target.innerText.trim());
+          target.click();
+          await new Promise(r => setTimeout(r, 700));
+          /*
+           * ⚠️ ช่องวันที่ไม่ใส่ศูนย์นำหน้า ("1/10/2569" ไม่ใช่ "01/10/2569")
+           *    จึงต้องเทียบเป็นตัวเลข ไม่ใช่เทียบข้อความ
+           *
+           * จุดที่พิสูจน์: hint (อ่านจาก model) ต้องเปลี่ยนเป็นวันที่ที่เพิ่งเลือก
+           * ก่อนแก้ hint ค้างเท่าเดิม เพราะ onChange ไม่ emit
+           */
+          const afterHint = (hintEl.innerText || '').trim();
+          const ok = dayNum(inp.value) === pick
+            && dayNum(afterHint) === pick
+            && afterHint !== beforeHint;
+          // ปิด modal ทิ้ง ไม่บันทึกอะไร (ต้องปิดสนิท เพื่อไม่ให้ body ถูกล็อกค้าง)
+          const close = document.querySelector('[data-app-modal] .modal-close');
+          if (close) close.click();
+          await new Promise(r => setTimeout(r, 900));
+          const left = document.querySelector('[data-app-modal]');
+          if (left) {
+            const c2 = left.querySelector('.modal-close');
+            if (c2) c2.click();
+            await new Promise(r => setTimeout(r, 600));
+          }
+          return ok && !document.querySelector('[data-app-modal]');
+        })()`,
+      },
+      {
         /* กันบั๊ก "เลื่อนหน้าไม่ได้หลังปิด modal"
          *
          * AppModal ล็อก body ไว้ตอนเปิด แล้วปลดตอน unmount

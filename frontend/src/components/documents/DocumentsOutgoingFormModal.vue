@@ -218,7 +218,7 @@ async function save() {
 
       <div class="form-group">
         <label>วันที่<span class="req"> *</span></label>
-        <ThaiDateField v-model="dateTH" />
+        <ThaiDateField id="df-outgoing-date" v-model="dateTH" />
       </div>
 
       <div class="form-group full">

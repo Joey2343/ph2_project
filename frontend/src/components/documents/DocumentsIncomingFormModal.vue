@@ -30,8 +30,9 @@ const d = computed(() => props.doc || {});
 
 /* ---------- ค่าในฟอร์ม ---------- */
 const regNo = ref('');
-const fromOrg = ref('');
 const docNo = ref('');
+/** วันที่ออกเลขหนังสือของหน่วยงานต้นเรื่อง (ISO) — แยกจาก dateTH ซึ่งคือวันที่รับ */
+const letterDate = ref('');
 const dateTH = ref(UI.today());
 const title = ref('');
 const workgroup = ref('');
@@ -41,7 +42,14 @@ const note = ref('');
 const workgroups = ref([]);
 const schools = ref([]);
 
-/* ---------- หนังสือจาก: ค้นหา + เลือก/ยกเลิก ---------- */
+/* ---------- หนังสือจาก: ค้นหา + เลือก/ยกเลิก ----------
+ * fromInput เป็นค่าเดียวที่ใช้ทั้งแสดงผล ตรวจ และบันทึก
+ *
+ * ⚠️ เคยเป็นบั๊ก: มี 2 ตัวแปร (fromOrg กับ fromInput) แต่ไม่เคยเชื่อมกัน
+ *    ช่องกรอกเขียนลง fromInput ส่วนตอนตรวจ/บันทึกอ่าน fromOrg ที่ว่างตลอด
+ *    → กรอกครบแล้วกดบันทึก ก็ขึ้น "กรุณาเลือกหน่วยงานต้นเรื่อง" และไม่ยิง request เลย
+ *    ของเดิมอ่านจาก input ตัวเดียวกัน (document.getElementById('df-from').value)
+ */
 const fromInput = ref('');
 const fromListOpen = ref(false);
 const fromFilter = ref('');
@@ -188,8 +196,9 @@ const saving = ref(false);
 
 onMounted(async () => {
   // ค่าจาก record (ตอนแก้ไข)
-  fromOrg.value = d.value.from_org || '';
+  fromInput.value = d.value.from_org || '';
   docNo.value = d.value.doc_no || '';
+  letterDate.value = d.value.letter_date || '';
   dateTH.value = d.value.date || UI.today();
   title.value = d.value.title || '';
   workgroup.value = d.value.workgroup || '';
@@ -209,7 +218,7 @@ onMounted(async () => {
 async function save() {
   if (saving.value) return;
 
-  if (!fromOrg.value.trim()) {
+  if (!fromInput.value.trim()) {
     UI.toast('กรุณาเลือกหน่วยงานต้นเรื่อง', 'error');
     return;
   }
@@ -240,10 +249,11 @@ async function save() {
      */
     if (!editId) fd.append('to_org', Auth.user.full_name + ' ' + Auth.user.workplace);
 
-    fd.append('from_org', fromOrg.value.trim());
+    fd.append('from_org', fromInput.value.trim());
     fd.append('title', title.value.trim());
     fd.append('date', dateTH.value);
     fd.append('doc_no', docNo.value.trim());
+    fd.append('letter_date', letterDate.value);
     fd.append('reg_no', regNo.value.trim());
     fd.append('workgroup', workgroup.value);
     // ลงทะเบียนรับหนังสือ = ตั้งสถานะลงทะเบียนแล้ว (แสดงในแท็บทะเบียนหนังสือรับ)
@@ -345,8 +355,13 @@ async function save() {
       </div>
 
       <div class="form-group">
+        <label>ลงวันที่</label>
+        <ThaiDateField id="df-letter-date" v-model="letterDate" />
+      </div>
+
+      <div class="form-group">
         <label>วันที่รับ<span class="req"> *</span></label>
-        <ThaiDateField v-model="dateTH" />
+        <ThaiDateField id="df-date" v-model="dateTH" />
       </div>
 
       <div class="form-group full">
