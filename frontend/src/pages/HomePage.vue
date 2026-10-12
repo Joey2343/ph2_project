@@ -8,7 +8,9 @@
  *   1. แบนเนอร์ต้อนรับ + กล่องลงเวลา (ซ่อนสำหรับสถานศึกษา เพราะไม่ใช้ระบบลงเวลา)
  *   2. สถิติรออนุมัติ (admin / ผู้มีสิทธิ์อนุมัติ) — การ์ดที่เป็น 0 ไม่แสดง
  *   3. การ์ดสถานะวันนี้ (ทุกคนฝั่งสำนักงาน) — คลิกดูรายชื่อ
- *   4. งานที่ค้าง / รออนุมัติของฉัน + งานรอการอนุมัติจากฉัน (deep-link ไปเมนูที่เกี่ยวข้อง)
+ *   4. งานที่ค้าง / รออนุมัติของฉัน (deep-link ไปเมนูที่เกี่ยวข้อง)
+  *      ส่วน "งานรอการอนุมัติจากฉัน" ถูกเอาออกแล้ว เพราะซ้ำกับป้ายแจ้งเตือน
+  *      บนการ์ดเมนูหลัก (แต่ละใบมีป้ายแดงมุมขวาบนบอกจำนวนที่รอฉันอยู่)
  *   5. ตารางเมนูหลัก
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
@@ -204,21 +206,6 @@ function openList(card) {
 const myPending = ref(null);
 const isSchool = computed(() => Auth.user && Auth.user.user_group === 'school');
 
-/** deep-link ไปแทปการลาที่ตรงกับประเภท */
-function leaveHref(sysKey) {
-  const ls = myPending.value?.approve?.leave_split || {};
-  const g = ls[sysKey] || {};
-  const tab =
-    g.group === 'school'
-      ? sysKey === 'leave_vacation'
-        ? 'vacation-school'
-        : 'general-school'
-      : sysKey === 'leave_vacation'
-        ? 'vacation'
-        : 'general';
-  return '#/leave?tab=' + tab;
-}
-
 const myCards = computed(() => {
   const mp = myPending.value;
   if (!mp) return [];
@@ -282,80 +269,12 @@ const myTotal = computed(() => {
   return mp.vehicle + mp.room + mp.travel + mp.leave + mp.memo + (mp.memoReturned || 0) + (mp.vehicleNotices || 0);
 });
 
-/**
- * งานรอการอนุมัติจากฉัน (ขั้นต้น / ขั้นสุดท้าย) ของทุกระบบ
- *
- * ระบบการลาแยกเป็น leave_general / leave_vacation เพื่อให้ deep-link ไปแทปที่ถูกต้อง
- * ถ้า backend ส่งมาแบบรวม (appr.leave) ให้ถือเป็นการลาป่วย/กิจ/คลอด (leave_general)
+/*
+ * เคยมีส่วน "◷ งานรอการอนุมัติจากฉัน" อยู่ตรงนี้
+ * เอาออกแล้ว เพราะแสดงซ้ำกับป้ายแจ้งเตือนบนการ์ดเมนูหลัก
+ * (การ์ดแต่ละใบมีป้ายแดงมุมขวาบนบอกจำนวนรายการที่รอฉันอนุมัติอยู่แล้ว)
+ * ข้อมูลที่เคยใช้ตรงนี้ยังอยู่ใน /my-pending เพราะป้ายบนการ์ดใช้อยู่
  */
-const LEVEL_LABELS = { 1: 'รออนุมัติขั้นต้น', 2: 'รออนุมัติ', 3: 'รออนุมัติ' };
-
-const APPROVE_SOURCES = [
-  { sys: 'vehicle', label: 'ยานพาหนะ', icon: '▣', href: '#/vehicles', color: 'var(--info-light)' },
-  { sys: 'room', label: 'ห้องประชุม', icon: '⬡', href: '#/rooms', color: 'var(--success-light)' },
-  {
-    sys: 'travel',
-    label: 'ไปราชการ',
-    icon: '✈',
-    href: '#/travel',
-    color: 'var(--warning-light)',
-  },
-  {
-    sys: 'travel_school',
-    label: 'ไปราชการ (สถานศึกษา)',
-    icon: '✈',
-    href: '#/travel-school',
-    color: 'var(--warning-light)',
-  },
-  { sys: 'leave_general', label: 'ขอลา (ป่วย/กิจ/คลอด)', icon: '❋', href: null, color: 'var(--danger-light)' },
-  { sys: 'leave_vacation', label: 'ขอลาพักผ่อน', icon: '❋', href: null, color: 'var(--danger-light)' },
-  { sys: 'memo', label: 'บันทึกข้อความ', icon: '✎', href: '#/memos', color: 'var(--accent-light)' },
-];
-
-/** รวมการนับแบบแยกประเภทของการลาเข้ากับระบบ leave เดิม */
-function mergedApprove() {
-  const appr = myPending.value?.approve || {};
-  const ls = appr.leave_split || {};
-  if (appr.leave) {
-    for (const lv of Object.keys(appr.leave)) {
-      const n = appr.leave[lv] || 0;
-      // ถ้าแยกประเภทแล้วไม่ต้องนับซ้ำ
-      if (n > 0 && !ls.leave_general?.[lv] && !ls.leave_vacation?.[lv]) {
-        if (!ls.leave_general) ls.leave_general = {};
-        ls.leave_general[lv] = n;
-        if (!ls.leave_general.group) ls.leave_general.group = isSchool.value ? 'school' : 'office';
-      }
-    }
-  }
-  delete appr.leave;
-  return { appr, ls };
-}
-
-const approveCards = computed(() => {
-  const mp = myPending.value;
-  if (!mp) return [];
-  const { appr, ls } = mergedApprove();
-  const out = [];
-  for (const src of APPROVE_SOURCES) {
-    const lv = appr[src.sys] || ls[src.sys] || {};
-    const href = src.href || leaveHref(src.sys);
-    for (const level of [1, 2, 3]) {
-      const n = lv[level] || 0;
-      if (n > 0) {
-        out.push({
-          icon: src.icon,
-          label: `${src.label} ${LEVEL_LABELS[level]}`,
-          count: n,
-          color: src.color,
-          href,
-        });
-      }
-    }
-  }
-  return out;
-});
-
-const approveTotal = computed(() => approveCards.value.reduce((a, c) => a + c.count, 0));
 
 /* ---------- เมนูหลัก ---------- */
 const gridMenus = computed(() => MENUS.filter((m) => !m.hideFromGrid && canAccess(m.key)));
@@ -595,26 +514,10 @@ function cardStyle(i, total) {
     </div>
   </template>
 
-  <!-- ---------- งานรอการอนุมัติจากฉัน ---------- -->
-  <template v-if="approveCards.length">
-    <div class="section-title">◷ งานรอการอนุมัติจากฉัน ({{ approveTotal }} รายการ)</div>
-    <div style="display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 22px">
-      <a
-        v-for="(c, i) in approveCards"
-        :key="c.label + c.count"
-        class="stat-card clickable"
-        :href="c.href"
-        title="ดูรายการที่รอการอนุมัติจากฉัน"
-        :style="cardStyle(i, approveCards.length)"
-      >
-        <div class="stat-icon" :style="{ background: c.color }">{{ c.icon }}</div>
-        <div>
-          <div class="stat-value">{{ c.count }}</div>
-          <div class="stat-label">{{ c.label }}</div>
-        </div>
-      </a>
-    </div>
-  </template>
+  <!--
+    เคยมีส่วน "◷ งานรอการอนุมัติจากฉัน" ตรงนี้
+    เอาออกแล้ว เพราะซ้ำกับป้ายแจ้งเตือนบนการ์ดเมนูหลักด้านล่าง
+  -->
 
   <!-- ---------- ตารางเมนูหลัก ---------- -->
   <div class="section-title">▭ เมนูหลัก</div>
