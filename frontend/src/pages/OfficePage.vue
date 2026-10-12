@@ -39,7 +39,20 @@ async function load() {
 }
 
 function openEdit() {
-  draft.value = sections.value.map((s) => ({ title: s.title || '', content: s.content || '' }));
+  /*
+   * ต้องพา key และ sort ติดไปด้วย
+   *
+   * ⚠️ เคยเป็นบั๊ก: map เก็บแค่ title กับ content ทิ้ง key ไป
+   *    ฝั่ง backend ใช้ ON DUPLICATE KEY UPDATE ผูกกับคอลัมน์ `key`
+   *    พอ key เป็น NULL → ไม่มีอะไรชนซ้ำ → INSERT แถวใหม่ทุกครั้งที่บันทึก
+   *    ผลคือหน้าข้อมูลพื้นฐานโตขึ้นเรื่อย ๆ จนมีหัวข้อซ้ำกันเป็นสองชุด
+   */
+  draft.value = sections.value.map((s) => ({
+    key: s.key || null,
+    title: s.title || '',
+    content: s.content || '',
+    sort: Number(s.sort) || 0,
+  }));
   editing.value = true;
 }
 

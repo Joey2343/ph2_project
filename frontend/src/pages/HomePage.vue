@@ -360,6 +360,52 @@ const approveTotal = computed(() => approveCards.value.reduce((a, c) => a + c.co
 /* ---------- เมนูหลัก ---------- */
 const gridMenus = computed(() => MENUS.filter((m) => !m.hideFromGrid && canAccess(m.key)));
 
+/** รวมค่าของ approve ที่มีหลายขั้น (เช่น approve.vehicle = {1: 2, 2: 1}) */
+function sumApprove(obj) {
+  if (!obj || typeof obj !== 'object') return 0;
+  let n = 0;
+  for (const k of Object.keys(obj)) {
+    if (k === 'group') continue; // ไม่ใช่ตัวเลข
+    const v = obj[k];
+    if (typeof v === 'number') n += v;
+  }
+  return n;
+}
+
+/**
+ * ป้ายแจ้งเตือนมุมขวาบนของการ์ดเมนูหลัก
+ *
+ * นับเฉพาะ "รอฉันทำ" — คือรายการที่รอให้ผู้ใช้คนนี้อนุมัติ/ตรวจสอบ
+ * ไม่รวมคำขอของผู้ใช้เองที่ยังรอผล (ดูได้จากการ์ด "งานที่ค้างของฉัน" ด้านบนแล้ว)
+ *
+ * เมนูไหนไม่มีงานรอ ไม่ต้องแสดงป้าย (0 = ไม่แสดง)
+ */
+const menuBadges = computed(() => {
+  const p = myPending.value;
+  if (!p) return {};
+  const ap = p.approve || {};
+  return {
+    vehicles: sumApprove(ap.vehicle),
+    rooms: sumApprove(ap.room),
+    travel: sumApprove(ap.travel),
+    'travel-school': sumApprove(ap.travel_school),
+    leave: sumApprove(ap.leave),
+    memos: sumApprove(ap.memo),
+    documents: Number(p.documentsUnread) || 0,
+    staff: Number(p.pendingUsers) || 0,
+  };
+});
+
+/** ตัวเลขบนป้ายของการ์ดใบนี้ (0 = ไม่ต้องแสดงป้าย) */
+function badgeOf(key) {
+  return Number(menuBadges.value[key]) || 0;
+}
+
+/** เกิน 99 แสดงเป็น 99+ */
+function badgeText(n) {
+  return n > 99 ? '99+' : String(n);
+}
+
 /**
  * ไปยังหน้าของเมนู
  *
@@ -579,6 +625,13 @@ function cardStyle(i, total) {
       class="menu-card"
       @click="goTo(m.key)"
     >
+      <!-- ป้ายแจ้งเตือนมุมขวาบน: รายการที่รอฉันอนุมัติ/ตรวจสอบ
+           ใช้คลาส .menu-count ที่มีอยู่ใน theme.css ของเดิมอยู่แล้ว (ไม่ต้องเพิ่ม CSS) -->
+      <span
+        v-if="badgeOf(m.key)"
+        class="menu-count"
+        :title="'มี ' + badgeOf(m.key) + ' รายการที่รอคุณอนุมัติ/ตรวจสอบ'"
+      >{{ badgeText(badgeOf(m.key)) }}</span>
       <div
         class="menu-icon"
         :style="{ background: m.grad, boxShadow: '0 4px 10px rgba(0,0,0,.15)' }"

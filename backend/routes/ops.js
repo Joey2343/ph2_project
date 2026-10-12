@@ -337,86 +337,123 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
       if (ok) memoApprove[next] = (memoApprove[next] || 0) + 1;
     }
   }
+  /*
+   * ⚠️ ค่าทุกตัวใน res.json ต้อง await ให้เสร็จก่อน
+   *    ถ้าใส่ Promise (เช่น countAwaiting(...) หรือ IIFE) ไปตรง ๆ
+   *    JSON.stringify จะได้ {} → ฝั่งหน้าอ่านได้ 0 ตลอด โดยไม่มีอะไรฟ้อง
+   *
+   *    เคยพังตรงนี้: approve.vehicle / room / travel / travel_school / leave /
+   *    leave_split เป็น Promise ทั้งหมด → การ์ด "งานรอการอนุมัติจากฉัน"
+   *    บนหน้าหลักไม่เคยแสดงผลเลย
+   */
+  const leaveTypeCounts = (async () => {
+    const rows = await db.prepare("SELECT leave_type FROM leave_requests WHERE user_id = ? AND status = 'pending'").all(uid);
+    const out = { general: 0, vacation: 0 };
+    for (const r of rows) {
+      if (String(r.leave_type || '').indexOf('พักผ่อน') !== -1) out.vacation++; else out.general++;
+    }
+    return out;
+  })();
+
+  // ไปราชการ สาย สพป. — นับเฉพาะคำขอของเจ้าหน้าที่ สพป. (กันนับซ้ำกับสายสถานศึกษา)
+  const travelOffice = (async () => {
+    const out = {};
+    const levels = await approvals.getUserSystemLevels(req.user, 'travel');
+    if (levels.length) {
+      const rows = await db.prepare(`SELECT t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id
+        WHERE t.status = 'pending' AND (t.approval_level + 1) IN (${levels.map(() => '?').join(',')})
+        AND COALESCE(u.user_group, 'office') = 'office'`).all(...levels);
+      for (const l of levels) out[l] = rows.filter((r) => r.approval_level + 1 === l).length;
+    }
+    return out;
+  })();
+
+  // ไปราชการ สายสถานศึกษา (3 ขั้น: reviewer → supervisor → approver)
+  const travelSchool = (async () => {
+    const isAdmin = req.user.role === 'admin';
+    const tas = await db.prepare("SELECT value FROM settings WHERE \`key\` = 'travel_approvers_school'").get();
+    let mapping = {};
+    try { mapping = JSON.parse(tas ? tas.value : '{}'); } catch (e) { /* ignore */ }
+    const out = {};
+    const pendingRows = await db.prepare("SELECT t.user_id, t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id WHERE t.status = 'pending' AND COALESCE(u.user_group, 'office') = 'school'").all();
+    for (const r of pendingRows) {
+      const entry = mapping[String(r.user_id)];
+      if (!entry) continue;
+      const next = (r.approval_level || 0) + 1;
+      const isMine = isAdmin
+        || (next === 1 && Number(entry.reviewer) === req.user.id)
+        || (next === 2 && Number(entry.supervisor) === req.user.id)
+        || (next === 3 && Number(entry.approver) === req.user.id);
+      if (isMine) out[next] = (out[next] || 0) + 1;
+    }
+    return out;
+  })();
+
+  // ลาแยกตามประเภท (general = ลาป่วย/ลากิจ/ลาคลอด, vacation = ลาพักผ่อน) + กลุ่มผู้ใช้ของแต่ละขั้น
+  const leaveSplit = (async () => {
+    const levels = await approvals.getUserSystemLevels(req.user, 'leave');
+    const out = {};
+    if (!levels.length) return out;
+    const rows = await db.prepare(`SELECT l.approval_level, l.leave_type, u.user_group, u.school_code FROM leave_requests l JOIN users u ON u.id = l.user_id
+      WHERE l.status = 'pending' AND (l.approval_level + 1) IN (${levels.map(() => '?').join(',')})`).all(...levels);
+    for (const r of rows) {
+      const next = r.approval_level + 1;
+      if (!levels.includes(next)) continue;
+      const isVac = String(r.leave_type || '').indexOf('พักผ่อน') !== -1;
+      const sys = isVac ? 'leave_vacation' : 'leave_general';
+      if (!out[sys]) out[sys] = {};
+      out[sys][next] = (out[sys][next] || 0) + 1;
+    }
+    for (const sys of Object.keys(out)) {
+      for (const lv of Object.keys(out[sys])) {
+        if (lv === 'group') continue;
+        const row = rows.find((r) => r.approval_level + 1 === Number(lv));
+        if (row) out[sys].group = (row.user_group || 'office');
+      }
+    }
+    return out;
+  })();
+
+  // งานที่รอการอนุมัติขั้นของฉัน ต่อขั้น เช่น {1: 2, 2: 1}
+  const approveData = {
+    vehicle: await countAwaiting('vehicle_bookings', await approvals.getUserSystemLevels(req.user, 'vehicle')),
+    room: await countAwaiting('room_bookings', await approvals.getUserSystemLevels(req.user, 'room')),
+    travel: await travelOffice,
+    travel_school: await travelSchool,
+    leave: await countAwaiting('leave_requests', await approvals.getUserSystemLevels(req.user, 'leave')),
+    leave_split: await leaveSplit,
+    memo: memoApprove,
+  };
+
+  /*
+   * ตัวนับสำหรับป้ายแจ้งเตือนบนการ์ดเมนูหลัก (หน้าหลัก)
+   *
+   * นับเฉพาะ "รอฉันทำ" เท่านั้น ไม่รวมคำขอของฉันเองที่ยังรอผล
+   * (อันนั้นดูได้จากการ์ด "งานที่ค้างของฉัน" ด้านบนแล้ว)
+   */
+  // หนังสือที่ส่งมาให้ฉันแล้วยังไม่ได้เปิดอ่าน
+  const documentsUnread = (await db.prepare(`SELECT COUNT(*) c FROM document_recipients dr
+    JOIN documents d ON d.id = dr.document_id
+    WHERE dr.user_id = ? AND dr.is_read = 0
+      AND d.doc_type NOT IN ('honor','order','certificate')`).get(uid)).c;
+  // สมาชิกใหม่ที่รออนุมัติ (admin เท่านั้น)
+  const pendingUsers = req.user.role === 'admin'
+    ? (await db.prepare("SELECT COUNT(*) c FROM users WHERE status = 'pending'").get()).c
+    : 0;
+
   res.json({
-    vehicleNotices: count("SELECT COUNT(*) c FROM vehicle_notices WHERE user_id = ? AND `read` = 0"),
+    vehicleNotices: count("SELECT COUNT(*) c FROM vehicle_notices WHERE user_id = ? AND \`read\` = 0"),
     vehicle: count("SELECT COUNT(*) c FROM vehicle_bookings WHERE user_id = ? AND status = 'pending'"),
     room: count("SELECT COUNT(*) c FROM room_bookings WHERE user_id = ? AND status = 'pending'"),
     travel: count("SELECT COUNT(*) c FROM travel_requests WHERE user_id = ? AND status = 'pending'"),
     leave: count("SELECT COUNT(*) c FROM leave_requests WHERE user_id = ? AND status = 'pending'"),
-    // ประเภทคำขอลาของฉันที่รออยู่ (vacation = ลาพักผ่อน, general = อื่น ๆ) เพื่อ deep-link ไปแทปที่ถูกต้อง
-    leaveTypes: (async () => {
-      const rows = await db.prepare("SELECT leave_type FROM leave_requests WHERE user_id = ? AND status = 'pending'").all(uid);
-      const out = { general: 0, vacation: 0 };
-      for (const r of rows) {
-        if (String(r.leave_type || '').indexOf('พักผ่อน') !== -1) out.vacation++; else out.general++;
-      }
-      return out;
-    })(),
+    // ประเภทคำขอลาของฉันที่รออยู่ เพื่อ deep-link ไปแทปที่ถูกต้อง
+    leaveTypes: await leaveTypeCounts,
     memo: count("SELECT COUNT(*) c FROM memos WHERE user_id = ? AND status = 'submitted'"),
     memoReturned: count("SELECT COUNT(*) c FROM memos WHERE user_id = ? AND status = 'returned'"),
-    approve: {
-      vehicle: countAwaiting('vehicle_bookings', await approvals.getUserSystemLevels(req.user, 'vehicle')),
-      room: countAwaiting('room_bookings', await approvals.getUserSystemLevels(req.user, 'room')),
-      travel: (async () => {
-        // สาย สพป. — ตาม role/สิทธิ์อนุมัติเดิม (นับเฉพาะคำขอของเจ้าหน้าที่ สพป. กันนับซ้ำกับสายสถานศึกษา)
-        const out = {};
-        const levels = await approvals.getUserSystemLevels(req.user, 'travel');
-        if (levels.length) {
-          const rows = await db.prepare(`SELECT t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id
-            WHERE t.status = 'pending' AND (t.approval_level + 1) IN (${levels.map(() => '?').join(',')})
-            AND COALESCE(u.user_group, 'office') = 'office'`).all(...levels);
-          for (const l of levels) out[l] = rows.filter((r) => r.approval_level + 1 === l).length;
-        }
-        return out;
-      })(),
-      travel_school: (async () => {
-        // สายสถานศึกษา (3 ขั้น: reviewer→supervisor→approver) — นับคำขอของเจ้าหน้าที่สถานศึกษาที่รอขั้นของฉัน
-        const isAdmin = req.user.role === 'admin';
-        const tas = await db.prepare("SELECT value FROM settings WHERE `key` = 'travel_approvers_school'").get();
-        let mapping = {};
-        try { mapping = JSON.parse(tas ? tas.value : '{}'); } catch (e) {}
-        const out = {};
-        const pendingRows = await db.prepare("SELECT t.user_id, t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id WHERE t.status = 'pending' AND COALESCE(u.user_group, 'office') = 'school'").all();
-        for (const r of pendingRows) {
-          const entry = mapping[String(r.user_id)];
-          if (!entry) continue;
-          const next = (r.approval_level || 0) + 1;
-          const isMine = isAdmin
-            || (next === 1 && Number(entry.reviewer) === req.user.id)
-            || (next === 2 && Number(entry.supervisor) === req.user.id)
-            || (next === 3 && Number(entry.approver) === req.user.id);
-          if (isMine) out[next] = (out[next] || 0) + 1;
-        }
-        return out;
-      })(),
-      leave: countAwaiting('leave_requests', await approvals.getUserSystemLevels(req.user, 'leave')),
-      // ลาแยกตามประเภท (general = ลาป่วย/ลากิจ/ลาคลอด, vacation = ลาพักผ่อน) + กลุ่มของแต่ละขั้น เพื่อ deep-link จากหน้าแรก
-      leave_split: (async () => {
-        const levels = await approvals.getUserSystemLevels(req.user, 'leave');
-        const out = {};
-        if (!levels.length) return out;
-        const rows = await db.prepare(`SELECT l.approval_level, l.leave_type, u.user_group, u.school_code FROM leave_requests l JOIN users u ON u.id = l.user_id
-          WHERE l.status = 'pending' AND (l.approval_level + 1) IN (${levels.map(() => '?').join(',')})`).all(...levels);
-        for (const r of rows) {
-          const next = r.approval_level + 1;
-          if (!levels.includes(next)) continue;
-          const isVac = String(r.leave_type || '').indexOf('พักผ่อน') !== -1;
-          const sys = isVac ? 'leave_vacation' : 'leave_general';
-          if (!out[sys]) out[sys] = {};
-          out[sys][next] = (out[sys][next] || 0) + 1;
-        }
-        // ใส่กลุ่มผู้ใช้ (office/school) ของแต่ละขั้นเพื่อเลือกแทปที่ถูกต้อง
-        for (const sys of Object.keys(out)) {
-          for (const lv of Object.keys(out[sys])) {
-            if (lv === 'group') continue;
-            const row = rows.find((r) => r.approval_level + 1 === Number(lv));
-            if (row) out[sys].group = (row.user_group || 'office');
-          }
-        }
-        return out;
-      })(),
-      memo: memoApprove,
-    },
+    approve: approveData,
+    documentsUnread,
+    pendingUsers,
   });
 });
 

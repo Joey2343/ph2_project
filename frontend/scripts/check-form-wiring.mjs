@@ -106,6 +106,24 @@ check(withoutId.length === 0,
   'ไม่มีจุดไหนเรียก ThaiDateField โดยไม่ส่ง id',
   'ไม่บังคับต้องมี id แล้ว แต่ถ้าไม่มีจะตรวจตอน runtime ไม่ได้ — ควรใส่: ' + withoutId.join(', '));
 
+/* ── ④ ช่องที่ map มาจากข้อมูลเดิม ต้องพาคีย์ที่จำเป็นไปด้วย ──────── */
+console.log('\n④ คีย์ที่ต้องพาไปกับฟอร์มแก้ไข (ถ้าหลุด = บันทึกซ้ำเป็นแถวใหม่)');
+
+const office = readFileSync(join(ROOT, 'src', 'pages', 'OfficePage.vue'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const openEdit = office.match(/function\s+openEdit\s*\(\)\s*\{[\s\S]*?\n\}/);
+// คอลัมน์ key ของ office_sections เป็น UNIQUE — ถ้า key หลุดจาก draft จะเป็น NULL
+// → ON DUPLICATE KEY ไม่มีอะไรชนซ้ำ → INSERT แถวใหม่ทุกครั้งที่บันทึก
+check(!!openEdit, 'OfficePage: พบฟังก์ชัน openEdit()');
+if (openEdit) {
+  const body = openEdit[0];
+  check(/key:\s*s\.key/.test(body),
+    'OfficePage.openEdit: พา `key` ไปกับ draft',
+    'ถ้าไม่พา key ฝั่ง backend จะ INSERT แถวใหม่ทุกครั้งที่บันทึก (หน้าจะเติบโตไม่หยุด)');
+  check(/sort:\s*(?:Number\()?s\.sort/.test(body),
+    'OfficePage.openEdit: พา `sort` ไปกับ draft',
+    'ถ้าไม่พา sort ลำดับหัวข้อจะเพี้ยนทุกครั้งที่บันทึก');
+}
+
 console.log('');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

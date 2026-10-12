@@ -66,6 +66,22 @@ class MysqlDriver {
     return result;
   }
 
+  /**
+   * เตรียมคำสั่งที่ผูกกับ driver นี้ — รูปแบบเดียวกับ db.prepare()
+   *
+   * ⚠️ ต้องมีใน driver ด้วย ไม่ใช่แค่บน api facade
+   *    เพราะ db.transaction() จะตรวจว่า txDriver มี prepare() ไหม
+   *    ถ้าไม่มี มันจะส่ง driver ดิบเข้า callback แทน facade
+   *    แล้วโค้ดที่เรียก tx.prepare(...) จะพังด้วย "tx.prepare is not a function"
+   */
+  prepare(sql) {
+    return {
+      get: (...p) => this.get(sql, p),
+      all: (...p) => this.all(sql, p),
+      run: (...p) => this.run(sql, p),
+    };
+  }
+
   async columns(table) {
     const [rows] = await this.pool.query(
       `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, IS_NULLABLE AS nullable,
@@ -193,6 +209,22 @@ class ScopedMysqlDriver {
       lastInsertRowid: r.insertId ?? 0,
       insertId: r.insertId ?? 0,
     }));
+  }
+
+  /**
+   * เตรียมคำสั่งที่ผูกกับ connection ของ transaction นี้
+   *
+   * ต้องมีเมธอดนี้ด้วย ไม่ใช่แค่บน api facade
+   * เพราะ db.transaction() ใช้ typeof txDriver.prepare === 'function'
+   * เป็นเงื่อนไขตัดสินว่าจะส่ง facade หรือ driver ดิบเข้า callback
+   * ถ้าไม่มี → โค้ดที่เรียก tx.prepare(...) จะพัง
+   */
+  prepare(sql) {
+    return {
+      get: (...p) => this.get(sql, p),
+      all: (...p) => this.all(sql, p),
+      run: (...p) => this.run(sql, p),
+    };
   }
 
   columns(table) {

@@ -113,6 +113,9 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
+  results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {
