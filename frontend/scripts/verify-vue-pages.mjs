@@ -791,37 +791,6 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        /* กันบั๊ก "เบราว์เซอร์เดาข้อความเก่ามาให้"
-         *
-         * พิมพ์อะไรลงช่องหนึ่งครั้ง แล้วกลับมาพิมพ์ช่องเดิมอีก
-         * เบราว์เซอร์จะเดาข้อความเก่ามาให้เลือก ซึ่งไม่เกี่ยวกับช่องนั้น
-         *
-         * ต้องเป็น off ในช่องที่เพิ่งเปิดด้วย เพราะ modal ถูกสร้างหลังหน้าโหลด
-         */
-        name: 'ช่องพิมพ์ข้อความ: ไม่มีการเดาข้อความเก่าของเบราว์เซอร์',
-        check: `(async () => {
-          if (!document.querySelector('[data-app-modal]')) {
-            const open = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === '▭ ลงทะเบียนหนังสือรับ');
-            if (!open) return false;
-            open.click();
-            await new Promise(r => setTimeout(r, 1800));
-          }
-          const TEXT = ['text', 'search', 'url', 'tel'];
-          const bad = [...document.querySelectorAll('input, textarea')].filter((e) => {
-            const t = (e.getAttribute('type') || 'text').toLowerCase();
-            const isText = TEXT.includes(t) || e.tagName === 'TEXTAREA';
-            if (!isText) return false;
-            // ช่องที่ตั้งไว้เอง = ตั้งใจ ไม่ถือว่าพลาด
-            return e.getAttribute('autocomplete') !== 'off' && !e.getAttribute('autocomplete');
-          });
-          if (bad.length) return false;
-          const cancel = [...document.querySelectorAll('[data-app-modal] .modal-foot .btn')].find(b => b.innerText.trim() === 'ยกเลิก');
-          if (cancel) cancel.click();
-          await new Promise(r => setTimeout(r, 700));
-          return true;
-        })()`,
-      },
-      {
         /* กันบั๊ก "เลื่อนหน้าไม่ได้หลังปิด modal"
          *
          * AppModal ล็อก body ไว้ตอนเปิด แล้วปลดตอน unmount
