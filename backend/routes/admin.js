@@ -8,6 +8,7 @@ const simdate = require('../lib/simdate');
 const auth = require('../lib/auth');
 const { uploadDocuments, uploadStaff, createDynamicUpload, getUploadSubdir, uploadErrorHandler, deleteUploadedFile, renameAsCitizen } = require('../lib/uploads');
 const cleanup = require('../lib/cleanup');
+const staffSort = require('../lib/staff-sort');
 const uploadDocDynamic = createDynamicUpload('documents');
 
 const router = express.Router();
@@ -717,6 +718,80 @@ router.get('/staff', auth.requireAdmin, async (req, res) => {
   // ทำให้หน้าเว็บเห็นแถวเปล่า (ชื่อ-นามสกุล ตำแหน่ง กลุ่มงาน ว่างหมด)
   // จุดอื่นในไฟล์นี้ใช้ await ถูกต้องแล้ว เช่นบรรทัด 723, 803, 814
   res.json({ staff: await Promise.all((await db.prepare(sql).all(...args)).map(auth.publicUser)) });
+});
+
+/**
+ * ดาวน์โหลดรายชื่อเจ้าหน้าที่เป็นไฟล์ Excel (.xlsx)
+ *
+ * รองรับตัวกรองชุดเดียวกับ GET /staff (status / q / user_group)
+ * เพื่อให้ไฟล์ที่ได้ตรงกับรายการที่เห็นบนหน้าจออยู่เสมอ
+ *
+ * คอลัมน์ตามที่ขอ: ที่ · ชื่อ-นามสกุล · ชื่อเล่น · เลขบัตรประชาชน · ตำแหน่ง · วิทยฐานะ
+ *              กลุ่มงาน · วุฒิการศึกษาสูงสุด · วัน/เดือน/ปี เกิด · อายุ · เบอร์โทร · อีเมล
+ *
+ * ⚠️ ดึงเฉพาะคอลัมน์ที่ต้องใช้เท่านั้น (ไม่เอา password_hash / telegram_token)
+ * ⚠️ ลำดับแถวใช้ staffSort.sortStaff() ตัวเดียวกับที่หน้าเว็บเรียง
+ *    ไม่งั้นคอลัมน์ "ที่" ในไฟล์จะไม่ตรงกับหมายเลขบนจอ
+ */
+router.get('/staff.xlsx', auth.requireAdmin, async (req, res) => {
+  const { status, q, user_group } = req.query;
+  let sql = `SELECT id, title, full_name, first_name, last_name, nickname, citizen_id,
+             academic_rank, highest_education, birth_date, position, workplace,
+             phone, email, staff_no, user_group
+             FROM users WHERE 1=1`;
+  const args = [];
+  if (status) { sql += ' AND status = ?'; args.push(status); }
+  if (user_group) { sql += ' AND user_group = ?'; args.push(user_group); }
+  if (q) { sql += ' AND (username LIKE ? OR full_name LIKE ? OR position LIKE ? OR workplace LIKE ? OR citizen_id LIKE ?)'; const p = `%${q}%`; args.push(p, p, p, p, p); }
+  const group = user_group === 'school' ? 'school' : 'office';
+  const rows = staffSort.sortStaff(await db.prepare(sql).all(...args), group);
+
+  const HEAD = ['ที่', 'ชื่อ-นามสกุล', 'ชื่อเล่น', 'เลขบัตรประชาชน', 'ตำแหน่ง', 'วิทยฐานะ',
+    'กลุ่มงาน', 'วุฒิการศึกษาสูงสุด', 'วัน/เดือน/ปี เกิด', 'อายุ', 'เบอร์โทร', 'อีเมล'];
+  const body = rows.map((u) => [
+    u._seq,
+    staffSort.personName(u),
+    u.nickname || '',
+    u.citizen_id || '',
+    u.position || '',
+    u.academic_rank || '',
+    u.workplace || '',
+    u.highest_education || '',
+    staffSort.thaiBirthDate(u.birth_date),
+    staffSort.ageFromBirth(u.birth_date),
+    u.phone || '',
+    u.email || '',
+  ]);
+
+  const title = group === 'school' ? 'รายชื่อเจ้าหน้าที่สถานศึกษา' : 'รายชื่อเจ้าหน้าที่ สพป.แพร่ เขต 2';
+  const aoa = [
+    [title, ...HEAD.slice(1).map(() => '')],
+    [`จำนวน ${rows.length} คน`, ...HEAD.slice(1).map(() => '')],
+    [],
+    HEAD,
+    ...body,
+  ];
+
+  const XLSX = require('xlsx');
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 5 }, { wch: 26 }, { wch: 16 }, { wch: 18 }, { wch: 30 },
+    { wch: 16 }, { wch: 30 }, { wch: 24 }, { wch: 18 }, { wch: 6 }, { wch: 16 }, { wch: 26 }];
+  // เลขบัตรประชาชน/เบอร์โทร ต้องคงเป็นข้อความ ไม่ให้ Excel แปลงเป็นตัวเลขหรือ scientific
+  const bodyStart = 4;
+  for (let r = bodyStart; r < bodyStart + body.length; r += 1) {
+    for (const c of [3, 10]) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && cell.t === 'n') cell.t = 's';
+    }
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'รายชื่อเจ้าหน้าที่');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="staff-${group}-${stamp}.xlsx"`);
+  res.send(buf);
 });
 
 // Route สำหรับดึงรายชื่อเจ้าหน้าที่สพป. (ใช้ได้ทุก user สำหรับส่งไปรษณีย์)

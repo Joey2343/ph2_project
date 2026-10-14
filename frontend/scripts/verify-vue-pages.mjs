@@ -968,6 +968,27 @@ const VUE_PAGES = {
         check: `document.querySelectorAll('.staff-grid thead th').length === 8`,
       },
       {
+        name: 'มีปุ่มดาวน์โหลด Excel',
+        check: `(() => {
+          const b = document.getElementById('st-download');
+          return !!b && b.innerText.includes('ดาวน์โหลด');
+        })()`,
+      },
+      {
+        name: 'ปุ่มดาวน์โหลดชี้ไป /api/staff.xlsx พร้อมตัวกรองแท็บที่เลือก',
+        check: `(async () => {
+          const b = document.getElementById('st-download');
+          if (!b) return false;
+          let href = '';
+          const orig = HTMLAnchorElement.prototype.click;
+          HTMLAnchorElement.prototype.click = function () { href = this.getAttribute('href') || ''; };
+          b.click();
+          HTMLAnchorElement.prototype.click = orig;
+          await new Promise((r) => setTimeout(r, 300));
+          return href.includes('/api/staff.xlsx') && href.includes('user_group=office');
+        })()`,
+      },
+      {
         name: 'สลับไปแท็บ "ตั้งค่าการอนุมัติ" ได้',
         check: `(async () => {
           const b = document.getElementById('s-tab-settings');

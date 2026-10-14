@@ -161,6 +161,40 @@ function sortStaff(rows, group) {
 
 const staffSorted = computed(() => sortStaff(staff.value, staffGroup.value));
 
+/* ---------- ดาวน์โหลดรายชื่อเป็น Excel ---------- */
+
+/**
+ * ดาวน์โหลดรายชื่อเจ้าหน้าที่เป็นไฟล์ .xlsx
+ *
+ * ส่งตัวกรองเดียวกับที่ใช้แสดงตารางอยู่ (คำค้น + สถานะ + กลุ่ม)
+ * ไฟล์ที่ได้จึงตรงกับรายการบนหน้าจอเสมอ ไม่ต้องกดโหลดทั้งหมดแล้วค่อยกรองเอง
+ *
+ * ⚠️ ฝั่ง backend เรียงแถวด้วย lib/staff-sort.js ซึ่งเป็นกฎเดียวกับ sortStaff ข้างบน
+ *    คอลัมน์ "ที่" ในไฟล์จึงตรงกับหมายเลขบนจอ (มี test-staff-export.js คอยเทียบให้)
+ */
+const downloading = ref(false);
+
+function downloadXlsx() {
+  if (downloading.value) return;
+  downloading.value = true;
+  try {
+    const p = [];
+    if (q.value.trim()) p.push('q=' + UI.encodePath(q.value.trim()));
+    if (statusFilter.value) p.push('status=' + UI.encodePath(statusFilter.value));
+    p.push('user_group=' + UI.encodePath(staffGroup.value));
+
+    // ใช้ <a download> แทน window.open เพราะต้องการให้ไฟล์ถูก "บันทึก" ลงเครื่อง
+    // ไม่เปิดแท็บใหม่ (รูปแบบเดียวกับปุ่มดาวน์โหลดรายงานในหน้าลงเวลาทำงาน)
+    const a = document.createElement('a');
+    a.href = '/api/staff.xlsx?' + p.join('&');
+    a.rel = 'noopener';
+    a.click();
+  } finally {
+    // ปล่อยปุ่มให้กดซ้ำได้หลังสั้น ๆ (เบราว์เซอร์เริ่มดาวน์โหลดเรียบร้อยแล้ว)
+    setTimeout(() => { downloading.value = false; }, 1200);
+  }
+}
+
 /* ---------- แท็บ: ตั้งค่าการอนุมัติ ---------- */
 const APPROVAL_SYSTEMS = [
   { key: 'approval_vehicle', label: '▣ การจองยานพาหนะ' },
@@ -464,6 +498,16 @@ const pendingGridStyle = {
           <option value="inactive">ระงับ</option>
           <option value="rejected">ปฏิเสธ</option>
         </select>
+
+        <button
+          id="st-download"
+          class="btn btn-primary"
+          style="margin-left: auto"
+          :disabled="downloading"
+          @click="downloadXlsx"
+        >
+          {{ downloading ? '⏳ กำลังดาวน์โหลด...' : '⬇️ ดาวน์โหลด Excel' }}
+        </button>
       </div>
 
       <div class="card">
