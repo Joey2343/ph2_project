@@ -37,10 +37,13 @@ const api = {
       throw new Error('ไม่สามารถติดต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่อ');
     }
     let data = null;
+    let parsed = true;
     try {
       data = await res.json();
     } catch (e) {
-      /* ignore */
+      // body ไม่ใช่ JSON → มักคือ 500 จาก Express ตอน route พัง
+      // หรือหน้า 404/502 ของ reverse proxy (Apache / nginx)
+      parsed = false;
     }
 
     if (res.status === 401) {
@@ -62,8 +65,24 @@ const api = {
       throw err;
     }
     if (!res.ok) {
-      const err = new Error((data && data.error) || 'เกิดข้อผิดพลาดในการประมวลผล');
+      /*
+       * ⚠️ เดิมบอกผู้ใช้แค่ 'เกิดข้อผิดพลาดในการประมวลผล' ประโยคเดียว
+       *    ไม่บอกว่าพังที่ไหน เรียก endpoint อะไร
+       *    (เคยเจอ: ล็อกอินแล้วขึ้นข้อความนี้ แต่ไม่รู้ว่าเป็น /auth/login
+       *     หรือหน้าหลักที่ค่อยเรียกอยู่เบื้องหลัง — วินิยายไม่ได้เลย)
+       *
+       * แก้: แนบวิธี + path + สถานะ ไว้ในข้อความ และ log ไว้ใน console
+       * ข้อความหลักยังเป็นของเดิมทุกตัวอักษร เพิ่มแค่ส่วนท้ายในวงเล็บ
+       */
+      const base = (data && data.error) || 'เกิดข้อผิดพลาดในการประมวลผล';
+      const where = method + ' /api' + url;
+      if (!parsed) {
+        // body ไม่ใช่ JSON → มักไม่ได้มาจาก route ของเรา (proxy ล้ม / 502 / 504)
+        console.error('[api] ' + where + ' → HTTP ' + res.status + ' (body ไม่ใช่ JSON)');
+      }
+      const err = new Error(base + ' [' + where + ' · HTTP ' + res.status + ']');
       err.status = res.status;
+      err.url = where;
       throw err;
     }
     return data;

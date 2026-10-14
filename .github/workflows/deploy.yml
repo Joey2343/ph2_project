@@ -161,12 +161,21 @@ jobs:
             fi
 
             echo ">>> 9. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
+            # ⚠️ เดิมเช็คแค่ /api/office ซึ่งเป็น endpoint สาธารณะ ไม่แตะตาราง sessions
+            #    ถ้า deploy ทำให้ "ล็อกอิน" พัง แต่ /api/office ยังตอบได้
+            #    → ขั้นนี้ผ่าน → รายงานว่าสำเร็จ ทั้งที่ผู้ใช้ล็อกอินไม่ได้
+            #
+            #    ① /api/office          = 200 → route + ฐานข้อมูล + schema พร้อม
+            #    ② POST /api/auth/login = 401 → เส้นทางล็อกอินยังไม่พัง
+            #       (ยิงด้วยชื่อผู้ใช้ปลอมโดยตั้งใจ → ได้ 401 ตามปกติ
+            #        คือ route ทำงาน ไม่ใช่ 500 และไม่ได้สร้าง session เก็บไว้)
             for i in $(seq 1 10); do
-              if curl -fsS -o /dev/null http://127.0.0.1:3000/api/office; then
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://127.0.0.1:3000/api/office || echo 000)
+              if [ "$CODE" = "200" ]; then
                 echo "    ตอบกลับแล้ว (รอบที่ $i)"
                 break
               fi
-              echo "    รอให้บูต... ($i/10)"
+              echo "    รอให้บูต... ($i/10 · HTTP $CODE)"
               sleep 3
               if [ "$i" = "10" ]; then
                 echo "!! เซิร์ฟเวอร์ไม่ตอบกลับหลัง 30 วินาที"
@@ -174,5 +183,18 @@ jobs:
                 exit 1
               fi
             done
+
+            echo ">>> 9.1 ตรวจเส้นทางล็อกอินด้วย"
+            LOGIN_CODE=$(curl -s -o /tmp/login-check.out -w "%{http_code}" --max-time 15 -X POST http://127.0.0.1:3000/api/auth/login -H "Content-Type: application/json" -d '{"username":"__healthcheck__","password":"__healthcheck__"}' || echo 000)
+            if [ "$LOGIN_CODE" = "401" ]; then
+              echo "    เส้นทางล็อกอินปกติ (401 ตามที่ควรเป็น)"
+            else
+              echo "!! เส้นทางล็อกอินตอบ HTTP $LOGIN_CODE (ควรเป็น 401)"
+              echo "   เนื้อหาที่ได้:"
+              head -c 500 /tmp/login-check.out || true
+              echo ""
+              pm2 logs ph2-api --lines 40 --nostream
+              exit 1
+            fi
 
             echo ">>> Deploy สำเร็จ!"
