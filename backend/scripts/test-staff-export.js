@@ -91,6 +91,91 @@ check(JSON.stringify(schoolSorted) === JSON.stringify([22, 21, 20]),
   'ฝั่งสถานศึกษา: เรียงตามรหัสโรงเรียน แล้วผอ.→รอง ผอ.→ครู',
   'ได้ ' + JSON.stringify(schoolSorted));
 
+/* ── ②b ผู้อำนวยการกลุ่ม/หน่วย ต้องขึ้นเป็นคนแรกในกลุ่มงานนั้น ───────── */
+console.log('');
+console.log('②b ผู้อำนวยการกลุ่ม/หน่วย ขึ้นเป็นคนแรกของกลุ่มงาน');
+
+const DIR = 'ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
+const DEPUTY = 'รองผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
+const GROUP_DIR = 'ผู้อำนวยการกลุ่ม/หน่วย';
+const ACTING = 'ปฏิบัติหน้าที่ผู้อำนวยการกลุ่ม';
+
+check(s.positionRank(DIR) === 0, 'ผู้อำนวยการ อันดับ 0 (สูงสุด)');
+check(s.positionRank(DEPUTY) === 1, 'รองผู้อำนวยการ อันดับ 1');
+check(s.positionRank(GROUP_DIR) === 2, 'ผู้อำนวยการกลุ่ม/หน่วย อันดับ 2');
+check(s.positionRank(ACTING) === 3, 'ปฏิบัติหน้าที่ผู้อำนวยการกลุ่ม อันดับ 3 (ตามหัวผู้อำนวยการกลุ่ม)');
+check(s.positionRank('นักวิเคราะห์นโยบายและแผน') === 4, 'ตำแหน่งอื่น อันดับ 4');
+check(s.positionRank('') === 4 && s.positionRank(null) === 4, 'ไม่มีตำแหน่ง → อันดับ 4 (ไม่ใช่ error)');
+
+check(s.positionRank(DEPUTY) > s.positionRank(DIR),
+  'รองผู้อำนวยการต้องอยู่หลังผู้อำนวยการเสมอ',
+  "เคยพังเพราะ startsWith('ผู้อำนวยการ') ไปเข้าทั้งสองคำ");
+check(s.positionRank(GROUP_DIR) > s.positionRank(DEPUTY),
+  'ผู้อำนวยการกลุ่ม/หน่วย ต้องอยู่หลังรองผู้อำนวยการ');
+check(s.positionRank(ACTING) > s.positionRank(GROUP_DIR),
+  'ปฏิบัติหน้าที่ผู้อำนวยการกลุ่ม ต้องอยู่หลังผู้อำนวยการกลุ่ม/หน่วย');
+
+// กลุ่มงานธรรมดา: ผู้อำนวยการกลุ่ม/หน่วย ต้องขึ้นก่อนแม้เลขกำกับจะใหญ่กว่า
+const withGroupDir = [
+  { id: 30, workplace: 'กลุ่มบริหารงานบุคคล', position: 'นักทรัพยากรบุคคล', staff_no: '3' },
+  { id: 31, workplace: 'กลุ่มบริหารงานบุคคล', position: 'นักวิชาการศึกษา', staff_no: '1' },
+  { id: 32, workplace: 'กลุ่มบริหารงานบุคคล', position: GROUP_DIR, staff_no: '7' },
+];
+const gdir = s.sortStaff(withGroupDir, 'office').map((u) => u.id);
+check(JSON.stringify(gdir) === JSON.stringify([32, 31, 30]),
+  'กลุ่มบริหารงานบุคคล: ผู้อำนวยการกลุ่ม/หน่วย ขึ้นก่อน แม้ staff_no จะใหญ่กว่า',
+  'ได้ ' + JSON.stringify(gdir));
+check(s.sortStaff(withGroupDir, 'office').every((u, i) => u._seq === i + 1),
+  'กลุ่มงานที่มีผู้อำนวยการกลุ่ม/หน่วย _seq ยังเรียงติดกัน');
+
+// กฎนี้ใช้กับทุกกลุ่ม ไม่ใช่แค่กลุ่มผู้บริหารฯ
+const everyGroup = [
+  { id: 40, workplace: 'กลุ่มนโยบายและแผน', position: 'นักวิเคราะห์นโยบายและแผน', staff_no: '1' },
+  { id: 41, workplace: 'กลุ่มนโยบายและแผน', position: GROUP_DIR, staff_no: '5' },
+  { id: 42, workplace: 'กลุ่มกฎหมายและคดี', position: 'นิติกร', staff_no: '1' },
+  { id: 43, workplace: 'กลุ่มกฎหมายและคดี', position: GROUP_DIR, staff_no: '5' },
+];
+const eg = s.sortStaff(everyGroup, 'office');
+check(eg.findIndex((u) => u.id === 41) < eg.findIndex((u) => u.id === 40),
+  'ใช้กับทุกกลุ่มงาน ไม่ใช่แค่กลุ่มผู้บริหารฯ (กลุ่มนโยบายและแผน)');
+check(eg.findIndex((u) => u.id === 43) < eg.findIndex((u) => u.id === 42),
+  'ใช้กับทุกกลุ่มงาน (กลุ่มกฎหมายและคดี)');
+
+// ตำแหน่งที่ใช้จัดอันดับ ต้องเป็นตำแหน่งที่ระบบให้เลือกได้จริง
+console.log('');
+console.log('②c ตำแหน่งที่ใช้จัดอันดับ ต้องอยู่ในรายการตำแหน่งจริง');
+const mPos = constSrc.match(/POSITIONS:\s*\[([\s\S]*?)\]/);
+const fePos = mPos ? [...mPos[1].matchAll(/'([^']*)'/g)].map((x) => x[1]) : [];
+for (const p of [DIR, DEPUTY, GROUP_DIR, ACTING]) {
+  check(fePos.includes(p), `ระบบมีตำแหน่ง "${p}" ให้เลือก`, 'ไม่พบใน CONSTANTS.POSITIONS');
+}
+
+/* ── ②d ฝั่งหน้าเว็บต้องเรียงแบบเดียวกัน ──────────────────────────────── */
+console.log('');
+console.log('②d ฝั่งหน้าเว็บ (StaffPage.vue) ต้องเรียงเหมือนกัน');
+
+const staffVue = fs.readFileSync(path.join(ROOT, '..', 'frontend', 'src', 'pages', 'StaffPage.vue'), 'utf8');
+const mRank = staffVue.match(/function positionRank\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+check(!!mRank, 'StaffPage.vue มีฟังก์ชัน positionRank()');
+if (mRank) {
+  // เทียบลำดับการตรวจเงื่อนไข — สลับลำดับแล้วรองผู้อำนวยการจะขึ้นก่อนผู้อำนวยการจริง
+  const rules = [
+    ["s.startsWith('รองผู้อำนวยการ')) return 1;", 'รองผอ.→1'],
+    ["s.startsWith('ผู้อำนวยการกลุ่ม')) return 2;", 'ผอ.กลุ่ม→2'],
+    ["s.startsWith('ปฏิบัติหน้าที่ผู้อำนวยการกลุ่ม')) return 3;", 'ปฏิบัติหน้าที่→3'],
+    ["s.startsWith('ผู้อำนวยการ')) return 0;", 'ผอ.→0'],
+  ];
+  const found = rules.filter(([code]) => mRank[1].includes(code)).map(([, label]) => label);
+  check(found.join('|') === 'รองผอ.→1|ผอ.กลุ่ม→2|ปฏิบัติหน้าที่→3|ผอ.→0',
+    'ลำดับการตรวจเงื่อนไขตรงกับ backend (รอง ผอ. ต้องมาก่อน ผอ.)',
+    'ได้: ' + found.join(' | '));
+  check(/!s\s*\)\s*return 4;/.test(mRank[1]), 'ไม่มีตำแหน่ง → 4 เหมือน backend');
+}
+check(/positionRank\(a\.position\)/.test(staffVue) && /positionRank\(b\.position\)/.test(staffVue),
+  'sortStaff() เรียงด้วย positionRank ใน comparator');
+check(!/=== 'ผู้บริหารการศึกษา'\s*\)[\s\S]{0,200}position/.test(staffVue),
+  'ไม่มีการจัดอันดับตำแหน่งเฉพาะกลุ่มผู้บริหารฯ แล้ว (ใช้กับทุกกลุ่ม)');
+
 /* ── ③ วันเกิด / อายุ ─────────────────────────────────────────────────── */
 console.log('');
 console.log('③ แปลงวันเกิดและคำนวณอายุ');

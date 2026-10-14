@@ -41,6 +41,30 @@ const THAI_MONTHS = [
 ];
 
 /**
+ * อันดับตำแหน่ง **ภายในกลุ่มงานเดียวกัน** — เลขยิ่งน้อยยิ่งขึ้นก่อน
+ *
+ * ลำดับที่ต้องการ (ผู้ใช้กำหนด):
+ *   0 ผู้อำนวยการ            เช่น ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2
+ *   1 รองผู้อำนวยการ
+ *   2 ผู้อำนวยการกลุ่ม/หน่วย  ← ขึ้นเป็นคนแรกของกลุ่มงานนั้น
+ *   3 ปฏิบัติหน้าที่ผู้อำนวยการกลุ่ม  (รักษาการแทนผู้อำนวยการกลุ่ม จึงตามมา)
+ *   4 ตำแหน่งอื่น ๆ            เรียงตามเลขกำกับ
+ *
+ * ⚠️ ต้องเช็ค "รองผู้อำนวยการ" ก่อน "ผู้อำนวยการ" เสมอ
+ *    เพราะ String.startsWith('ผู้อำนวยการ') จะไปเข้าทั้งสองคำ
+ *    (ถ้าสลับลำดับ → รองผู้อำนวยการจะถูกจัดเป็นผู้อำนวยการ แล้วขึ้นมาก่อนผู้อำนวยการจริง)
+ */
+function positionRank(position) {
+  const s = String(position || '').trim();
+  if (!s) return 4;
+  if (s.startsWith('รองผู้อำนวยการ')) return 1;
+  if (s.startsWith('ผู้อำนวยการกลุ่ม')) return 2;
+  if (s.startsWith('ปฏิบัติหน้าที่ผู้อำนวยการกลุ่ม')) return 3;
+  if (s.startsWith('ผู้อำนวยการ')) return 0;
+  return 4;
+}
+
+/**
  * เรียงรายชื่อเจ้าหน้าที่และใส่หมายเลขลำดับ (_seq) ให้ด้วย
  *
  * @param {Array<object>} rows  แถวผู้ใช้
@@ -63,11 +87,10 @@ function sortStaff(rows, group) {
       const wa = wpRank(a.workplace || '');
       const wb = wpRank(b.workplace || '');
       if (wa !== wb) return wa - wb;
-      if ((a.workplace || '') === 'ผู้บริหารการศึกษา') {
-        const pa = (a.position || '').startsWith('ผู้อำนวยการ') && !(a.position || '').startsWith('รองผู้อำนวยการ') ? 0 : 1;
-        const pb = (b.position || '').startsWith('ผู้อำนวยการ') && !(b.position || '').startsWith('รองผู้อำนวยการ') ? 0 : 1;
-        if (pa !== pb) return pa - pb;
-      }
+      // ภายในกลุ่มงานเดียวกัน → เรียงตามตำแหน่งก่อน แล้วค่อยเรียงตามเลขกำกับ
+      const pa = positionRank(a.position);
+      const pb = positionRank(b.position);
+      if (pa !== pb) return pa - pb;
       return staffNo(a) - staffNo(b) || a.id - b.id;
     });
   } else {
@@ -140,4 +163,4 @@ function personName(p) {
   return `${title}${first}  ${last}`.trim();
 }
 
-module.exports = { WORKPLACES, sortStaff, thaiBirthDate, ageFromBirth, personName };
+module.exports = { WORKPLACES, positionRank, sortStaff, thaiBirthDate, ageFromBirth, personName };
