@@ -39,15 +39,31 @@ const telegramPath = path.join(ROOT, 'lib', 'telegram.js');
   await db.init();
   await db.bootstrap();
 
-  /* ── เตรียมผู้ขอ (ไม่มี Telegram) + ผู้รับมอบหมาย (มี Telegram) ──────────── */
-  const requester = await db.prepare("SELECT id FROM users WHERE username='admin'").get();
-  const delegate = await db.prepare(
-    "SELECT id, full_name FROM users WHERE status='active' AND id != ? ORDER BY id LIMIT 1",
-  ).get(requester.id);
+  /*
+   * ⚠️ ต้องสร้างผู้ใช้ชั่วคราวเอง ห้ามอาศัยผู้ใช้ที่มีอยู่แล้ว
+   *
+   *   เคยเขียนว่า  SELECT id FROM users WHERE status='active' AND id != ผู้ขอ
+   *   ผลคือบนฐานที่เพิ่งสร้างใหม่ (เช่น CI ที่สร้าง admin_ph2 ว่าง ๆ
+   *   แล้วให้ seed() สร้างข้อมูล) มีผู้ใช้แค่คนเดียว
+   *   → คืน undefined → พังที่ delegate.id
+   *   → CI ล้ม ทั้งที่โค้ดจริงไม่มีปัญหา
+   *   (เจอจริงตอน deploy รอบ ca7e99c — ขั้น "Run Tests & Build Check" ล้ม)
+   */
+  const TAG = `__tgd_${Date.now().toString(36)}`;
+  const mkUser = async (name) => {
+    const r = await db.prepare(`INSERT INTO users
+      (username, password_hash, title, full_name, status, role, user_group,
+       can_approve, telegram_token, telegram_chat_id)
+      VALUES (?,?,'นาย',?,'active','staff','office', 1, ?, ?)`)
+      .run(`${TAG}_${name}`, 'TEST-ONLY-NOT-A-REAL-HASH', `ทดสอบ ${name}`,
+        `TEST-TOKEN-${name}`, `TEST-CHAT-${name}`);
+    return { id: r.lastInsertRowid, username: `${TAG}_${name}`, full_name: `ทดสอบ ${name}` };
+  };
 
-  const dTok0 = await db.prepare('SELECT telegram_token, telegram_chat_id FROM users WHERE id = ?').get(delegate.id);
-  await db.prepare('UPDATE users SET telegram_token = ?, telegram_chat_id = ? WHERE id = ?')
-    .run('TEST-TOKEN-DELEGATE', 'TEST-CHAT-DELEGATE', delegate.id);
+  const requester = await db.prepare("SELECT id FROM users WHERE username='admin'").get();
+  const delegate = await mkUser('DELEGATE');
+  const other = await mkUser('OTHER');
+  console.log(`สร้างผู้ใช้ชั่วคราว: ${delegate.username} · ${other.username}`);
 
   const lkSaved = await db.prepare("SELECT value FROM settings WHERE `key`='leave_approvers'").get();
 
@@ -127,28 +143,21 @@ const telegramPath = path.join(ROOT, 'lib', 'telegram.js');
   console.log('');
   console.log('③ ผู้ตรวจสอบกับผู้รับมอบหมายเป็นคนละคน → ต้องส่ง 2 ครั้ง');
 
-  const other = await db.prepare(
-    "SELECT id FROM users WHERE status='active' AND id NOT IN (?,?) ORDER BY id LIMIT 1",
-  ).get(requester.id, delegate.id);
-  if (!other) {
-    console.log('  – ข้าม: ไม่มีผู้ใช้อีกคนให้ทดสอบ');
-  } else {
-    // คืนค่า delegate กลับเป็นของตัวเองก่อน
-    // (ขั้น ② เปลี่ยน delegate ให้เป็นผู้ตรวจสอบ ถ้าไม่คืน ขั้นนี้จะได้ chat ผิด)
-    await db.prepare('UPDATE users SET telegram_token=?, telegram_chat_id=? WHERE id = ?')
-      .run('TEST-TOKEN-DELEGATE', 'TEST-CHAT-DELEGATE', delegate.id);
-    await db.prepare('UPDATE users SET telegram_token=?, telegram_chat_id=? WHERE id = ?')
-      .run('TEST-TOKEN-OTHER', 'TEST-CHAT-OTHER', other.id);
-    await db.prepare("UPDATE settings SET value=? WHERE `key`='leave_approvers'")
-      .run(JSON.stringify({ 1: { [requester.id]: other.id } }));
+  // คืนค่า delegate กลับเป็นของตัวเองก่อน
+  // (ขั้น ② เปลี่ยน delegate ให้เป็นผู้ตรวจสอบ ถ้าไม่คืน ขั้นนี้จะได้ chat ผิด)
+  await db.prepare('UPDATE users SET telegram_token=?, telegram_chat_id=? WHERE id = ?')
+    .run('TEST-TOKEN-DELEGATE', 'TEST-CHAT-DELEGATE', delegate.id);
+  await db.prepare('UPDATE users SET telegram_token=?, telegram_chat_id=? WHERE id = ?')
+    .run('TEST-TOKEN-OTHER', 'TEST-CHAT-OTHER', other.id);
+  await db.prepare("UPDATE settings SET value=? WHERE `key`='leave_approvers'")
+    .run(JSON.stringify({ 1: { [requester.id]: other.id } }));
 
-    sent.length = 0;
-    await telegram.notifyLeaveSubmitted(leaveId);
-    const c2 = sent.map((s) => s.body.chat_id);
-    check(c2.indexOf('TEST-CHAT-OTHER') !== -1, 'ส่งถึงผู้ตรวจสอบ', JSON.stringify(c2));
-    check(c2.indexOf('TEST-CHAT-DELEGATE') !== -1, 'ส่งถึงผู้รับมอบหมายงาน', JSON.stringify(c2));
-    check(sent.length === 2, 'ส่ง 2 ครั้ง', `ส่งไป ${sent.length} ครั้ง`);
-  }
+  sent.length = 0;
+  await telegram.notifyLeaveSubmitted(leaveId);
+  const c2 = sent.map((s) => s.body.chat_id);
+  check(c2.indexOf('TEST-CHAT-OTHER') !== -1, 'ส่งถึงผู้ตรวจสอบ', JSON.stringify(c2));
+  check(c2.indexOf('TEST-CHAT-DELEGATE') !== -1, 'ส่งถึงผู้รับมอบหมายงาน', JSON.stringify(c2));
+  check(sent.length === 2, 'ส่ง 2 ครั้ง', `ส่งไป ${sent.length} ครั้ง`);
 
   /* ── ④ ไม่ได้เลือก delegate → ต้องไม่ส่งหาคนไหนเป็นพิเศษ ────────────── */
   console.log('');
@@ -166,14 +175,10 @@ const telegramPath = path.join(ROOT, 'lib', 'telegram.js');
   if (lkSaved) await db.prepare("UPDATE settings SET value=? WHERE `key`='leave_approvers'").run(lkSaved.value);
   else await db.prepare("DELETE FROM settings WHERE `key`='leave_approvers'").run();
 
-  await db.prepare('UPDATE users SET telegram_token=?, telegram_chat_id=? WHERE id = ?')
-    .run(dTok0.telegram_token, dTok0.telegram_chat_id, delegate.id);
-  if (other) {
-    const oTok0 = await db.prepare('SELECT telegram_token, telegram_chat_id FROM users WHERE id = ?').get(other.id);
-    await db.prepare('UPDATE users SET telegram_token=?, telegram_chat_id=? WHERE id = ?')
-      .run(oTok0.telegram_token, oTok0.telegram_chat_id, other.id);
-  }
-  void approverTok0;
+  // ลบผู้ใช้ชั่วคราวที่เพิ่งสร้าง (กรองด้วย prefix ที่มีเฉพาะเทสต์นี้)
+  const rm = await db.prepare('DELETE FROM users WHERE username LIKE ?').run(`${TAG}%`);
+  console.log(`เก็บกวาดผู้ใช้ชั่วคราว ${rm.changes} รายการ`);
+
   await db.close();
 
   console.log('');
