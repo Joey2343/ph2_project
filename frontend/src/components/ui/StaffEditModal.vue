@@ -8,7 +8,9 @@
  *   รายการตำแหน่ง/วิทยฐานะมาจาก SCHOOL_POSITIONS / SCHOOL_ACADEMIC_RANKS
  *   ช่อง "กลุ่มงาน" เป็นรายชื่อโรงเรียนจาก /schools
  *   มีปุ่ม "ปฏิบัติงานหลายแห่ง" เพิ่มสถานศึกษาได้อีก 4 แห่ง (เก็บเป็น workplace_secondary)
- *   ตัวเลือกสิทธิ์จำกัดไว้ที่ admin / school_staff
+ *   ตัวเลือกสิทธิ์แยกตามฝั่งผู้ใช้ผ่าน CONSTANTS.rolesForGroup(user_group)
+ *     ฝั่งสถานศึกษา → ผู้ดูแลระบบ + ผู้อำนวยการสถานศึกษา / รองผู้อำนวยการสถานศึกษา / ครู / เจ้าหน้าที่ธุรการ
+ *     ฝั่ง สพป.     → บทบาทของสำนักงาน
  */
 import { ref, computed, watch, onMounted } from 'vue';
 import api from '../../api/client.js';
@@ -69,11 +71,8 @@ function parseSecondary(json) {
 const posList = computed(() => (isSchool.value ? CONSTANTS.SCHOOL_POSITIONS : CONSTANTS.POSITIONS));
 const rankList = computed(() => (isSchool.value ? CONSTANTS.SCHOOL_ACADEMIC_RANKS : CONSTANTS.ACADEMIC_RANKS));
 const workLabel = computed(() => (isSchool.value ? 'สถานศึกษา' : 'สังกัด/กลุ่มงาน'));
-const roleOptions = computed(() =>
-  (isSchool.value
-    ? CONSTANTS.ROLES.filter((r) => ['admin', 'school_staff'].includes(r.value))
-    : CONSTANTS.ROLES.filter((r) => r.value !== 'school_staff')),
-);
+// แยกบทบาทตามฝั่งของผู้ใช้ (ฝั่ง สพป. ไม่เห็นบทบาทของสถานศึกษา และกลับกัน)
+const roleOptions = computed(() => CONSTANTS.rolesForGroup(u.value.user_group));
 
 /* ---------- รายชื่อโรงเรียน (ฝั่งสถานศึกษา) ---------- */
 const schools = ref([]);

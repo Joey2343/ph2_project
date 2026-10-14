@@ -6,20 +6,68 @@ const bcrypt = require('bcryptjs');
 const SESSION_DAYS = 7;
 
 /**
- * บทบาทในระบบ (5 ระดับ)
+ * บทบาทในระบบ — แยกเป็น 2 กลุ่มตามฝั่งของผู้ใช้
+ *
+ * ฝั่ง สพป.แพร่ เขต 2 (user_group = 'office')
+ * ──────────────────────────────────────
  * - admin     : ผู้ดูแลระบบ — ดู/แก้ไขได้ทุกส่วน
  * - staff     : เจ้าหน้าที่ในสำนักงาน — ใช้ได้ทุกเมนู แต่แก้ไขระบบ/ข้อมูลคนอื่นไม่ได้
  * - group_head: ผู้อำนวยการกลุ่ม/หน่วย — อนุมัติขั้นที่ 1 (ขั้นต้น) เมื่อ admin กำหนดให้
  * - deputy    : รองผู้อำนวยการ สพป.แพร่ เขต 2 — อนุมัติขั้นที่ 2-3 (ขั้นกลาง/ขั้นสูง) เมื่อ admin กำหนดให้
  * - director  : ผู้อำนวยการ สพป.แพร่ เขต 2 — อนุมัติขั้นที่ 3 (ขั้นสูง) เมื่อ admin กำหนดให้
+ *
+ * ฝั่งสถานศึกษา (user_group = 'school')
+ * ───────────────────────────────
+ * - school_director : ผู้อำนวยการสถานศึกษา
+ * - school_deputy   : รองผู้อำนวยการสถานศึกษา
+ * - teacher         : ครู
+ * - school_clerk    : เจ้าหน้าที่ธุรการ
+ * - school_staff    : บทบาทเดิมของสถานศึกษา (คงไว้ให้ข้อมูลเก่าแสดงผลได้)
+ *
+ * ⚠️ บทบาทฝั่งสถานศึกษา approveLevels = [] ทั้งหมด
+ *    เพราะการอนุมัติสายสถานศึกษาไม่ได้ใช้บทบาทนี้เลย
+ *    ระบบกำหนดผู้อนุมัติไว้ที่แท็บ "ตั้งค่าการอนุมัติ" และผู้อนุมัติต้องเป็นเจ้าหน้าที่ สพป.แพร่ เขต 2
+ *    (ดู canTravelApprover → isOfficeUser)
+ *    ตั้งเป็น [] เพื่อไม่ให้บทบาทฝั่งสถานศึกษาไปเปิดสิทธิ์อนุมัติที่ไม่ควรได้
  */
 const ROLES = {
-  admin: { label: 'ผู้ดูแลระบบ', approveLevels: [1, 2, 3], icon: '⭐' },
-  staff: { label: 'เจ้าหน้าที่ในสำนักงาน', approveLevels: [], icon: '👤' },
-  group_head: { label: 'ผู้อำนวยการกลุ่ม/หน่วย', approveLevels: [1], icon: '🧑‍💼' },
-  deputy: { label: 'รองผู้อำนวยการ สพป.แพร่ เขต 2', approveLevels: [2, 3], icon: '👔' },
-  director: { label: 'ผู้อำนวยการ สพป.แพร่ เขต 2', approveLevels: [3], icon: '🎓' },
+  admin: { label: 'ผู้ดูแลระบบ', approveLevels: [1, 2, 3], icon: '⭐', group: 'office' },
+  staff: { label: 'เจ้าหน้าที่ในสำนักงาน', approveLevels: [], icon: '👤', group: 'office' },
+  group_head: { label: 'ผู้อำนวยการกลุ่ม/หน่วย', approveLevels: [1], icon: '🧑‍💼', group: 'office' },
+  deputy: { label: 'รองผู้อำนวยการ สพป.แพร่ เขต 2', approveLevels: [2, 3], icon: '👔', group: 'office' },
+  director: { label: 'ผู้อำนวยการ สพป.แพร่ เขต 2', approveLevels: [3], icon: '🎓', group: 'office' },
+
+  school_director: { label: 'ผู้อำนวยการสถานศึกษา', approveLevels: [], icon: '🎓', group: 'school' },
+  school_deputy: { label: 'รองผู้อำนวยการสถานศึกษา', approveLevels: [], icon: '👔', group: 'school' },
+  teacher: { label: 'ครู', approveLevels: [], icon: '👩‍🏫', group: 'school' },
+  school_clerk: { label: 'เจ้าหน้าที่ธุรการ', approveLevels: [], icon: '🗂️', group: 'school' },
+  school_staff: { label: 'เจ้าหน้าที่สถานศึกษา', approveLevels: [], icon: '🏫', group: 'school' },
 };
+
+/** ลำดับบทบาทฝั่งสถานศึกษาที่แสดงในหน้ากำหนดสิทธิ์ (สูง → ต่ำ) */
+const SCHOOL_ROLE_ORDER = ['school_director', 'school_deputy', 'teacher', 'school_clerk'];
+
+/**
+ * บทบาทที่ให้เลือกได้ สำหรับ user_group นี้
+ * @param {'office'|'school'} group
+ * @returns {string[]} รหัสบทบาท
+ */
+function rolesForGroup(group) {
+  if (group === 'school') return SCHOOL_ROLE_ORDER.slice();
+  return Object.keys(ROLES).filter((k) => ROLES[k].group === 'office');
+}
+
+/**
+ * บทบาทนี้ใช้กับ user_group นี้ได้ไหม
+ *
+ * ⚠️ admin ใช้ได้ทั้งสองฝั่ง เพราะคือผู้ดูแลระบบ ไม่ใช่บทบาทของหน่วยงาน
+ *    (หน้าเว็บจึงแสดง admin เป็นตัวเลือกเสมอ ไม่ว่าจะอยู่ฝั่งไหน)
+ */
+function isValidRoleFor(role, group) {
+  if (!ROLES[role]) return false;
+  if (role === 'admin') return true;
+  return ROLES[role].group === (group === 'school' ? 'school' : 'office');
+}
 
 function roleLabel(role) {
   return (ROLES[role] || ROLES.staff).label;
@@ -61,7 +109,15 @@ function canApprove(user, level) {
 function isApprover(user) {
   if (!user || user.status !== 'active') return false;
   if (user.role === 'admin') return true;
-  return !!user.can_approve && ROLES[user.role].approveLevels.length > 0;
+  if (!user.can_approve) return false;
+  // ⚠️ ต้องกันไว้ เพราะ role อาจไม่มีในตาราง ROLES
+  //    เช่น ข้อมูลเก่าที่ role เป็นค่าว่าง หรือค่าที่ถูกลบออกจากระบบ
+  //    ถ้าไม่กัน → ROLES[user.role].approveLevels จะกลายเป็น undefined.approveLevels
+  //    → TypeError → route ตอบ 500 แทนที่จะตอบ 403
+  //    (เคยพังกับบทบาท school_staff ที่ไม่ได้อยู่ใน ROLES เดิม)
+  const meta = ROLES[user.role];
+  if (!meta) return false;
+  return (meta.approveLevels || []).length > 0;
 }
 
 // อายุเซสชันต้องเทียบกับ "เวลาจริง" เสมอ — ไม่ใช่เวลาจำลอง (มิฉะนั้นการเปิดโหมดจำลองจะเลื่อนทุกเซสชันออก)
@@ -213,6 +269,7 @@ module.exports = {
   now, newSession, destroySession, getSessionUser, hashPassword, verifyPassword,
   parseCookies, isValidCitizenId, validatePasswordStrength, publicUser,
   attachUser, requireAuth, requireAdmin, requireApprover,
-  ROLES, roleLabel, roleIcon, canApprove, isApprover,
+  ROLES, SCHOOL_ROLE_ORDER, rolesForGroup, isValidRoleFor,
+  roleLabel, roleIcon, canApprove, isApprover,
   getTimeEditorIds, isTimeEditor,
 };

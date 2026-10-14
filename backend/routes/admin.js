@@ -899,6 +899,15 @@ router.put('/staff/:id/role', auth.requireAdmin, async (req, res) => {
   if (!u) return res.status(404).json({ error: 'ไม่พบเจ้าหน้าที่' });
   const { role } = req.body || {};
   if (!auth.ROLES[role]) return res.status(400).json({ error: 'บทบาทไม่ถูกต้อง' });
+  // บทบาทของ สพป. กับของสถานศึกษาแยกกัน — ตั้งข้ามฝั่งไม่ได้
+  // (เช่น ให้เจ้าหน้าที่สถานศึกษาเป็น "รองผู้อำนวยการ สพป.แพร่ เขต 2")
+  if (!auth.isValidRoleFor(role, u.user_group)) {
+    return res.status(400).json({
+      error: u.user_group === 'school'
+        ? `เจ้าหน้าที่สถานศึกษาต้องใช้บทบาทฝั่งสถานศึกษาเท่านั้น (${auth.SCHOOL_ROLE_ORDER.map((r) => auth.roleLabel(r)).join(', ')})`
+        : 'เจ้าหน้าที่ สพป.แพร่ เขต 2 ต้องใช้บทบาทฝั่งสำนักงานเท่านั้น',
+    });
+  }
   if (u.id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'ไม่สามารถถอดสิทธิ์ผู้ดูแลของตนเองได้' });
   await db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
   res.json({ ok: true, user: await auth.publicUser(await db.prepare('SELECT * FROM users WHERE id = ?').get(id)), message: `ปรับสิทธิ์เป็น "${auth.roleLabel(role)}" เรียบร้อย` });

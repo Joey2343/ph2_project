@@ -121,6 +121,11 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  console.log('\n[ทดสอบบทบาทฝั่งสถานศึกษา แยกจากฝั่ง สพป.]');
+  results.push(run('test-school-roles', [path.join(__dirname, 'test-school-roles.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {
