@@ -888,7 +888,11 @@ router.put('/vehicle-bookings/:id/reject', auth.requireAuth, async (req, res) =>
   const { note } = req.body || {};
   const result = await approvals.rejectRequest({
     table: 'vehicle_bookings', id: Number(req.params.id), user: req.user, note,
-    allowFn: (u) => approvals.getUserSystemLevels(u, 'vehicle').length > 0,
+    // ⚠️ ต้องเป็น async และ await ข้างใน
+    //    เดิมเป็น (u) => ...getUserSystemLevels(...).length > 0
+    //    → getUserSystemLevels เป็น async → .length = undefined → undefined > 0 = false
+    //    → ปฏิเสธการจองยานพาหนะไม่ได้เลย แม้แต่ admin
+    allowFn: async (u) => (await approvals.getUserSystemLevels(u, 'vehicle')).length > 0,
   });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
   // ไม่อนุมัติ → แจ้งเตือนทันที (ข้อความสีแดง 🔴) ไปยังผู้จอง
@@ -1154,7 +1158,8 @@ router.put('/room-bookings/:id/reject', auth.requireAuth, async (req, res) => {
   const { note } = req.body || {};
   const result = await approvals.rejectRequest({
     table: 'room_bookings', id: Number(req.params.id), user: req.user, note,
-    allowFn: (u) => approvals.getUserSystemLevels(u, 'room').length > 0,
+    // ⚠️ ต้องเป็น async และ await ข้างใน (เหตุผลเดียวกับฝั่งยานพาหนะ)
+    allowFn: async (u) => (await approvals.getUserSystemLevels(u, 'room')).length > 0,
   });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
   // ไม่อนุมัติ → แจ้งเตือนทันที (ข้อความสีแดง 🔴) ไปยังผู้จอง

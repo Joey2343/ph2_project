@@ -946,12 +946,12 @@ router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
     };
     if (nextLevel === 2) {
       // level 2: check per-person level 2 approver for the requester
-      canDo = checkPerLevel(2, row.user_id, req.user.id);
+      canDo = await checkPerLevel(2, row.user_id, req.user.id);
     } else if (nextLevel === 3) {
       // level 3: check per-person level 3 approver for the requester
-      canDo = checkPerLevel(3, row.user_id, req.user.id);
+      canDo = await checkPerLevel(3, row.user_id, req.user.id);
     } else {
-      canDo = checkPerLevel(nextLevel, row.user_id, req.user.id);
+      canDo = await checkPerLevel(nextLevel, row.user_id, req.user.id);
     }
   }
   if (!canDo) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์อนุมัติขั้นนี้' });

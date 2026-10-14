@@ -271,13 +271,26 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
   if (!row) return { error: 'ไม่พบรายการ', code: 404 };
   if (row.status !== 'pending') return { error: 'รายการนี้ไม่รอการอนุมัติแล้ว', code: 400 };
 
-  const required = requiredFn ? requiredFn(row) : await getRequiredLevels(system);
+  /*
+   * ⚠️ ทุก callback ที่ส่งเข้ามาต้อง await — ทุกตัวเป็น async ได้
+   *
+   *   ถ้าไม่ await จะได้ Promise ซึ่ง "truthy เสมอ" และเทียบเลขไม่ได้
+   *     · requiredFn   → required เป็น Promise → nextLevel > required เป็น NaN
+   *                     → ตรวจ "อนุมัติครบทุกขั้นแล้ว" ไม่มีผล
+   *                     → done = nextLevel >= required เป็น false เสมอ
+   *                     → คำขอที่อนุมัติครบแล้วยังค้างสถานะ pending
+   *     · canApproveFn → Promise truthy → if (!check(...)) ไม่เคยทำงาน
+   *                     → ใครก็กดอนุมัติได้ ไม่ตรวจสิทธิ์ (เจอจริงที่ยานพาหนะ/ห้องประชุม)
+   *     · levelLabelFn → ข้อความ error ออกมาเป็น "[object Promise]"
+   *   ผู้เรียกส่ง callback ที่คืน Promise ทั้งหมด (ดู routes/ops.js, routes/requests.js)
+   */
+  const required = requiredFn ? await requiredFn(row) : await getRequiredLevels(system);
   const approvals = parseApprovals(row.approval_data);
   const nextLevel = approvals.length + 1;
-  const label = levelLabelFn ? levelLabelFn(nextLevel) : levelLabel(nextLevel);
+  const label = levelLabelFn ? await levelLabelFn(nextLevel) : levelLabel(nextLevel);
   if (nextLevel > required) return { error: 'รายการนี้ได้รับการอนุมัติครบทุกขั้นแล้ว', code: 400 };
   const check = canApproveFn || ((u, lvl) => auth.canApprove(u, lvl));
-  if (!check(user, nextLevel)) {
+  if (!await check(user, nextLevel)) {
     return { error: `คุณไม่มีสิทธิ์อนุมัติ${label} (เฉพาะผู้ที่ได้รับมอบหมายเท่านั้น)`, code: 403 };
   }
 
@@ -326,7 +339,16 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
   const row = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
   if (!row) return { error: 'ไม่พบรายการ', code: 404 };
   if (row.status !== 'pending') return { error: 'รายการนี้ไม่รอการอนุมัติแล้ว', code: 400 };
-  const ok = allowFn ? allowFn(user) : auth.isApprover(user);
+  /*
+   * ⚠️ ต้อง await เช่นกัน — ผู้เรียกส่ง allowFn ที่เรียก getUserSystemLevels
+   *    ซึ่งเป็น async
+   *
+   *   เคยเป็น:  allowFn: (u) => approvals.getUserSystemLevels(u, 'vehicle').length > 0
+   *            Promise.length = undefined → undefined > 0 = false
+   *            → if (!ok) เสมอ → ปฏิเสธการจอง/ห้องประชุมไม่ได้เลย
+   *              แม้แต่ admin (เพราะส่ง allowFn มาแล้ว ค่าเริ่มต้นจะไม่ถูกใช้)
+   */
+  const ok = allowFn ? await allowFn(user) : auth.isApprover(user);
   if (!ok) return { error: 'คุณไม่มีสิทธิ์พิจารณาคำขอ', code: 403 };
   await db.prepare(`UPDATE ${table} SET status = 'rejected', note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
     .run((note || '').trim(), user.id, auth.now(), id);

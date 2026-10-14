@@ -135,6 +135,9 @@ function main() {
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
 
+  console.log('\n[ทดสอบสิทธิ์อนุมัติ — callback ต้องถูก await ทุกตัว]');
+  results.push(run('test-approval-perm', [path.join(__dirname, 'test-approval-perm.js')]));
+
   console.log('\n[ทดสอบยื่นลา + สายอนุมัติการลา ตั้งแต่ต้นจนจบ]');
   results.push(run('test-leave-flow', [path.join(__dirname, 'test-leave-flow.js')], {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
