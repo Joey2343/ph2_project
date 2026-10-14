@@ -93,9 +93,15 @@ async function load() {
     officeMap.value = a.travelApprovers || {};
     schoolMap.value = b.travelApprovers || {};
     staff.value = c.users || c.staff || [];
-    staff.value.sort(
-      (x, y) => (x.sort_order || 0) - (y.sort_order || 0) || (x.id - y.id),
-    );
+    /*
+     * ⚠️ เคยมี staff.value.sort((x, y) => (x.sort_order || 0) - (y.sort_order || 0) || (x.id - y.id))
+     *   แต่ตาราง users ไม่มีคอลัมน์ sort_order → ทุกคนได้ 0 → เทียบเท่ากันหมด
+     *   → ตกไปเรียงตาม id ซึ่ง "ทับ" ลำดับที่ backend เรียงมาให้เสียทิ้ง
+     *   (แย่กว่าไม่เรียงเลย เพราะ staff_no หายไป)
+     *
+     * ตอนนี้ /api/staff เรียงให้ตามกฎหน้าเจ้าหน้าที่แล้ว
+     * (ฝั่ง สพป. ก่อน → ฝั่งสถานศึกษา) จึงไม่ต้องเรียงซ้ำฝั่งหน้าเว็บ
+     */
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {

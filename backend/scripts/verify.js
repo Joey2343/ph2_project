@@ -126,6 +126,9 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  console.log('\n[ทดสอบลำดับรายชื่อเจ้าหน้าที่ทุกจุดที่ให้เลือก]');
+  results.push(run('test-staff-list-order', [path.join(__dirname, 'test-staff-list-order.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {

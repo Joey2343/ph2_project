@@ -150,6 +150,18 @@ for (const p of [DIR, DEPUTY, GROUP_DIR, ACTING]) {
   check(fePos.includes(p), `ระบบมีตำแหน่ง "${p}" ให้เลือก`, 'ไม่พบใน CONSTANTS.POSITIONS');
 }
 
+// กลุ่มที่ไม่อยู่ในรายการ WORKPLACES ต้องไปท้ายสุด ไม่ใช่อันดับ 0
+const unknownGroup = [
+  { id: 50, workplace: '54020001 บ้านน้ำริน (คุรุราษฎร์ฯ)', position: 'เจ้าหน้าที่ธุรการ' },
+  { id: 51, workplace: 'กลุ่มอำนวยการ', staff_no: '5' },
+  { id: 52, workplace: 'หน่วยตรวจสอบภายใน', staff_no: '1' },
+];
+const ug = s.sortStaff(unknownGroup, 'office').map((u) => u.workplace);
+check(ug[0] === 'กลุ่มอำนวยการ' && ug[ug.length - 1] === 'หน่วยตรวจสอบภายใน'
+  && ug[1] === '54020001 บ้านน้ำริน (คุรุราษฎร์ฯ)',
+  'กลุ่มที่ไม่อยู่ใน WORKPLACES ไปท้ายสุด (ก่อนหน่วยตรวจสอบภายใน) ไม่ใช่ขึ้นเป็นคนแรก',
+  'ได้ ' + JSON.stringify(ug));
+
 /* ── ②d ฝั่งหน้าเว็บต้องเรียงแบบเดียวกัน ──────────────────────────────── */
 console.log('');
 console.log('②d ฝั่งหน้าเว็บ (StaffPage.vue) ต้องเรียงเหมือนกัน');

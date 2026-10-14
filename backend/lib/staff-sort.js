@@ -77,8 +77,22 @@ function sortStaff(rows, group) {
     const mids = WORKPLACES.filter(
       (w) => w !== 'ผู้บริหารการศึกษา' && w !== 'หน่วยตรวจสอบภายใน',
     );
-    const wpRank = (w) =>
-      w === 'ผู้บริหารการศึกษา' ? 0 : w === 'หน่วยตรวจสอบภายใน' ? 999 : 1 + mids.indexOf(w);
+    /*
+     * ⚠️ กลุ่มที่ไม่อยู่ใน WORKPLACES ต้องไปท้ายสุด ไม่ใช่อันดับ 0
+     *
+     *   เคยเขียนเป็น  1 + mids.indexOf(w)
+     *   indexOf คืน -1 ตอนไม่เจอ → 1 + (-1) = 0
+     *   → ได้อันดับเท่ากับ "ผู้บริหารการศึกษา" พอดี
+     *   → เจ้าหน้าที่สถานศษาที่ workplace เป็น "54020001 บ้านน้ำริน (…)"
+     *     จะโผล่เป็นคนแรก ทั้งที่ควรอยู่ท้ายสุด
+     *   (เจอจริงใน /api/vehicle/approvers ที่ไม่ได้กรอง user_group)
+     */
+    const wpRank = (w) => {
+      if (w === 'ผู้บริหารการศึกษา') return 0;
+      if (w === 'หน่วยตรวจสอบภายใน') return 999;
+      const i = mids.indexOf(w);
+      return i === -1 ? 998 : 1 + i;
+    };
     const staffNo = (u) => {
       const n = parseInt(u.staff_no, 10);
       return isNaN(n) ? 9999 : n;

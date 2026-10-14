@@ -21,6 +21,7 @@ const uploadLeavesDyn = createDynamicUpload('leaves');
 const simdate = require('../lib/simdate');
 const approvals = require('../lib/approvals');
 const telegram = require('../lib/telegram');
+const staffSort = require('../lib/staff-sort');
 
 const router = express.Router();
 
@@ -195,8 +196,10 @@ router.get('/memo/approvers', auth.requireAuth, async (req, res) => {
   let perPerson = await approvals.getMemoApproversPerPerson();
   // เฉพาะเจ้าหน้าที่ฝั่งสำนักงานเขต — ไม่รวมเจ้าหน้าที่สถานศึกษา
   // แยกด้วย user_group ไม่ใช่รหัสโรงเรียน (รหัสสำนักงานเขตถูกถอดจาก schools ไปแล้ว)
-  const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, role FROM users
-    WHERE status = 'active' AND COALESCE(user_group, 'office') = 'office' ORDER BY full_name`).all();
+  // ⚠️ เดิม ORDER BY full_name (A-Z ไทย) ไม่ตรงกับหน้าเจ้าหน้าที่
+  const staff = staffSort.sortStaff(await db.prepare(`SELECT id, title, full_name, first_name, last_name,
+             position, workplace, staff_no, user_group, school_code, current_school, role
+     FROM users WHERE status = 'active' AND COALESCE(user_group, 'office') = 'office'`).all(), 'office');
   // ยังไม่เคยบันทึกรายบุคคล → ใช้ค่า effective จากลำดับรวมเดิม (คนแรกของแต่ละขั้น) ให้ทุกคน เพื่อไม่ให้ตารางว่าง
   const hasPer = ['1', '2', '3'].some((lv) => Object.keys(perPerson[lv] || {}).length);
   if (!hasPer) {
@@ -763,9 +766,12 @@ router.get('/leaves', auth.requireAuth, async (req, res) => {
 router.get('/leave-users', auth.requireAuth, async (req, res) => {
   const wp = req.user.workplace || '';
   if (!wp) return res.json({ users: [] });
-  const rows = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position FROM users
-    WHERE workplace = ? AND status = 'active' AND id != ? ORDER BY full_name`).all(wp, req.user.id);
-  res.json({ users: rows });
+  // กรองด้วย workplace อยู่แล้ว (เป็นกลุ่มเดียว) → เหลือแค่เรียงตามอันดับตำแหน่ง
+  // ⚠️ เดิม ORDER BY full_name (A-Z ไทย) ไม่ตรงกับหน้าเจ้าหน้าที่
+  const rows = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position,
+             workplace, staff_no, user_group, school_code, current_school
+     FROM users WHERE workplace = ? AND status = 'active' AND id != ?`).all(wp, req.user.id);
+  res.json({ users: staffSort.sortStaff(rows, req.user.user_group === 'school' ? 'school' : 'office') });
 });
 
 // ข้อมูลเจ้าหน้าที่การลา 3 ลำดับ (อ่านได้ทุกคน — ใช้เช็คสิทธิ์ ผู้ตรวจสอบ) — รวมทั้ง 2 กลุ่ม (สพป. + สถานศึกษา)
@@ -1109,10 +1115,16 @@ router.get('/leave-balances', auth.requireAuth, async (req, res) => {
   // ค่าเริ่มต้น = ปีงบประมาณปัจจุบัน (พอถึง 1 ต.ค. เปลี่ยนเป็นปีงบใหม่ทันที) — ข้อมูลปีเก่าเก็บครบตามคอลัมน์ year เรียกดูย้อนหลังได้
   const year = Number(req.query.year) || getFiscalYearBE(); // พ.ศ. (ปีงบประมาณ)
   // ดึงรายชื่อบุคลากรทั้งหมดที่ active
-  // เรียงตามลำดับเจ้าหน้าที่ (staff_no) เหมือนหน้าเจ้าหน้าที่ — ผู้ที่ยังไม่กำหนดลำดับอยู่ท้ายสุด (เรียงตาม id)
-  const users = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, staff_no, user_group,
-    ROW_NUMBER() OVER (ORDER BY CASE WHEN staff_no IS NULL OR staff_no = '' THEN 1 ELSE 0 END, CAST(staff_no AS SIGNED) ASC, id ASC) AS seq
-    FROM users WHERE status = 'active'`).all();
+  // ⚠️ เดิมเรียงด้วย ROW_NUMBER() ใน SQL แค่ staff_no → ไม่ตรงกับหน้าเจ้าหน้าที่
+  //    (ไม่ได้จัดกลุ่มงานและอันดับตำแหน่ง) แก้เป็นใช้กฎเดียวกันทั้งระบบ
+  const rawUsers = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position,
+             workplace, staff_no, user_group, school_code, current_school
+     FROM users WHERE status = 'active'`).all();
+  // คนละฝั่งเรียงคนละกฎ → เรียงฝั่ง สพป. ก่อน แล้วฝั่งสถานศึกษา
+  // แล้วเขียน seq ใหม่ให้ตรงกับลำดับจริง (ฝั่งหน้าเว็บเรียงตาม seq)
+  const users = staffSort.sortStaff(rawUsers.filter((u) => u.user_group !== 'school'), 'office')
+    .concat(staffSort.sortStaff(rawUsers.filter((u) => u.user_group === 'school'), 'school'))
+    .map((u, i) => ({ ...u, seq: i + 1 }));
   // ดึงยอดลาพักผ่อนที่ได้รับอนุมัติแล้วปีนี้
   // "ลาปีนี้" นับตามปีงบประมาณ (1 ต.ค. ปีก่อน - 30 ก.ย. ปีที่เลือก) เช่น ปีงบประมาณ 2569 = 1 ต.ค. 2568 - 30 ก.ย. 2569
   const usedRows = await db.prepare(`SELECT user_id, SUM(days) as total FROM leave_requests WHERE leave_type = 'ลาพักผ่อน' AND status = 'approved' AND date_from >= ? AND date_from <= ? GROUP BY user_id`).all((year - 544) + '-10-01', (year - 543) + '-09-30');

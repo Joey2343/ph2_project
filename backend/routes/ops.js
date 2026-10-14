@@ -10,6 +10,7 @@ const approvals = require('../lib/approvals');
 const { applyYearFilter } = require('../lib/year-filter');
 const telegram = require('../lib/telegram');
 const cleanup = require('../lib/cleanup');
+const staffSort = require('../lib/staff-sort');
 const { uploadVehicles, uploadErrorHandler, deleteUploadedFile } = require('../lib/uploads');
 
 const router = express.Router();
@@ -662,8 +663,15 @@ router.get('/vehicles', async (req, res) => {
 
 /** รายชื่อบุคลากรที่ใช้งานอยู่ (สำหรับเลือกพนักงานขับรถ ฯลฯ) */
 router.get('/users/active', auth.requireAuth, async (req, res) => {
-  const rows = await db.prepare("SELECT id, title, first_name, last_name, full_name, position FROM users WHERE status = 'active' ORDER BY full_name").all();
-  res.json({ users: rows });
+  // ⚠️ เดิม ORDER BY full_name (A-Z ไทย) และ SELECT ไม่มีคอลัมน์ที่ sortStaff ต้องใช้
+  //    → เพิ่ม position/workplace/staff_no/user_group/school_code/current_school
+  const rows = await db.prepare(`SELECT id, title, first_name, last_name, full_name, position,
+             workplace, staff_no, user_group, school_code, current_school
+     FROM users WHERE status = 'active'`).all();
+  // คนละฝั่งเรียงคนละกฎ: ฝั่งสถานศึกษาเรียงตามรหัสสถานศึกษา
+  const office = staffSort.sortStaff(rows.filter((r) => r.user_group !== 'school'), 'office');
+  const school = staffSort.sortStaff(rows.filter((r) => r.user_group === 'school'), 'school');
+  res.json({ users: office.concat(school) });
 });
 
 router.post('/vehicles', auth.requireAdmin, uploadVehicles.single('photo'), uploadErrorHandler, async (req, res) => {
@@ -707,8 +715,13 @@ router.delete('/vehicles/:id', auth.requireAdmin, async (req, res) => {
 // ---------- การมอบหมายผู้อนุมัติยานพาหนะ (admin ตั้งค่า) ----------
 router.get('/vehicle/approvers', auth.requireAdmin, async (req, res) => {
   const approvers = await approvals.getSystemApprovers('vehicle');
-  const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, role FROM users
-    WHERE status = 'active' ORDER BY full_name`).all();
+  // ⚠️ เดิม ORDER BY full_name (A-Z ไทย) ไม่ตรงกับหน้าเจ้าหน้าที่
+  const rows = await db.prepare(`SELECT id, title, full_name, first_name, last_name,
+             position, workplace, staff_no, user_group, school_code, current_school, role
+     FROM users WHERE status = 'active'`).all();
+  // endpoint นี้ไม่ได้กรอง user_group → ต้องแยกสองฝั่งเรียงคนละกฎ (ฝั่ง สพป. ก่อน)
+  const staff = staffSort.sortStaff(rows.filter((r) => r.user_group !== 'school'), 'office')
+    .concat(staffSort.sortStaff(rows.filter((r) => r.user_group === 'school'), 'school'));
   res.json({ approvers, staff });
 });
 
@@ -1024,8 +1037,13 @@ router.delete('/rooms/:id', auth.requireAdmin, async (req, res) => {
 // ---------- การมอบหมายผู้อนุมัติห้องประชุม (admin ตั้งค่า) ----------
 router.get('/room/approvers', auth.requireAdmin, async (req, res) => {
   const approvers = await approvals.getSystemApprovers('room');
-  const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, role FROM users
-    WHERE status = 'active' ORDER BY full_name`).all();
+  // ⚠️ เดิม ORDER BY full_name (A-Z ไทย) ไม่ตรงกับหน้าเจ้าหน้าที่
+  const rows = await db.prepare(`SELECT id, title, full_name, first_name, last_name,
+             position, workplace, staff_no, user_group, school_code, current_school, role
+     FROM users WHERE status = 'active'`).all();
+  // endpoint นี้ไม่ได้กรอง user_group → ต้องแยกสองฝั่งเรียงคนละกฎ (ฝั่ง สพป. ก่อน)
+  const staff = staffSort.sortStaff(rows.filter((r) => r.user_group !== 'school'), 'office')
+    .concat(staffSort.sortStaff(rows.filter((r) => r.user_group === 'school'), 'school'));
   res.json({ approvers, staff });
 });
 

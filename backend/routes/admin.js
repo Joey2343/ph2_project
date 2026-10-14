@@ -45,7 +45,9 @@ router.get('/next-doc-no', auth.requireAuth, async (req, res) => {
     res.json({ next: await nextOrderDocNo() });
   } else if (type === 'honorees') {
     // รายชื่อสำหรับ autocomplete ในฟอร์มเกียรติบัตร: คำนำหน้า+ชื่อ-นามสกุล และชื่อสถานศึกษา
-    var staff = await db.prepare("SELECT title, full_name, workplace FROM users WHERE status = 'active' AND full_name != ''").all();
+    // ⚠️ เดิมไม่มี ORDER BY เลย → ลำดับที่โชว์ตาม id โดยไม่ตั้งใจ
+    //    แก้เป็นเรียงตามกฎหน้าเจ้าหน้าที่ ให้ตรงกับที่เห็นในรายการ
+    var staff = staffSort.sortStaff(await db.prepare("SELECT title, full_name, first_name, last_name, position, workplace, staff_no, user_group, school_code, current_school FROM users WHERE status = 'active' AND full_name != ''").all(), 'office');
     var persons = staff.map(function(s) {
       var full = ((s.title ? s.title + ' ' : '') + (s.full_name || '')).trim();
       return { name: full, workplace: s.workplace || '' };
@@ -111,8 +113,11 @@ async function isCertStaffUser(userId) {
 
 // ---------- เจ้าหน้าที่หนังสือรับรอง (admin only) ----------
 router.get('/cert-staff', auth.requireAdmin, async (req, res) => {
-  const rows = await db.prepare("SELECT ds.id, ds.user_id, u.full_name, u.title, u.position FROM document_staff ds JOIN users u ON u.id = ds.user_id WHERE ds.staff_type = 'certificate' ORDER BY u.full_name").all();
-  res.json({ certStaff: rows });
+  // เรียงตามกฎหน้าเจ้าหน้าที่ (ต้องมี position/workplace/staff_no ใน SELECT)
+  const rows = await db.prepare(`SELECT ds.id, ds.user_id, u.full_name, u.first_name, u.last_name,
+           u.title, u.position, u.workplace, u.staff_no, u.user_group, u.school_code, u.current_school
+    FROM document_staff ds JOIN users u ON u.id = ds.user_id WHERE ds.staff_type = 'certificate'`).all();
+  res.json({ certStaff: staffSort.sortStaff(rows, 'office') });
 });
 router.post('/cert-staff', auth.requireAdmin, async (req, res) => {
   const ids = req.body.userIds || [];
@@ -525,23 +530,28 @@ router.put('/document-staff/school-prefix', auth.requireAuth, async (req, res) =
 
 // ดึงรายชื่อเจ้าหน้าที่หนังสือราชการทั้งหมด
 router.get('/document-staff', auth.requireAdmin, async (req, res) => {
+  // ⚠️ SELECT ต้องมีครบ: position, workplace, staff_no (ฝั่ง สพป.)
+  //    และ school_code (ฝั่งสถานศึกษา) ไม่งั้น sortStaff เรียงไม่ได้
   const officeStaff = await db.prepare(`
-    SELECT ds.id, ds.user_id, u.full_name, u.title, u.position, u.workplace
+    SELECT ds.id, ds.user_id, u.full_name, u.first_name, u.last_name, u.title,
+           u.position, u.workplace, u.staff_no, u.user_group, u.school_code, u.current_school
     FROM document_staff ds
     JOIN users u ON u.id = ds.user_id
     WHERE ds.staff_type = 'office'
-    ORDER BY u.full_name
   `).all();
   const schoolStaff = await db.prepare(`
-    SELECT ds.id, ds.user_id, ds.school_code, u.full_name, u.title, u.position, u.workplace,
+    SELECT ds.id, ds.user_id, ds.school_code, u.full_name, u.first_name, u.last_name,
+           u.title, u.position, u.workplace, u.staff_no, u.user_group, u.current_school,
            s.name AS school_name
     FROM document_staff ds
     JOIN users u ON u.id = ds.user_id
     LEFT JOIN schools s ON s.code = ds.school_code
     WHERE ds.staff_type = 'school'
-    ORDER BY ds.school_code, u.full_name
   `).all();
-  res.json({ officeStaff, schoolStaff });
+  res.json({
+    officeStaff: staffSort.sortStaff(officeStaff, 'office'),
+    schoolStaff: staffSort.sortStaff(schoolStaff, 'school'),
+  });
 });
 
 // เพิ่มเจ้าหน้าที่ สพป. (หลายคนพร้อมกัน)
@@ -712,13 +722,32 @@ router.get('/staff', auth.requireAdmin, async (req, res) => {
   if (status) { sql += ' AND status = ?'; args.push(status); }
   if (user_group) { sql += ' AND user_group = ?'; args.push(user_group); }
   if (q) { sql += ' AND (username LIKE ? OR full_name LIKE ? OR position LIKE ? OR workplace LIKE ? OR citizen_id LIKE ?)'; const p = `%${q}%`; args.push(p, p, p, p, p); }
-  // เรียงตามลำดับเจ้าหน้าที่ (staff_no) น้อย → มาก บนลงล่าง — ผู้ที่ยังไม่กำหนดลำดับอยู่ท้ายสุด (เรียงตาม id)
-  sql += ' ORDER BY CASE WHEN staff_no IS NULL OR staff_no = \'\' THEN 1 ELSE 0 END, CAST(staff_no AS SIGNED) ASC, id ASC';
+  // เรียงตามกฎของหน้าเจ้าหน้าที่ (lib/staff-sort.js) ไม่ใช่แค่ staff_no
+  //   ฝั่ง สพป.: ผู้บริหารฯ → กลุ่มงานตามลำดับที่กำหนด → หน่วยตรวจสอบภายใน
+  //            ภายในกลุ่ม: ผู้อำนวยการ → รองผู้อำนวยการ → ผู้อำนวยการกลุ่ม/หน่วย → ตาม staff_no
+  //   ฝั่งสถานศึกษา: รหัสสถานศึกษาน้อย→มาก แล้ว ผอ. → รอง ผอ. → ครู → เจ้าหน้าที่ธุรการ
+  //
+  // ⚠️ endpoint นี้ถูกใช้ทั้งหน้าเจ้าหน้าที่ และ dialog ตั้งค่าอีก 6 จุด
+  //   (ผู้อนุมัติการลา · ผู้อนุมัติไปราชการ · ผู้แก้เวลา · สารบัญเขต · สารบัญสถานศึกษา · หนังสือรับรอง)
+  //   ถ้าเรียงไม่ตรง รายการใน dropdown จะไม่ตรงกับที่เห็นในหน้าเจ้าหน้าที่
+  //
+  // ถ้าไม่ระบุ user_group (dialog ที่ต้องการทั้งสองฝั่งพร้อมกัน)
+  //   → เรียงฝั่ง สพป. ก่อน แล้วฝั่งสถานศึกษา เพราะสองฝั่งใช้กฎเรียงต่างกัน
+  //     (ฝั่งสถานศึกษาเรียงตามเลขรหัสสถานศึกษา)
+  const rows = await db.prepare(sql).all(...args);
+  let sorted;
+  if (user_group === 'school' || user_group === 'office') {
+    sorted = staffSort.sortStaff(rows, user_group);
+  } else {
+    const office = rows.filter((r) => (r.user_group || 'office') !== 'school');
+    const school = rows.filter((r) => r.user_group === 'school');
+    sorted = staffSort.sortStaff(office, 'office').concat(staffSort.sortStaff(school, 'school'));
+  }
   // auth.publicUser เป็น async → คืน Promise
   // ถ้าใช้ rows.map(auth.publicUser) ตรง ๆ จะได้ Promise[] ซึ่ง JSON.stringify แปลงเป็น {}
   // ทำให้หน้าเว็บเห็นแถวเปล่า (ชื่อ-นามสกุล ตำแหน่ง กลุ่มงาน ว่างหมด)
   // จุดอื่นในไฟล์นี้ใช้ await ถูกต้องแล้ว เช่นบรรทัด 723, 803, 814
-  res.json({ staff: await Promise.all((await db.prepare(sql).all(...args)).map(auth.publicUser)) });
+  res.json({ staff: await Promise.all(sorted.map(auth.publicUser)) });
 });
 
 /**
@@ -797,14 +826,17 @@ router.get('/staff.xlsx', auth.requireAdmin, async (req, res) => {
 
 // Route สำหรับดึงรายชื่อเจ้าหน้าที่สพป. (ใช้ได้ทุก user สำหรับส่งไปรษณีย์)
 router.get('/office-staff', auth.requireAuth, async (req, res) => {
-  const staff = await db.prepare(`
-    SELECT id, title, full_name, position, workplace, user_group, status, signature
+  // ⚠️ เพิ่ม staff_no เข้ามาให้ sortStaff ใช้เรียงลำดับ
+  //    (เดิม SELECT ไม่มี staff_no แต่ ORDER BY ใน SQL กลับอ้างถึงมันอยู่)
+  // endpoint นี้ถูกใช้ 5 จุด: ผู้รับหนังสือ · บุคคลปฏิบัติ · ผู้ลงนามเกียรติบัตร
+  //                       ผู้ลงทะเบียนทะเบียนคำสั่ง · เจ้าหน้าที่ผู้ปฏิบัติหนังสือรับรอง
+  const rows = await db.prepare(`
+    SELECT id, title, first_name, last_name, full_name, position, workplace,
+           staff_no, user_group, school_code, current_school, status, signature
     FROM users
     WHERE user_group != 'school' AND status = 'active'
-    ORDER BY CASE WHEN staff_no IS NULL OR staff_no = '' THEN 1 ELSE 0 END,
-CAST(staff_no AS SIGNED) ASC, id ASC
   `).all();
-  res.json({ staff });
+  res.json({ staff: staffSort.sortStaff(rows, 'office') });
 });
 
 router.get('/staff/:id', auth.requireAdmin, async (req, res) => {
