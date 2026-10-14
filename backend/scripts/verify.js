@@ -90,6 +90,9 @@ function main() {
   console.log('\n[ตรวจ return ที่หลุดออกจากลูป]');
   results.push(run('check-returns', [path.join(__dirname, 'check-returns.js')]));
 
+  console.log('\n[ตรวจ Promise หลุดเข้าไปในคำสั่ง SQL — ทำให้ API ตอบ 500]');
+  results.push(run('check-await-in-sql', [path.join(__dirname, 'check-await-in-sql.js')]));
+
   console.log('\n[ตรวจ SQL เทียบ schema จริง]');
   results.push(run('check-sql-schema', [path.join(__dirname, 'check-sql-schema.js')]));
 
@@ -131,6 +134,11 @@ function main() {
 
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
+
+  console.log('\n[ทดสอบยื่นลา + สายอนุมัติการลา ตั้งแต่ต้นจนจบ]');
+  results.push(run('test-leave-flow', [path.join(__dirname, 'test-leave-flow.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
 
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';

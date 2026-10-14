@@ -675,7 +675,9 @@ router.post('/travel', auth.requireAuth, uploadTravelDyn.single('attachment'), u
   if (attachment) form_data.attachment = attachment;
   const info = await db.prepare(`INSERT INTO travel_requests
     (travel_no, user_id, title, destination, date_from, date_to, days, vehicle_id, budget, detail, form_data)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(nextDocNo('travel_requests', 'travel_no'), req.user.id,
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    // ⚠️ nextDocNo เป็น async — ไม่ await จะส่ง Promise ไปแทนเลขที่ → HTTP 500
+    .run(await nextDocNo('travel_requests', 'travel_no'), req.user.id,
     String(b.travel_subject || b.title || '').trim(), String(b.destination).trim(), b.date_from, b.date_to, days,
     b.vehicle_id ? Number(b.vehicle_id) : null, Number(b.budget) || 0, (b.detail || '').trim(),
     JSON.stringify(form_data));
@@ -866,7 +868,13 @@ router.post('/leaves', auth.requireAuth, uploadLeavesDyn.single('attachment'), u
   const info = await db.prepare(`INSERT INTO leave_requests
     (leave_no, user_id, leave_type, date_from, date_to, days, reason, address, phone,
      writing_at, last_leave_from, last_leave_to, last_leave_days, attachment, delegate_to)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nextLeaveNo(b.leave_type), req.user.id,
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    // ⚠️ nextLeaveNo เป็น async (ไปอ่านตารางเพื่อหาเลขที่กำลังใช้สูงสุด)
+    //    ถ้าไม่ await → ได้ Promise ไปแทนเลขที่ → mysql2 โยน
+    //      TypeError: The first argument must be of type string ... Received an instance of Promise
+    //      → หน้าเว็บขึ้น "เกิดข้อผิดพลาดในระบบ [POST /api/leaves · HTTP 500]"
+    //    ทุกครั้ง ไม่ว่าจะกรอกอะไร — ใช้งานไม่ได้เลยตั้งแต่ commit แรก
+    .run(await nextLeaveNo(b.leave_type), req.user.id,
     b.leave_type, b.date_from, b.date_to, days, (b.reason ? String(b.reason).trim() : null),
     (b.address || '').trim(), (b.phone || '').trim(),
     (b.writing_at || '').trim(),
@@ -889,7 +897,7 @@ router.put('/leaves/:id/review', auth.requireAuth, async (req, res) => {
   // ตรวจสอบสิทธิ์: ต้องเป็นผู้ตรวจสอบ (leave_approvers level 1 ของกลุ่มผู้ขอ) หรือ admin
   const isAdmin = req.user.role === 'admin';
   let isInspector = false;
-  const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(requesterApproverKey(row.user_id));
+  const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(await requesterApproverKey(row.user_id));
   try {
     const la = JSON.parse(laRow ? laRow.value : '{}');
     const lv1 = la['1'] || {};
@@ -927,7 +935,7 @@ router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
   if (isAdmin) { canDo = true; } else {
     // Helper: check per-person approver for a requester at a given level (ใช้ชุดตั้งค่าตามกลุ่มของผู้ขอ)
     const checkPerLevel = async (lv, requesterId, userId) => {
-      const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(requesterApproverKey(requesterId));
+      const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(await requesterApproverKey(requesterId));
       try {
         const la = JSON.parse(laRow ? laRow.value : '{}');
         const lvData = la[String(lv)] || {};
@@ -969,7 +977,7 @@ router.put('/leaves/:id/reject', auth.requireAuth, async (req, res) => {
   const isAdmin = req.user.role === 'admin';
   let canDo = false;
   if (isAdmin) { canDo = true; } else {
-    const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(requesterApproverKey(row.user_id));
+    const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(await requesterApproverKey(row.user_id));
     try {
       const la = JSON.parse(laRow ? laRow.value : '{}');
       for (const lvl of ['1','2','3']) {
@@ -1024,7 +1032,7 @@ router.put('/leaves/:id/cancel-confirm', auth.requireAuth, async (req, res) => {
   if (row.cancel_status !== 'cancel_requested') return res.status(400).json({ error: 'รายการนี้ไม่ได้อยู่ระหว่างรอยกเลิก' });
   const isAdmin = req.user.role === 'admin';
   let isInspector = false;
-  const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(requesterApproverKey(row.user_id));
+  const laRow = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(await requesterApproverKey(row.user_id));
   try {
     const la = JSON.parse(laRow ? laRow.value : '{}');
     const lv1 = la['1'] || {};
