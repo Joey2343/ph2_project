@@ -14,12 +14,34 @@ import { defineStore } from 'pinia';
 import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { session, setUser, onSessionExpired } from './session.js';
+import { restartIdleLogout, stopIdleLogout, showLoginAfterIdle } from '../lib/idle-timeout.js';
 
 /** ตั้ง callback ให้ api layer เรียกเมื่อ session หมดอายุ */
 onSessionExpired(() => {
   Auth.user = null;
+  stopIdleLogout();
   setTimeout(() => Auth.openLogin(), 250);
 });
+
+/**
+ * ออกจากระบบอัตโนมัติเมื่อไม่ได้ใช้งานเกิน 1 ชั่วโมง
+ *
+ * เรียกตอนผู้ใช้ล็อกอินสำเร็จ (ทั้งเข้าปกติและหลังเลือกสถานศึกษา)
+ * เพื่อให้นาฬิกาเริ่มนับจาก "ตอนล็อกอิน" เสมอ ไม่ใช่ตั้งแต่ตอนเปิดเว็บ
+ */
+function armIdleLogout() {
+  restartIdleLogout(async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (e) {
+      /* ignore — session หมดอายุไปแล้วก็ถือว่าออกจากระบบสำเร็จ */
+    }
+    setUser(null);
+    if (window.__SIM_DATE) window.__SIM_DATE.refresh();
+    goHome();
+    showLoginAfterIdle();
+  });
+}
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -57,6 +79,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         const data = await api.get('/auth/me');
         setUser(data.user);
+        armIdleLogout();
       } catch (e) {
         /* ยังไม่เข้าสู่ระบบ */
       }
@@ -118,6 +141,9 @@ export const useAuthStore = defineStore('auth', {
         /* ignore */
       }
       setUser(null);
+      // หยุดนับเวลาไม่ใช้งานด้วย ไม่งั้น timer ที่ยังค้างอยู่จะยิง onIdle
+      // ตอนผู้ใช้ล็อกอินคนถัดไปในเบราว์เซอร์เดิม (ของขวัญจากการกดออกจากระบบเอง)
+      stopIdleLogout();
       // ออกจากระบบแล้วไม่ต้อง patch วันที่จำลองต่อ
       if (window.__SIM_DATE) window.__SIM_DATE.refresh();
       goHome();
@@ -238,6 +264,8 @@ function collectSchools(u) {
 /** หลังเข้าสู่ระบบสำเร็จ — กลับหน้าแรก + ดึงวันที่จำลอง + ข้อความต้อนรับ */
 function afterAuthSuccess(user) {
   goHome();
+  // เริ่มนับเวลาไม่ใช้งาน 1 ชั่วโมง นับจากตอนล็อกอินสำเร็จ
+  armIdleLogout();
   // ดึงวันที่จำลอง (ถ้าเปิดใช้) มาใช้กับฟอร์ม/ปฏิทินทันที
   if (window.__SIM_DATE) window.__SIM_DATE.refresh();
   UI.toast(`ยินดีต้อนรับคุณ ${user.full_name}`);

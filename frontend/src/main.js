@@ -19,6 +19,7 @@ import simDate from './composables/simDate.js';
 import { UI } from './ui/ui.js';
 import api, { setToast } from './api/client.js';
 import { Auth, useAuthStore, bindAuthStore } from './stores/auth.js';
+import { setIdleLoginOpener, setIdleToast } from './lib/idle-timeout.js';
 import { CONSTANTS } from './constants/index.js';
 import { ExportFilterDialog } from './ui/ExportFilter.js';
 
@@ -51,6 +52,12 @@ app.use(router);
 // หรือ Auth.logout() ได้เหมือนเดิม แต่สถานะถูกคุมด้วย Vue/Pinia จริง ๆ
 const auth = useAuthStore(pinia);
 bindAuthStore(auth);
+
+// โมดูลนับเวลาไม่ใช้งาน 1 ชั่วโมง ต้องเรียกผ่าน Auth facade
+// เพราะ stores/session.js มี loginGate.open ที่ไม่เคยถูก assign (โค้ดค้างจากการแยกชั้น)
+// ใช้ Auth.openLogin() ที่ผูกกับ Pinia store แล้วแทน
+setIdleLoginOpener(() => Auth.openLogin());
+setIdleToast((msg, type) => UI.toast(msg, type));
 
 // โค้ดรุ่นเดิมเรียก go() / render() — ผูกให้เป็น vue-router
 installLegacyRouterHooks((path) => router.push(path));

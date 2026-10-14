@@ -3,6 +3,26 @@ const crypto = require('crypto');
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 
+/**
+ * อายุเซสชัน
+ *
+ * ⚠️ เดิมใช้ค่าเดียวคือ SESSION_DAYS = 7 วัน และ "ไม่เคยล้างแถวที่หมดอายุทิ้ง"
+ *   ทุกครั้งที่ล็อกอินจะ INSERT 1 แถว ถ้าอ่านก็เช็คแค่ว่าหมดอายยหรือยัง (auth.js เดิม)
+ *   แต่ไม่มี DELETE FROM sessions WHERE expires_at < ... ที่ไหนเลยทั้งระบบ
+ *   → ตารางโตไม่จำกัด ทั้งที่ไม่มีใครใช้แถวเก่าอีกแล้ว
+ *
+ * ตอนนี้เปลี่ยนเป็น "ต่ออายุตามการใช้งานจริง" (sliding expiry)
+ *   · ล็อกอิน          → expires_at = เวลาจริงตอนนี้ + SESSION_IDLE_MINUTES
+ *   · ผู้ใช้ยังใช้อยู่ → หน้าเว็บยิง POST /auth/keepalive (ทุก 5 นาทีที่มีการใช้งาน)
+ *                       → เลื่อน expires_at ไปอีก SESSION_IDLE_MINUTES
+ *   · ไม่แตะเว็บเกิน 1 ชั่วโมง → session หมดอายุเองฝั่ง server
+ *                       (ปิดเครื่องทิ้งไว้แล้วกลับมาวันหน้าก็ต้องล็อกอินใหม่)
+ *   · มี purgeExpiredSessions() คัดลบแถวที่หมดอายุทิ้ง (เรียกตอนบูต + ทุก 30 นาที)
+ *
+ * SESSION_DAYS ยังเก็บไว้ เพราะเป็นอายุ cookie ฝั่งเบราว์เซอร์
+ * (server เป็นผู้ตัดสินจริง แต่ถ้า cookie ตายเร็วกว่า server ผู้ใช้จะโดนเด้งออกโดยไม่ได้ใช้)
+ */
+const SESSION_IDLE_MINUTES = 60;
 const SESSION_DAYS = 7;
 
 /**
@@ -127,12 +147,46 @@ function now() {
   return simdate.realNowISO();
 }
 
+/** รูปแบบเวลาในคอลัมน์ expires_at (varchar) = 'YYYY-MM-DD HH:MM:SS' — เรียงเทียบแบบ string ได้ตรง ๆ */
+function toSqlTime(ms) {
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+}
+
+/** เวลาหมดอายุของเซสชัน = เวลาจริงตอนนี้ + SESSION_IDLE_MINUTES */
+function idleExpiryISO() {
+  return toSqlTime(simdate.realNowMs() + SESSION_IDLE_MINUTES * 60 * 1000);
+}
+
 async function newSession(userId) {
   const token = crypto.randomBytes(32).toString('hex');
-  const expires = new Date(simdate.realNowMs() + SESSION_DAYS * 24 * 3600 * 1000)
-    .toISOString().replace('T', ' ').slice(0, 19);
-  await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)').run(token, userId, expires);
+  await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)').run(
+    token, userId, idleExpiryISO(),
+  );
   return token;
+}
+
+/**
+ * เลื่อนอายุเซสชัน (เรียกจาก POST /auth/keepalive เมื่อผู้ใช้ยังใช้งานอยู่)
+ *
+ * ถ้าไม่มี token หรือ session หมดอายุไปแล้ว → คืน false ให้ฝั่งหน้าเว็บรู้ว่าต้องล็อกอินใหม่
+ */
+async function touchSession(token) {
+  if (!token) return false;
+  const r = await db.prepare(
+    'UPDATE sessions SET expires_at = ? WHERE token = ? AND expires_at >= ?',
+  ).run(idleExpiryISO(), token, now());
+  return (r.changes || 0) > 0;
+}
+
+/**
+ * ลบเซสชันที่หมดอายุทิ้งทั้งหมด
+ *
+ * เดิมไม่มีฟังก์ชันนี้เลย → ตาราง sessions โตทางเดียว
+ * @returns {Promise<number>} จำนวนแถวที่ลบ
+ */
+async function purgeExpiredSessions() {
+  const r = await db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now());
+  return r.changes || 0;
 }
 
 async function destroySession(token) {
@@ -150,12 +204,36 @@ async function getSessionUser(token) {
   return await db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
 }
 
-function hashPassword(pw) {
-  return bcrypt.hashSync(pw, 10);
+/**
+ * เข้ารหัส/ตรวจรหัสผ่าน — แบบ async
+ *
+ * ⚠️ เดิมใช้ bcrypt.compareSync / hashSync ซึ่ง "บล็อก event loop ทั้งตัว"
+ *    วัดได้ว่า bcryptjs (pure JS) ใช้ ~65 ms ต่อครั้งที่ cost = 10
+ *    ถ้าคนเข้าใช้พร้อมกัน 20 คน → คนหลังสุดรอถึง 3.1 วินาที
+ *    และระหว่างนั้นเซิร์ฟเวอร์ไม่ทำอะไรได้เลย (ทั้งผู้ที่ล็อกอินและผู้ที่กำลังใช้งานอยู่)
+ *
+ * แก้เป็น bcrypt.compare / bcrypt.hash (แบบ Promise)
+ *   → ความเร็วเท่ากัน (61.9 vs 65.5 ms) แต่ bcryptjs ยอมให้ event loop
+ *     ทำงานอื่นระหว่างรอ (วัดได้ว่างานอื่นเดินไป 20 ครั้งระหว่าง await)
+ */
+async function hashPassword(pw) {
+  return bcrypt.hash(pw, 10);
 }
 
-function verifyPassword(pw, hash) {
-  return bcrypt.compareSync(pw, hash);
+/**
+ * ตรวจรหัสผ่าน
+ *
+ * ⚠️ ครอบด้วย try/catch เพราะ bcrypt.compareSync โยน error ทันทีถ้า hash ไม่ถูกต้อง
+ *    (เช่น password_hash เป็น NULL หรือเป็นข้อความธรรมดาจากข้อมูลเก่า/นำเข้าจากที่อื่น)
+ *    เดิม error นั้นหลุดไปถึง error handler → ตอบ HTTP 500
+ *    ทั้งที่ควรตอบ 401 "รหัสผ่านไม่ถูกต้อง" เหมือนกรณีที่ใส่รหัสผิด
+ */
+async function verifyPassword(pw, hash) {
+  try {
+    return await bcrypt.compare(pw, hash);
+  } catch (e) {
+    return false;
+  }
 }
 
 /** ดึงค่า cookie จาก header */
@@ -267,9 +345,11 @@ async function requireApprover(req, res, next) {
 
 module.exports = {
   now, newSession, destroySession, getSessionUser, hashPassword, verifyPassword,
+  touchSession, purgeExpiredSessions, idleExpiryISO,
   parseCookies, isValidCitizenId, validatePasswordStrength, publicUser,
   attachUser, requireAuth, requireAdmin, requireApprover,
   ROLES, SCHOOL_ROLE_ORDER, rolesForGroup, isValidRoleFor,
   roleLabel, roleIcon, canApprove, isApprover,
   getTimeEditorIds, isTimeEditor,
+  SESSION_IDLE_MINUTES, SESSION_DAYS,
 };

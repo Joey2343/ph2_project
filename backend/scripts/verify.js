@@ -129,6 +129,9 @@ function main() {
   console.log('\n[ทดสอบลำดับรายชื่อเจ้าหน้าที่ทุกจุดที่ให้เลือก]');
   results.push(run('test-staff-list-order', [path.join(__dirname, 'test-staff-list-order.js')]));
 
+  console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
+  results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {

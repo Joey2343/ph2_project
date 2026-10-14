@@ -128,10 +128,39 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่' });
 });
 
+/**
+ * ตั้งตัวล้างเซสชันที่หมดอายุ
+ *
+ * ⚠️ เดิมไม่มีที่ไหนเลยทั้งระบบ → ตาราง sessions โตทางเดียว
+ *    ทุกครั้งที่ล็อกอิน INSERT 1 แถว ไม่เคยลบ แม้แต่แถวที่หมดอายุไปนานแล้ว
+ *    (getSessionUser ลบเฉพาะตอนที่เจอ token ของคนที่กำลังยิงเข้ามาพอดี)
+ *
+ * อายุเซสชันตอนนี้คือ 1 ชั่วโมงนับจากการใช้งานล่าสุด
+ * (ดู SESSION_IDLE_MINUTES ใน lib/auth.js) → แถวเก่าต้องถูกล้างเป็นระยะ
+ *
+ * unref() ไว้เพื่อไม่ให้ timer เป็นเหตุผลที่ process ค้างไม่ยอบจบ
+ * (สำคัญตอนรันสคริปต์ที่ require server.js แล้วจบการทำงาน)
+ */
+function startSessionPurge() {
+  const PURGE_EVERY_MS = 30 * 60 * 1000;
+  const run = async () => {
+    try {
+      const n = await auth.purgeExpiredSessions();
+      if (n) console.log(`[sessions] ล้างเซสชันหมดอายุ ${n} รายการ`);
+    } catch (e) {
+      // ล้างไม่สำเร็จไม่ควรทำให้เซิร์ฟเวอร์ล่ม — รอบถัดไปลองใหม่
+      console.error('[sessions] ล้างเซสชันหมดอายุไม่สำเร็จ:', e.message);
+    }
+  };
+  setTimeout(run, 5000).unref();
+  setInterval(run, PURGE_EVERY_MS).unref();
+}
+
 /** เปิดการเชื่อมต่อ + สร้าง schema แล้วจึงเริ่มฟังพอร์ต */
 async function start() {
   await db.init();
   await db.bootstrap();
+  startSessionPurge();
 
   app.listen(PORT, () => {
     console.log('==============================================');

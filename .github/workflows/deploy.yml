@@ -68,6 +68,10 @@ jobs:
         run: npm run verify:registry
         working-directory: frontend
 
+      - name: ตรวจการออกจากระบบอัตโนมัติเมื่อไม่ใช้งาน 1 ชม.
+        run: npm run verify:idle
+        working-directory: frontend
+
       - name: Build Frontend
         run: npm run build
         working-directory: frontend

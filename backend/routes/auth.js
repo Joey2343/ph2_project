@@ -52,7 +52,7 @@ router.post('/register', uploadProfile.fields([
      academic_rank, highest_education, birth_date, citizen_id, position, workplace, phone, email,
      telegram_token, telegram_chat_id, photo, signature, role, status, user_group, workplace_secondary, school_code)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'staff', 'pending', ?, ?, ?)`)
-    .run(username, auth.hashPassword(password), b.title || 'นาย/นาง/นางสาว', full_name,
+    .run(username, await auth.hashPassword(password), b.title || 'นาย/นาง/นางสาว', full_name,
       first_name, last_name, (b.nickname || '').trim(), (b.blood_type || '').trim(),
       (b.academic_rank || '').trim(), (b.highest_education || '').trim(), (b.birth_date || '').trim() || null, citizen_id,
       (b.position || '').trim(), (b.workplace || '').trim(), (b.phone || '').trim(), (b.email || '').trim(),
@@ -70,7 +70,8 @@ async function publicUserWithFlags(u) {
 router.post('/login', async (req, res) => {
   const { username, password } = req.body || {};
   const user = await db.prepare('SELECT * FROM users WHERE username = ?').get((username || '').trim());
-  if (!user || !auth.verifyPassword(password || '', user.password_hash)) {
+  // ⚠️ verifyPassword เป็น async ต้อง await (เดิมเป็น bcrypt.compareSync ที่คืนค่าตรง ๆ)
+  if (!user || !await auth.verifyPassword(password || '', user.password_hash)) {
     return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
   }
   if (user.status === 'pending') {
@@ -83,8 +84,26 @@ router.post('/login', async (req, res) => {
     return res.status(403).json({ error: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' });
   }
   const token = await auth.newSession(user.id);
+  // cookie อายุ 7 วัน (เพดานสูงสุดของเบราว์เซอร์) — ตัวจริงที่ตัดสินคือ expires_at
+  // ในตาราง sessions ที่เลื่อนตามการใช้งาน และหมดอายุเองเมื่อไม่แตะเว็บ 1 ชั่วโมง
   res.cookie('sid', token, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 3600 * 1000, path: '/' });
+  // กวาดเซสชันที่หมดอายุทิ้งทุกครั้งที่มีคนล็อกอิน — กันตารางโต โดยไม่ต้องรอ timer
+  auth.purgeExpiredSessions().catch(() => {});
   res.json({ ok: true, user: await publicUserWithFlags(user) });
+});
+
+/**
+ * ต่ออายุเซสชัน — เรียกจากหน้าเว็บเมื่อผู้ใช้ยังใช้งานอยู่
+ *
+ * ทำให้ "ออกจากระบบอัตโนมัติเมื่อไม่ใช้งานเกิน 1 ชั่วโมง" ทำงานได้จริงฝั่ง server
+ * ถ้ามีแต่ฝั่งหน้าเว็บ (นับเวลาในเบราว์เซอร์) เบราว์เซอร์ที่เปิดค้างไว้
+ * หรือ cookie ที่ถูกขโมกไปใช้ ก็ยังจะใช้ session ได้ต่อจนครบ 7 วัน
+ */
+router.post('/keepalive', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'ยังไม่ได้เข้าสู่ระบบ' });
+  const ok = await auth.touchSession(req.sessionToken);
+  if (!ok) return res.status(401).json({ error: 'หมดเวลาใช้งาน กรุณาเข้าสู่ระบบใหม่' });
+  res.json({ ok: true });
 });
 
 // ออกจากระบบ
@@ -201,12 +220,12 @@ router.post('/profile/test-telegram', auth.requireAuth, async (req, res) => {
 // เปลี่ยนรหัสผ่าน
 router.post('/change-password', auth.requireAuth, async (req, res) => {
   const { old_password, new_password } = req.body || {};
-  if (!auth.verifyPassword(old_password || '', req.user.password_hash)) {
+  if (!await auth.verifyPassword(old_password || '', req.user.password_hash)) {
     return res.status(400).json({ error: 'รหัสผ่านเดิมไม่ถูกต้อง' });
   }
   const pwErr = auth.validatePasswordStrength(new_password || '');
   if (pwErr) return res.status(400).json({ error: pwErr });
-  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(new_password), req.user.id);
+  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await auth.hashPassword(new_password), req.user.id);
   res.json({ ok: true, message: 'เปลี่ยนรหัสผ่านเรียบร้อย' });
 });
 

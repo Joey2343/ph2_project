@@ -1091,7 +1091,7 @@ router.post('/staff/:id/reset-password', auth.requireAdmin, async (req, res) => 
   }
   const pwErr = auth.validatePasswordStrength(new_password || '');
   if (pwErr) return res.status(400).json({ error: pwErr });
-  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(auth.hashPassword(new_password), id);
+  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await auth.hashPassword(new_password), id);
   await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
   res.json({ ok: true, message: 'รีเซ็ตรหัสผ่านเรียบร้อย ผู้ใช้ต้องเข้าสู่ระบบใหม่' });
 });
