@@ -135,9 +135,12 @@ const telegramPath = path.join(ROOT, 'lib', 'telegram.js');
   await telegram.notifyLeaveSubmitted(leaveId);
   const chats = sent.map((s) => s.body.chat_id);
   check(chats.indexOf('TEST-CHAT-APPROVER') !== -1, 'ส่งถึงผู้ตรวจสอบ', JSON.stringify(chats));
-  check(sent.length === 1,
-    'ถ้าคนเดียวกันเป็นทั้งผู้ตรวจสอบและผู้รับมอบหมาย → ส่งครั้งเดียว ไม่ต้องส่งซ้ำ',
-    `ส่งไป ${sent.length} ครั้ง: ${JSON.stringify(chats)}`);
+  check(sent.some((s) => /ทำหน้าที่แทน/.test(s.body.text || '')),
+    'คนเดียวกันที่เป็นทั้งผู้ตรวจสอบและผู้รับมอบหมาย → ต้องได้ข้อความแจ้งมอบหมายด้วย',
+    `ส่งไป ${sent.length} ครั้ง: ${JSON.stringify(sent.map((s) => (s.body.text || '').slice(0, 40)))}`);
+  check(sent.length === 2,
+    'ต้องได้ 2 ข้อความ (คนละเนื้อหา ไม่ใช่สแปม)',
+    `ส่งไป ${sent.length} ครั้ง — โค้ดเดิมมี !sentIds.has(...) ทำให้ข้อความมอบหมายหายไป`);
 
   /* ── ③ คนละคน → ต้องส่ง 2 ครั้ง ─────────────────────────────────────── */
   console.log('');

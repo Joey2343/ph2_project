@@ -756,14 +756,36 @@ async function notifyLeaveSubmitted(id) {
       }
     }
 
-    // แจ้งผู้ได้รับมอบหมายงานให้ทำหน้าที่แทน (ถ้ามีการเลือกไว้)
-    // อยู่นอก if (!ids.length) โดยตั้งใจ — ต้องแจ้งได้แม้ยังไม่ได้ตั้งผู้ตรวจสอบการลา
-    if (b.delegate_to && b.delegate_telegram_token && b.delegate_chat_id && !sentIds.has(String(b.delegate_to))) {
+    /*
+     * แจ้งผู้ได้รับมอบหมายงานให้ทำหน้าที่แทน (ถ้ามีการเลือกไว้)
+     *
+     * ⚠️ ต้องส่งเสมอ แม้คนเดียวกันจะได้ข้อความแจ้งผู้ตรวจสอบไปแล้ว
+     *
+     *   เคยมีเงื่อนไข `!sentIds.has(String(b.delegate_to))` เพื่อกันส่งซ้ำ
+     *   → ผิด เพราะสองข้อความคนละเรื่องกัน
+     *       leaveSubmittedText = "มีคำขอลาใหม่ รอการตรวจสอบ"        (บทบาทผู้ตรวจสอบ)
+     *       leaveDelegateText  = "คุณได้รับมอบหมายงานให้ทำหน้าที่แทน" (บทบาทผู้รับมอบหมาย)
+     *
+     *   เจอจริงบนระบบจริง: ผู้ขอคือ admin ผู้ตรวจสอบของเขาคือ เอกธิดล
+     *   และผู้ขอเลือกมอบหมายงานให้ เอกธิดล คนเดียวกัน
+     *   → เอกธิดลได้ข้อความ "รอการตรวจสอบ" ไปแล้ว
+     *   → แต่ไม่เคยได้ข้อความ "คุณได้รับมอบหมายงาน" เลย เพราะติดเงื่อนไขกันซ้ำ
+     *
+     *   ตอนนี้ส่งทั้งสองข้อความ — คนละเนื้อหา คนละเหตุผล ไม่ถือเป็นสแปม
+     */
+    if (b.delegate_to && b.delegate_telegram_token && b.delegate_chat_id) {
+      const alsoApprover = sentIds.has(String(b.delegate_to));
       const sent = await sendTelegram({
         token: b.delegate_telegram_token, chatId: b.delegate_chat_id, text: leaveDelegateText(b),
       });
-      if (sent) console.log(`[telegram] แจ้งผู้รับมอบหมายงาน id=${b.delegate_to} แล้ว (คำขอลา #${id})`);
-      else console.error(`[telegram] แจ้งผู้รับมอบหมายงาน id=${b.delegate_to} ไม่สำเร็จ (คำขอลา #${id})`);
+      if (sent) {
+        console.log(`[telegram] แจ้งผู้รับมอบหมายงาน id=${b.delegate_to} แล้ว (คำขอลา #${id})`
+          + (alsoApprover ? ' · คนนี้เป็นผู้ตรวจสอบด้วย จึงได้ 2 ข้อความ' : ''));
+      } else {
+        console.error(`[telegram] แจ้งผู้รับมอบหมายงาน id=${b.delegate_to} ไม่สำเร็จ (คำขอลา #${id})`);
+      }
+    } else if (b.delegate_to) {
+      console.warn(`[telegram] ผู้รับมอบหมายงาน id=${b.delegate_to} ยังไม่ได้ตั้ง Telegram (คำขอลา #${id})`);
     }
   } catch (e) {
     console.error('[telegram] notifyLeaveSubmitted error:', e.message);
