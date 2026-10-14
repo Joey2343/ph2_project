@@ -135,6 +135,9 @@ function main() {
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
 
+  console.log('\n[ทดสอบ Telegram แจ้งผู้ได้รับมอบหมายงานให้ทำหน้าที่แทน]');
+  results.push(run('test-telegram-delegate', [path.join(__dirname, 'test-telegram-delegate.js')]));
+
   console.log('\n[ทดสอบสิทธิ์อนุมัติ — callback ต้องถูก await ทุกตัว]');
   results.push(run('test-approval-perm', [path.join(__dirname, 'test-approval-perm.js')]));
 

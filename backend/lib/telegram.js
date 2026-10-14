@@ -729,8 +729,24 @@ async function notifyLeaveSubmitted(id) {
     if (!b) return;
     // ใช้ผู้ตรวจสอบ (level 1) ของผู้ขอ ตามตั้งค่าเจ้าหน้าที่การลา
     const ids = await leaveApproverIds(await leaveApproverKeyOf(b.user_id), 1, b.user_id);
-    if (!ids.length) return;
-    const users = await db.prepare(`SELECT id, telegram_token, telegram_chat_id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+
+    /*
+     * ⚠️ ห้าม `if (!ids.length) return;` ตรงนี้
+     *
+     *   เคยมี และมันอยู่ก่อนบรรทัดแจ้งผู้ได้รับมอบหมายงาน
+     *   → ถ้ายังไม่ได้ตั้งผู้ตรวจสอบการลา (settings ไม่มีคีย์ leave_approvers)
+     *     หรือตั้งแล้วแต่ยังไม่ได้เลือกผู้ตรวจสอบของคนนี้ → ids = []
+     *     → return ออกไปก่อน
+     *     → ผู้ที่ได้รับเลือก "มอบหมายงานให้ทำหน้าที่แทน" ไม่เคยได้รับข้อความเลย
+     *
+     *   แก้แล้ว: ตัด early return ออก แล้วให้ผู้ตรวจสอบกับผู้รับมอบหมาย
+     *   แจ้งแยกกัน — อันไหนไม่มีก็ข้ามเฉพาะอันนั้น
+     */
+    const users = ids.length
+      ? await db.prepare(
+        `SELECT id, telegram_token, telegram_chat_id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ).all(...ids)
+      : [];
     const text = leaveSubmittedText(b);
     const sentIds = new Set();
     for (const u of users) {
@@ -739,9 +755,15 @@ async function notifyLeaveSubmitted(id) {
         sentIds.add(String(u.id));
       }
     }
+
     // แจ้งผู้ได้รับมอบหมายงานให้ทำหน้าที่แทน (ถ้ามีการเลือกไว้)
+    // อยู่นอก if (!ids.length) โดยตั้งใจ — ต้องแจ้งได้แม้ยังไม่ได้ตั้งผู้ตรวจสอบการลา
     if (b.delegate_to && b.delegate_telegram_token && b.delegate_chat_id && !sentIds.has(String(b.delegate_to))) {
-      await sendTelegram({ token: b.delegate_telegram_token, chatId: b.delegate_chat_id, text: leaveDelegateText(b) });
+      const sent = await sendTelegram({
+        token: b.delegate_telegram_token, chatId: b.delegate_chat_id, text: leaveDelegateText(b),
+      });
+      if (sent) console.log(`[telegram] แจ้งผู้รับมอบหมายงาน id=${b.delegate_to} แล้ว (คำขอลา #${id})`);
+      else console.error(`[telegram] แจ้งผู้รับมอบหมายงาน id=${b.delegate_to} ไม่สำเร็จ (คำขอลา #${id})`);
     }
   } catch (e) {
     console.error('[telegram] notifyLeaveSubmitted error:', e.message);
