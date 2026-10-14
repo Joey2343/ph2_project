@@ -94,26 +94,78 @@ function sortStaff(rows, group) {
       return staffNo(a) - staffNo(b) || a.id - b.id;
     });
   } else {
-    const schoolCode = (u) => {
-      const m = (u.workplace || '').match(/^(\d{8})/);
-      return m ? m[1] : '99999999';
-    };
-    const posRank = (p) => {
-      const s = p || '';
-      if (s.startsWith('ผู้อำนวยการสถานศึกษา')) return 0;
-      if (s.startsWith('รองผู้อำนวยการ')) return 1;
-      if (s.startsWith('ครู')) return 2;
-      if (s.startsWith('เจ้าหน้าที่ธุรการ')) return 3;
-      return 4;
-    };
-    out.sort(
-      (a, b) =>
-        schoolCode(a).localeCompare(schoolCode(b)) ||
-        posRank(a.position) - posRank(b.position) ||
-        a.id - b.id,
-    );
+    // สถานศึกษา: เรียงตามเลขรหัสสถานศึกษา (น้อย→มาก) แล้วตามตำแหน่ง
+    out.sort((a, b) => compareSchool(a, b) || a.id - b.id);
   }
   return out.map((u, i) => ({ ...u, _seq: i + 1 }));
+}
+
+/**
+ * อันดับตำแหน่งของ **สถานศึกษา**
+ *
+ * 0 ผู้อำนวยการสถานศึกษา → 1 รองผู้อำนวยการสถานศึกษา → 2 ครู
+ * → 3 เจ้าหน้าที่ธุรการ → 4 อื่น ๆ
+ *
+ * ⚠️ ต้องเช็ค "รองผู้อำนวยการ" ก่อน "ผู้อำนวยการ" เสมอ
+ *    เพราะ startsWith('ผู้อำนวยการ') ไปเข้าทั้งสองคำ
+ *    (ถ้าสลับ → รองผู้อำนวยการจะขึ้นก่อนผู้อำนวยการ ซึ่งผิด)
+ *
+ * ข้อดีของการใช้ startsWith('ผู้อำนวยการ') แทนข้อความเต็ม
+ * → ข้อมูลเก่าที่เก็บเป็น "ผู้อำนวยการ" ลอย ๆ (ไม่มีคำว่า "สถานศึกษา")
+ *   ยังถูกจัดเป็นอันดับ 0 ไม่หลุดไปอยู่ท้ายสุด
+ *   (เดิมเช็คเต็มว่า "ผู้อำนวยการสถานศึกษา" → ถ้าไม่ตรงจะได้ 4 = ท้ายสุด ซึ่งผิด)
+ */
+function schoolPositionRank(position) {
+  const s = String(position || '').trim();
+  if (!s) return 4;
+  if (s.startsWith('รองผู้อำนวยการ')) return 1;
+  if (s.startsWith('ผู้อำนวยการ')) return 0;
+  if (s.startsWith('ครู')) return 2;
+  if (s.startsWith('เจ้าหน้าที่ธุรการ')) return 3;
+  return 4;
+}
+
+/**
+ * หารหัสสถานศึกษาของเจ้าหน้าที่ 1 คน — คืน '' ถ้าไม่มี
+ *
+ * ไล่หาจาก 3 ที่ ตามลำดับความน่าเชื่อถือ:
+ *   ① school_code     คอลัมน์ที่ระบบตั้งไว้เฉพาะสถานศึกษา (ข้อมูลสะอาดที่สุด)
+ *   ② workplace       "54020001 บ้านน้ำริน (…)" → เลขนำหน้าคือรหัส
+ *   ③ current_school  ใช้ตอนส่งหนังสือ รูปแบบเดียวกับ workplace
+ *
+ * ⚠️ เดิมอ่านจาก workplace อย่างเดียว
+ *    ถ้าข้อมูลไม่ได้เริ่มด้วยเลข → ได้ '99999999' ทุกคน
+ *    แล้วไปกองอยู่ท้ายสุดปนกันหลายโรงเรียน (ดูเหมือนรหัสไม่เรียง)
+ */
+function schoolCodeOf(u) {
+  if (!u) return '';
+  const fromCol = String(u.school_code || '').trim();
+  if (/^\d{6,10}$/.test(fromCol)) return fromCol;
+  const fromWorkplace = String(u.workplace || '').match(/^(\d{6,10})/);
+  if (fromWorkplace) return fromWorkplace[1];
+  const fromCurrent = String(u.current_school || '').match(/^(\d{6,10})/);
+  return fromCurrent ? fromCurrent[1] : '';
+}
+
+/**
+ * เทียบสองคนฝั่งสถานศึกษา — คืน <0 / 0 / >0
+ *
+ * เรียงตามเลขรหัสสถานศึกษาจริง (54010001 < 54020001 < 54120001)
+ * แล้วจึงเรียงตามอันดับตำแหน่ง
+ * คนที่ไม่มีรหัสสถานศึกษา → ท้ายสุด (แยกออกจากโรงเรียนที่มีรหัส)
+ */
+function compareSchool(a, b) {
+  const ca = schoolCodeOf(a);
+  const cb = schoolCodeOf(b);
+  if (ca !== cb) {
+    if (!ca) return 1;          // ไม่มีรหัส → ท้ายสุด
+    if (!cb) return -1;
+    const na = Number(ca);
+    const nb = Number(cb);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb; // เรียงตามค่าตัวเลข
+    return ca.localeCompare(cb);
+  }
+  return schoolPositionRank(a.position) - schoolPositionRank(b.position);
 }
 
 /** แปลงวันเกิด YYYY-MM-DD (ค.ศ.) เป็น "วัน เดือน พ.ศ." เช่น 14 ตุลาคม 2512 — คืน '' ถ้าไม่มีข้อมูล */
@@ -163,4 +215,14 @@ function personName(p) {
   return `${title}${first}  ${last}`.trim();
 }
 
-module.exports = { WORKPLACES, positionRank, sortStaff, thaiBirthDate, ageFromBirth, personName };
+module.exports = {
+  WORKPLACES,
+  positionRank,
+  schoolPositionRank,
+  schoolCodeOf,
+  compareSchool,
+  sortStaff,
+  thaiBirthDate,
+  ageFromBirth,
+  personName,
+};

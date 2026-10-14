@@ -705,7 +705,8 @@ router.get('/staff', auth.requireAdmin, async (req, res) => {
   const { status, q, user_group } = req.query;
   let sql = `SELECT id, username, title, full_name, first_name, last_name, nickname, blood_type,
              academic_rank, highest_education, birth_date, citizen_id, staff_no, position, workplace, workplace_secondary, phone, email,
-             telegram_token, telegram_chat_id, photo, signature, role, can_approve, status, user_group, created_at, approved_at
+             telegram_token, telegram_chat_id, photo, signature, role, can_approve, status, user_group, created_at, approved_at,
+             school_code, current_school
              FROM users WHERE 1=1`;
   const args = [];
   if (status) { sql += ' AND status = ?'; args.push(status); }
@@ -737,7 +738,7 @@ router.get('/staff.xlsx', auth.requireAdmin, async (req, res) => {
   const { status, q, user_group } = req.query;
   let sql = `SELECT id, title, full_name, first_name, last_name, nickname, citizen_id,
              academic_rank, highest_education, birth_date, position, workplace,
-             phone, email, staff_no, user_group
+             phone, email, staff_no, user_group, school_code, current_school
              FROM users WHERE 1=1`;
   const args = [];
   if (status) { sql += ' AND status = ?'; args.push(status); }

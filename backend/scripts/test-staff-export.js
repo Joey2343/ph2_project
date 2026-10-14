@@ -176,6 +176,108 @@ check(/positionRank\(a\.position\)/.test(staffVue) && /positionRank\(b\.position
 check(!/=== 'ผู้บริหารการศึกษา'\s*\)[\s\S]{0,200}position/.test(staffVue),
   'ไม่มีการจัดอันดับตำแหน่งเฉพาะกลุ่มผู้บริหารฯ แล้ว (ใช้กับทุกกลุ่ม)');
 
+/* ── ②e ฝั่งสถานศึกษา ─────────────────────────────────────────────────── */
+console.log('');
+console.log('②e ฝั่งสถานศึกษา: เรียงตามเลขรหัส แล้วตามตำแหน่ง');
+
+const SDIR = 'ผู้อำนวยการสถานศึกษา';
+const SDEPUTY = 'รองผู้อำนวยการสถานศึกษา';
+const STEA = 'ครู';
+const SCLERK = 'เจ้าหน้าที่ธุรการ';
+
+check(s.schoolPositionRank(SDIR) === 0, 'ผู้อำนวยการสถานศึกษา → 0');
+check(s.schoolPositionRank(SDEPUTY) === 1, 'รองผู้อำนวยการสถานศึกษา → 1');
+check(s.schoolPositionRank(STEA) === 2, 'ครู → 2');
+check(s.schoolPositionRank(SCLERK) === 3, 'เจ้าหน้าที่ธุรการ → 3');
+check(s.schoolPositionRank('') === 4, 'ไม่มีตำแหน่ง → 4');
+check(s.schoolPositionRank('ผู้อำนวยการ') === 0,
+  'ข้อมูลเก่าที่เป็น "ผู้อำนวยการ" ลอย ๆ ยังเป็นอันดับ 0',
+  'เดิมเช็คเต็ม "ผู้อำนวยการสถานศึกษา" → ไม่ตรงจะได้ 4 = ท้ายสุด (ผิด)');
+check(s.schoolPositionRank(SDEPUTY) > s.schoolPositionRank(SDIR),
+  'รองผู้อำนวยการสถานศึกษา ต้องอยู่หลังผู้อำนวยการสถานศึกษา',
+  "เคยพังเพราะ startsWith('ผู้อำนวยการ') ไปเข้าทั้งสองคำ");
+
+// หารหัสสถานศึกษา: ต้องหาได้จาก 3 ที่
+check(s.schoolCodeOf({ school_code: '54020001', workplace: '54030001 อื่น' }) === '54020001',
+  'ใช้ school_code เป็นอันดับแรก (ข้อมูลสะอาดที่สุด)');
+check(s.schoolCodeOf({ workplace: '54020001 บ้านน้ำริน (คุรุราษฎร์ฯ)' }) === '54020001',
+  'ไม่มี school_code → ตัดเลขนำหน้าจาก workplace');
+check(s.schoolCodeOf({ workplace: '', current_school: '54040001 บ้านข่าย' }) === '54040001',
+  'workplace ไม่มี → ใช้ current_school เป็นตัวสำรอง');
+check(s.schoolCodeOf({ workplace: 'โรงเรียนบ้านกุง' }) === '',
+  'ไม่มีรหัสเลย → คืนค่าว่าง (ไม่ใช่ 99999999 ที่ชนกันเอง)');
+check(s.schoolCodeOf(null) === '' && s.schoolCodeOf({}) === '', 'ไม่มีข้อมูลเลย → ค่าว่าง ไม่ error');
+
+// เรียงตามเลขรหัสจริง (น้อย → มาก) และตามตำแหน่งภายในโรงเรียนเดียว
+let sid = 0;
+const S = (workplace, position, school_code) => ({ id: ++sid, workplace, position, school_code });
+const schoolRows2 = [
+  S('54020001 บ้านน้ำริน', STEA, '54020001'),
+  S('54020001 บ้านน้ำริน', SCLERK, '54020001'),
+  S('54020001 บ้านน้ำริน', SDIR, '54020001'),
+  S('54020001 บ้านน้ำริน', SDEPUTY, '54020001'),
+  S('54010001 เขตเมือง', STEA, '54010001'),
+  S('54010001 เขตเมือง', SDIR, '54010001'),
+  S('54120001 รองชัยมีมา', STEA, '54120001'),
+];
+const ss = s.sortStaff(schoolRows2, 'school');
+check(ss.map((u) => u.school_code).join(',') === '54010001,54010001,54020001,54020001,54020001,54020001,54120001',
+  'เรียงสถานศึกษาตามเลขน้อยไปมาก (54010001 → 54020001 → 54120001)',
+  'ได้ ' + ss.map((u) => u.school_code).join(','));
+check(ss[0].position === SDIR && ss[1].position === STEA,
+  'โรงเรียนแรก: ผู้อำนวยการสถานศึกษา ก่อนครู');
+check(ss[2].position === SDIR && ss[3].position === SDEPUTY && ss[4].position === STEA && ss[5].position === SCLERK,
+  'โรงเรียนที่สอง: ผอ. → รอง ผอ. → ครู → เจ้าหน้าที่ธุรการ',
+  'ได้ ' + ss.slice(2, 6).map((u) => u.position).join(' , '));
+check(ss.every((u, i) => u._seq === i + 1), '_seq เรียงติดกัน ไม่มีเลขกำะไน');
+
+// ไม่มีรหัสสถานศึกษา → ท้ายสุด แต่ยังเรียงตามตำแหน่งของตัวเอง
+const noCodeSchool = [
+  S('โรงเรียนบ้านกุง', STEA),
+  S('โรงเรียนบ้านกุง', SDIR),
+  S('54010001 เขตเมือง', STEA, '54010001'),
+];
+const ncs = s.sortStaff(noCodeSchool, 'school');
+check(ncs[0].school_code === '54010001',
+  'โรงเรียนที่มีรหัส ต้องมาก่อนคนที่ไม่มีรหัส',
+  'ได้ ' + ncs.map((u) => u.school_code || '(ไม่มีรหัส)').join(' , '));
+check(ncs[1].position === SDIR && ncs[2].position === STEA,
+  'คนที่ไม่มีรหัส ยังเรียงตามตำแหน่งของตัวเอง',
+  'ได้ ' + ncs.slice(1).map((u) => u.position).join(' , '));
+
+// ตำแหน่งสถานศึกษาต้องอยู่ในรายการจริง
+const mSPos = constSrc.match(/SCHOOL_POSITIONS:\s*\[([\s\S]*?)\]/);
+const feSPos = mSPos ? [...mSPos[1].matchAll(/'([^']*)'/g)].map((x) => x[1]) : [];
+for (const p of [SDIR, SDEPUTY, STEA, SCLERK]) {
+  check(feSPos.includes(p), `SCHOOL_POSITIONS มี "${p}"`, 'ไม่พบใน CONSTANTS.SCHOOL_POSITIONS');
+}
+
+// ฝั่งหน้าเว็บต้องตรงกัน
+const mSRank = staffVue.match(/function schoolPositionRank\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+check(!!mSRank, 'StaffPage.vue มีฟังก์ชัน schoolPositionRank()');
+if (mSRank) {
+  const rules = [
+    ["s.startsWith('รองผู้อำนวยการ')) return 1;", 'รองผอ.→1'],
+    ["s.startsWith('ผู้อำนวยการ')) return 0;", 'ผอ.→0'],
+    ["s.startsWith('ครู')) return 2;", 'ครู→2'],
+    ["s.startsWith('เจ้าหน้าที่ธุรการ')) return 3;", 'เจ้าหน้าที่ธุรการ→3'],
+  ];
+  const found = rules.filter(([code]) => mSRank[1].includes(code)).map(([, l]) => l);
+  check(found.join('|') === 'รองผอ.→1|ผอ.→0|ครู→2|เจ้าหน้าที่ธุรการ→3',
+    'ลำดับการตรวจเงื่อนไขตรงกับ backend', 'ได้: ' + found.join(' | '));
+}
+const feCodeOf = staffVue.match(/function schoolCodeOf\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+check(!!feCodeOf && /school_code/.test(feCodeOf[1]),
+  'StaffPage.vue อ่านรหัสสถานศึกษาจาก school_code ก่อน');
+// ต้องเทียบด้วยค่าตัวเลขจริง (แปลงก่อน แล้วมีการกันค่าที่ไม่ใช่ตัวเลข)
+const feCmp = staffVue.match(/function compareSchool\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+check(!!feCmp && /Number\.isFinite\(na\)\s*&&\s*Number\.isFinite\(nb\)/.test(feCmp[1])
+  && /return na - nb;/.test(feCmp[1]),
+  'เทียบรหัสสถานศึกษาแบบตัวเลขจริง ไม่ใช่ localeCompare',
+  'localeCompare เปราะเมื่อความยาวรหัสไม่เท่ากัน');
+check(!!feCmp && /if\s*\(\s*!ca\s*\)\s*return 1;/.test(feCmp[1]),
+  'คนที่ไม่มีรหัสสถานศึกษา ถูกจัดไว้ท้ายสุด');
+
 /* ── ③ วันเกิด / อายุ ─────────────────────────────────────────────────── */
 console.log('');
 console.log('③ แปลงวันเกิดและคำนวณอายุ');
