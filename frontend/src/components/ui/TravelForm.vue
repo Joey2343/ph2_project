@@ -83,6 +83,7 @@ function reset() {
   };
   attachment.value = null;
   attachmentName.value = '';
+  expenseChecked.value = { baht: false, hotel: false, transport: false, other: false };
 }
 watch(() => props.saving, reset);
 
@@ -102,6 +103,29 @@ const EXPENSE_ITEMS = [
   { key: 'transport', label: 'ค่าพาหนะ' },
   { key: 'other', label: 'ค่าใช้จ่ายอื่น' },
 ];
+
+/**
+ * ช่องที่ติ๊กไว้ — ใช้คิด disabled ของช่องจำนวนเงิน
+ *
+ * ⚠️ เคยพังตรงนี้ (ย้ายจาก TravelView.openForm() มาเป็น Vue)
+ *   โค้ดเดิม: checkbox onchange → input.disabled = !checkbox.checked
+ *              ค่าเริ่มต้น disabled = true แล้วติ๊กแล้วถึงพิมพ์ได้
+ *
+ *   ตอนย้ายกลับมาเขียน :disabled="f.expense_items[it.key] <= 0"
+ *   ค่าเริ่มต้นคือ 0 → 0 <= 0 → disabled ตลอด
+ *   และ @change ของ checkbox ล้างค่าเฉพาะตอน "เอาติ๊กออก" ไม่เคยเปิดช่องให้
+ *   → ตัวตายวน: พิมพ์ไม่ได้เพราะค่าเป็น 0 · ค่าจะเป็นบวกได้ก็ต่อเมื่อพิมพ์
+ *   → ติ๊กช่องก็ไม่ช่วย เพราะ disabled ผูกกับ "ค่า" ไม่ใช่ "การติ๊ก"
+ *   ผลคือ กรอกค่าเบี้ยเลี้ยง/ค่าเช่าที่พัก/ค่าพาหนะ/ค่าใช้จ่ายอื่น ไม่ได้เลย
+ *
+ * ต้องเก็บสถานะ "ติ๊กไว้ไหม" แยกจากจำนวนเงินเสมอ
+ */
+const expenseChecked = ref({ baht: false, hotel: false, transport: false, other: false });
+
+function toggleExpense(key, on) {
+  expenseChecked.value[key] = !!on;
+  if (!on) f.value.expense_items[key] = 0;
+}
 
 function onFile(e) {
   const file = e.target.files && e.target.files[0];
@@ -127,11 +151,13 @@ function submit() {
     expense_project: v.expense_project.trim(),
     expense_project_amount: parseFloat(v.expense_project_amount) || 0,
     // รายการที่ไม่ได้ติ๊กช่อง = ไม่ได้ขอเบิก
+    // ⚠️ ต้องเช็ค "ติ๊กไว้" ไม่ใช่ "ค่ามากกว่า 0"
+    //   ถ้าใช้แค่ค่า: ติ๊กช่องแล้วลืมพิมพ์จำนวน → ยอด 0 ถูกส่งไปเหมือนไม่ได้ติ๊ก
     expense_items: {
-      baht: parseFloat(v.expense_items.baht) || 0,
-      hotel: parseFloat(v.expense_items.hotel) || 0,
-      transport: parseFloat(v.expense_items.transport) || 0,
-      other: parseFloat(v.expense_items.other) || 0,
+      baht: expenseChecked.value.baht ? parseFloat(v.expense_items.baht) || 0 : 0,
+      hotel: expenseChecked.value.hotel ? parseFloat(v.expense_items.hotel) || 0 : 0,
+      transport: expenseChecked.value.transport ? parseFloat(v.expense_items.transport) || 0 : 0,
+      other: expenseChecked.value.other ? parseFloat(v.expense_items.other) || 0 : 0,
     },
     vehicle_type: v.vehicle_type,
     plate_number: v.plate_number.trim(),
@@ -274,8 +300,8 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
           :id="'tf-exp-' + it.key + '-chk'"
           type="checkbox"
           :style="checkboxStyle"
-          :checked="f.expense_items[it.key] > 0"
-          @change="(e) => { if (!e.target.checked) f.expense_items[it.key] = 0 }"
+          :checked="expenseChecked[it.key]"
+          @change="toggleExpense(it.key, $event.target.checked)"
         />
         <label :for="'tf-exp-' + it.key + '-chk'" :style="labelStyle">{{ it.label }} </label>
         <input
@@ -284,7 +310,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
           type="number"
           step="0.01"
           min="0"
-          :disabled="f.expense_items[it.key] <= 0"
+          :disabled="!expenseChecked[it.key]"
           :style="numStyle"
         />
         <span> บาท</span>

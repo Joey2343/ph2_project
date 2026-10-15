@@ -196,6 +196,68 @@ const VUE_PAGES = {
         check: `document.body.innerText.includes('ขอเบิกค่าใช้จ่าย') && document.body.innerText.includes('ไปราชการด้วย')`,
       },
       {
+        // ⚠️ เคยพังตรงนี้ (ผู้ใช้แจ้ง: "กรอกตัวเลขไม่ได้")
+        //   :disabled="f.expense_items[it.key] <= 0" → ค่าเริ่มต้น 0 → disabled ถาวร
+        //   ติ๊กช่องก็ไม่ช่วย เพราะ disabled ผูกกับ "ค่า" ไม่ใช่ "การติ๊ก"
+        //   → ช่องค่าเบี้ยเลี้ยง/ค่าเช่าที่พัก/ค่าพาหนะ/ค่าใช้จ่ายอื่น กรอกไม่ได้เลย
+        //   ต้องเป็น: เริ่มปิด → ติ๊กแล้วเปิด → พิมพ์ได้ → เอาติ๊กออกแล้วปิด+ล้างค่า
+        //
+        // ⚠️ 2 เรื่องที่ทำให้เทสต์นี้ "ผ่านทั้งที่พัง" ถ้าไม่ระวัง
+        //   ① ต้องคืน true เป๊ะ — harness เทียบ `value === true` ไม่ใช่ "truthy"
+        //      ถ้าคืนข้อความสตริง จะ fail โดยไม่บอกเหตุผล
+        //   ② ต้อง await หลัง click() ทุกครั้ง
+        //      Vue อัปเดต :disabled แบบ async (nextTick) → อ่าน .disabled ทันที
+        //      ได้ค่าเก่าเสมอ → เทสต์ผ่านทั้งที่ช่องยังปิดอยู่
+        name: 'ช่องค่าใช้จ่าย 4 ช่อง: เริ่มปิด แล้วติ๊กแล้วต้องพิมพ์ตัวเลขได้',
+        check: `(async () => {
+          const KEYS = ['baht', 'hotel', 'transport', 'other'];
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms || 350));
+          const amt = (k) => document.getElementById('tf-exp-' + k);
+          const chk = (k) => document.getElementById('tf-exp-' + k + '-chk');
+          const die = (m) => { throw new Error(m); };
+
+          for (const k of KEYS) {
+            if (!amt(k) || !chk(k)) die('ไม่ครบทุกช่อง เหลือช่อง ' + k);
+            if (!amt(k).disabled) die('ช่อง ' + k + ' ไม่ได้เริ่มเป็นปิดตามแบบของเดิม');
+          }
+
+          chk('baht').click();
+          await wait();
+          if (amt('baht').disabled) die('ติ๊กช่องแล้วช่องจำนวนยังปิดอยู่ (ผูก disabled กับค่าในช่องแทนที่จะผูกกับการติ๊ก)');
+
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(amt('baht'), '1500.50');
+          amt('baht').dispatchEvent(new Event('input', { bubbles: true }));
+          await wait(250);
+          if (String(amt('baht').value).indexOf('1500') !== 0) die('พิมพ์ตัวเลขไม่ได้ ได้ "' + amt('baht').value + '"');
+
+          chk('baht').click();
+          await wait();
+          if (!amt('baht').disabled) die('เอาติ๊กออกแล้วช่องยังเปิดอยู่');
+          if (Number(amt('baht').value) !== 0) die('เอาติ๊กออกแล้วค่าไม่ถูกล้าง ได้ ' + amt('baht').value);
+
+          for (const k of KEYS.slice(1)) { chk(k).click(); await wait(); }
+          for (const k of KEYS.slice(1)) if (amt(k).disabled) die('ช่อง ' + k + ' เปิดไม่ได้');
+
+          return true;
+        })()`,
+      },
+      {
+        // ตัวตรวจเชิงโค้ด (อ่านไฟล์) อยู่ที่ check-form-wiring.mjs
+        // ข้อนี้เช็กจาก DOM ว่า checkbox คุมช่องจำนวนได้จริงทุกช่อง
+        name: 'ทุกช่องค่าใช้จ่ายถูกคุมด้วยช่องติ๊กของตัวเอง',
+        check: `(() => {
+          const KEYS = ['baht', 'hotel', 'transport', 'other'];
+          return KEYS.every((k) => {
+            const chk = document.getElementById('tf-exp-' + k + '-chk');
+            const amt = document.getElementById('tf-exp-' + k);
+            if (!chk || !amt) return false;
+            const label = document.querySelector('label[for="tf-exp-' + k + '-chk"]');
+            return !!label && !!chk;
+          }) || 'ช่องใดช่องหนึ่งไม่มี checkbox/label คุม';
+        })()`,
+      },
+      {
         name: 'ปิดแบบฟอร์มได้',
         check: `(async () => {
           __clickText('[data-app-modal] .btn', 'ยกเลิก');
@@ -1370,6 +1432,14 @@ if (ws) {
      * awaitPromise: true เพราะ Vue อัปเดต DOM แบบ async
      * ถ้าอ่าน DOM ทันทีหลัง click() จะได้ค่าเก่าเสมอ (label ยังไม่สลับ)
      * → ให้ check เขียนเป็น async IIFE ที่รอสัก 400 ms แล้วค่อยอ่าน
+     *
+     * ⚠️ ⚠️ กฎสองข้อที่ทำให้เทสต์ "ผ่านทั้งที่ยังพัง" (เจอจริงตอนเพิ่มเทสต์ช่องค่าใช้จ่าย)
+     *   ① คืนค่า `true` เป๊ะ — harness เทียบ `value === true` ไม่ใช่ truthy
+     *      คืนข้อความสตริง = fail เงียบ ๆ ไม่บอกเหตุผล
+     *      → ถ้าจะบอกเหตุผลให้ `throw new Error(ข้อความ)` (harness จะพิมพ์รายละเอียดให้)
+     *   ② ต้อง await หลัง click() ทุกครั้งก่อนอ่าน attribute
+     *      Vue ผูก :disabled แบบ async (nextTick) → อ่านทันทีได้ค่าเก่าเสมอ
+     *      → เทสต์ผ่านทั้งที่ช่องยังปิดอยู่จริง (เจอแล้ว ตอนนี้แก้และมีคอมเมนต์กันแล้ว)
      */
     if (spec.afterActions && spec.afterActions.length) {
       errors = [];

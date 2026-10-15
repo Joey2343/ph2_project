@@ -124,6 +124,39 @@ if (openEdit) {
     'ถ้าไม่พา sort ลำดับหัวข้อจะเพี้ยนทุกครั้งที่บันทึก');
 }
 
+/* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
+ *
+ * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)
+ *   :disabled="f.expense_items[it.key] <= 0"
+ *   ค่าเริ่มต้นของช่องคือ 0 → 0 <= 0 → disabled ถาวร
+ *   และ @change ของ checkbox ล้างค่าเฉพาะตอน "เอาติ๊กออก" ไม่เคยเปิดช่องให้
+ *   → ตัวตายวน: พิมพ์ไม่ได้เพราะค่าเป็น 0 · ค่าจะบวกได้ก็ต่อเมื่อพิมพ์ · ติ๊กก็ไม่ช่วย
+ *   → ผู้ใช้กรอกค่าเบี้ยเลี้ยง/ค่าเช่าที่พัก/ค่าพาหนะ/ค่าใช้จ่ายอื่น ไม่ได้เลย
+ *
+ * โค้ดเดิม (docs/legacy/source-v1/js/views/travel.js) ทำถูกแล้ว:
+ *   checkbox onchange → input.disabled = !checkbox.checked
+ *   ค่าเริ่มต้น disabled = true แล้วติ๊กแล้วถึงพิมพ์ได้
+ */
+console.log('\n⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับการติ๊ก ไม่ใช่ค่าในช่อง');
+
+const travel = readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelForm.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+check(!/:disabled="f\.expense_items\[it\.key\]\s*<=\s*0"/.test(travel),
+  'TravelForm: ไม่ผูก disabled กับค่าในช่อง (ช่องจะถูกล็อกถาวร กรอกไม่ได้)',
+  'ถ้าผูกกับค่า: ค่าเริ่มต้น 0 → disabled → พิมพ์ไม่ได้ → ค่าก็ไม่มีทางเป็นบวก');
+check(/:disabled="!expenseChecked\[it\.key\]"/.test(travel),
+  'TravelForm: disabled ผูกกับสถานะการติ๊ก (expenseChecked)');
+check(/expenseChecked\.value\[key\]\s*=\s*!!on/.test(travel),
+  'TravelForm: มี toggleExpense() จำสถานะการติ๊ก');
+check(/function toggleExpense\(key, on\)[\s\S]{0,200}?if \(!on\)[\s\S]{0,80}?expense_items\[key\]\s*=\s*0/.test(travel),
+  'TravelForm: เอาติ๊กออกแล้วล้างค่าในช่อง (ไม่ใช่ค้างยอดเก่าไว้แล้วส่งต่อไป)');
+check(/expenseChecked\.value\.baht\s*\?/.test(travel),
+  'TravelForm: ตอนส่งข้อมูลเช็ค "ติ๊กไว้" ไม่ใช่ "ค่ามากกว่า 0"',
+  'ถ้าเช็คแค่ค่า: ติ๊กแล้วลืมพิมพ์จำนวน → ยอด 0 ถูกส่งไปเหมือนไม่ได้ติ๊ก');
+
 console.log('');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);
