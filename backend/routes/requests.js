@@ -760,8 +760,18 @@ router.get('/leaves', auth.requireAuth, async (req, res) => {
   if (year) { const yCE = Number(year) - 543; sql += " AND l.date_from >= ? AND l.date_from <= ?"; args.push((yCE - 1) + '-10-01', yCE + '-09-30'); }
   sql += ' ORDER BY l.id DESC';
   const rows = await db.prepare(sql).all(...args);
-  const required = await approvals.getRequiredLevels('leave');
-  res.json({ requests: rows.map((r) => ({ ...r, required_levels: required, approvals: approvals.parseApprovals(r.approval_data) })) });
+  // สายอนุมัติต่างกันตามคน (ตั้งในหน้าเจ้าหน้าที่การลา) → คำนวณครั้งเดียวต่อผู้ขอ
+  const out = [];
+  for (const r of rows) {
+    const chain = await approvals.leaveChainLevels(r.user_id);
+    out.push({
+      ...r,
+      chain,
+      required_levels: chain.length,
+      approvals: approvals.parseApprovals(r.approval_data),
+    });
+  }
+  res.json({ requests: out });
 });
 
 // รายชื่อบุคลากรในกลุ่มงานเดียวกัน (สำหรับมอบหมายงาน)
@@ -911,15 +921,36 @@ router.put('/leaves/:id/review', auth.requireAuth, async (req, res) => {
     }
   } catch (e) { /* ignore */ }
   if (!isAdmin && !isInspector) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์ตรวจสอบคำขอนี้' });
+
+  // สายจริงของผู้ขอคนนี้ (ตั้งไว้ในหน้าเจ้าหน้าที่การลา)
+  const chain = await approvals.leaveChainLevels(row.user_id);
+  // ตั้งไว้แค่ขั้นเดียว (❶ ผู้ตรวจสอบ) → ไม่ต้องส่งต่อ ให้จบที่ตรวจสอบเลย
+  // ไม่งั้นคำขาจะค้างเป็น pending เพราะไม่มีขั้นที่สองให้กด
+  const reviewOnly = chain.length <= 1;
+
   // บันทึกว่าตรวจสอบแล้ว + เพิ่ม level 1 ใน approval_data + บันทึกสถิติที่แก้ไข
   const reviewedStats = req.body.reviewed_stats || null;
   const existingApprovals = approvals.parseApprovals(row.approval_data);
   existingApprovals.push({ level: 1, by: req.user.id, name: req.user.full_name, role: req.user.role, at: auth.now(), note: 'ตรวจสอบแล้ว' });
-  // เลื่อน approval_level → 1 เพื่อให้ระบบนับว่าคำขอกำลังรอผู้อนุมัติขั้นต้น (level 2)
+  if (reviewOnly) {
+    await db.prepare('UPDATE leave_requests SET reviewed = 1, approval_level = 1, reviewed_stats = ?, approval_data = ?, status = ?, decided_by = ?, decided_at = ? WHERE id = ?')
+      .run(reviewedStats ? JSON.stringify(reviewedStats) : null, JSON.stringify(existingApprovals), 'approved', req.user.id, auth.now(), id);
+    await telegram.notifyRequest({ system: 'leave', id, approved: true, deciderName: req.user.full_name, note: 'ตรวจสอบแล้ว (ไม่มีขั้นอนุมัติถัดไป)' });
+    return res.json({ ok: true, chain, message: '✅ ตรวจสอบแล้ว อนุมัติเรียบร้อย (สายของคุณมีเพียงขั้นตรวจสอบ)' });
+  }
+
+  // เลื่อน approval_level → 1 เพื่อให้ระบบนับว่าคำขอกำลังรอผู้อนุมัติขั้นถัดไป
   await db.prepare('UPDATE leave_requests SET reviewed = 1, approval_level = 1, reviewed_stats = ?, approval_data = ? WHERE id = ?').run(reviewedStats ? JSON.stringify(reviewedStats) : null, JSON.stringify(existingApprovals), id);
-  // แจ้งเตือน Telegram ไปยังผู้อนุมัติขั้นต้น (level 1)
-  await telegram.notifyLeaveReviewed(id, req.user.full_name);
-  res.json({ ok: true, message: '✅ ตรวจสอบแล้ว ส่งต่อผู้อนุมัติขั้นต้นเรียบร้อย' });
+  // แจ้งเตือน Telegram ไปยังผู้อนุมัติขั้นถัดไป (ขั้นจริงตามสาย ไม่ใช่ 3 แบบตายตัว)
+  await telegram.notifyLeaveNextLevel(id, req.user.full_name, chain[1], 1);
+  const next = chain[1];
+  res.json({
+    ok: true,
+    chain,
+    message: next === 3
+      ? '✅ ตรวจสอบแล้ว ส่งต่อผู้อนุมัติเรียบร้อย'
+      : '✅ ตรวจสอบแล้ว ส่งต่อผู้อนุมัติขั้นต้นเรียบร้อย',
+  });
 });
 
 router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
@@ -929,7 +960,11 @@ router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
   const row = await db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'ไม่พบรายการ' });
   const approvalsData = approvals.parseApprovals(row.approval_data);
-  const nextLevel = approvalsData.length + 1;
+  // สายอนุมัติจริงของผู้ขอคนนี้ = ขั้นที่ตั้งไว้ในหน้าเจ้าหน้าที่การลา
+  //   เช่น [1,2,3] = ตรวจสอบ→ขั้นต้น→อนุมัติ | [1,3] = ตรวจสอบ→อนุมัติ (ข้าม ❷)
+  const chain = await approvals.leaveChainLevels(row.user_id);
+  const nextLevel = chain[approvalsData.length];
+  if (!nextLevel) return res.status(400).json({ error: 'รายการนี้ได้รับการอนุมัติครบทุกขั้นแล้ว' });
   const isAdmin = req.user.role === 'admin';
   let canDo = false;
   if (isAdmin) { canDo = true; } else {
@@ -944,31 +979,22 @@ router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
       } catch (e) { /* ignore */ }
       return false;
     };
-    if (nextLevel === 2) {
-      // level 2: check per-person level 2 approver for the requester
-      canDo = await checkPerLevel(2, row.user_id, req.user.id);
-    } else if (nextLevel === 3) {
-      // level 3: check per-person level 3 approver for the requester
-      canDo = await checkPerLevel(3, row.user_id, req.user.id);
-    } else {
-      canDo = await checkPerLevel(nextLevel, row.user_id, req.user.id);
-    }
+    canDo = await checkPerLevel(nextLevel, row.user_id, req.user.id);
   }
   if (!canDo) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์อนุมัติขั้นนี้' });
   const result = await approvals.approveRequest({ table: 'leave_requests', system: 'leave', id, user: req.user, note,
-    // ⚠️ ต้องใช้ leaveRequiredLevels ไม่ใช่ค่า approval_leave ตรง ๆ
-    //   ระบบลามีปุ่ม "ตรวจสอบ" เป็นขั้นแยกที่กิน level 1 ไปแล้ว
-    //   ถ้าใช้ approval_leave ตรง ๆ (ค่าเริ่มต้น 1) ปุ่ม "อนุมัติขั้นต้น" จะได้ 400 เสมอ
-    //   ดูที่ approvals.leaveRequiredLevels()
-    requiredFn: () => approvals.leaveRequiredLevels(),
+    // ⚠️ ต้องส่งสายจริง ไม่ใช่ค่า approval_leave ตรง ๆ
+    //   ระบบลามีขั้น "ตรวจสอบ" แยก และแต่ละคนมีจำนวนขั้นไม่เท่ากัน
+    //   นับจาก approval_leave เดิม → คนที่ตั้งครบ 3 ขั้นกด "อนุมัติขั้นต้น"แล้วจบทันที
+    levelsFn: () => approvals.leaveChainLevels(row.user_id),
     canApproveFn: () => canDo });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
   if (result.approved) {
     // อนุมัติครบทุกขั้น → แจ้ง Telegram กลับผู้ขอ (สีเขียว 🟢)
     await telegram.notifyRequest({ system: 'leave', id, approved: true, deciderName: req.user.full_name, note });
   } else {
-    // ยังไม่ครบทุกขั้น → แจ้ง Telegram ไปยังผู้อนุมัติขั้นถัดไป
-    await telegram.notifyLeaveNextLevel(id, req.user.full_name);
+    // ยังไม่ครบทุกขั้น → แจ้ง Telegram ไปยังผู้อนุมัติขั้นถัดไป (ขั้นจริงตามสาย)
+    await telegram.notifyLeaveNextLevel(id, req.user.full_name, chain[approvalsData.length + 1], nextLevel);
   }
   res.json(result);
 });

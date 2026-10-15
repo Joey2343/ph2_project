@@ -278,11 +278,18 @@ function downloadXlsx() {
 }
 
 /* ---------- แท็บ: ตั้งค่าการอนุมัติ ---------- */
+/**
+ * ⚠️ ไม่มี "❋ การขออนุญาตลา" ในรายการนี้
+ *   จำนวนขั้นของระบบลาไม่ได้นับจากค่ากลาง แต่มาจาก "หน้า ⊛ เจ้าหน้าที่การลา"
+ *   ที่ admin เลือกไว้รายคน (ตั้ง ❶ อย่างเดียว = 1 ขั้น, เพิ่ม ❷/❸ = 2/3 ขั้น)
+ *   เคยมีตัวเลือกนี้แล้วตั้งค่าไม่มีผลกับระบบลาเลย
+ *   และค่าเริ่มต้น (1) ทำให้ปุ่ม "อนุมัติขั้นต้น" ตอบ 400 ทุกครั้ง — จึงเอาออก
+ *   ดู approvals.leaveChainLevels()
+ */
 const APPROVAL_SYSTEMS = [
   { key: 'approval_vehicle', label: '▣ การจองยานพาหนะ' },
   { key: 'approval_room', label: '⬡ การจองห้องประชุม' },
   { key: 'approval_travel', label: '✈ การขออนุญาตไปราชการ' },
-  { key: 'approval_leave', label: '❋ การขออนุญาตลา' },
 ];
 
 const approvalSettings = ref({});
@@ -702,6 +709,10 @@ const pendingGridStyle = {
             </select>
           </div>
         </div>
+        <p class="hint" style="margin-top: 12px">
+          ❋ การขออนุญาตลาไม่ต้องตั้งที่นี่ — จำนวนขั้นกำหนดที่หน้า ⊛ เจ้าหน้าที่การลา
+          ว่าแต่ละคนจะผ่านขั้น ❶ ผู้ตรวจสอบ / ❷ ผู้อนุมัติขั้นต้น / ❸ ผู้อนุมัติ ครบกี่ขั้น
+        </p>
         <div class="form-actions" style="margin-top: 14px">
           <button class="btn btn-primary" :disabled="approvalSaving" @click="saveApprovalSettings">
             {{ approvalSaving ? 'กำลังบันทึก…' : '▽ บันทึกการตั้งค่า' }}

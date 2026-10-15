@@ -674,29 +674,27 @@ function leaveDelegateText(b) {
   ].join('\n');
 }
 
-/** ข้อความแจ้งผู้อนุมัติขั้นต้นว่าผู้ตรวจสอบได้ตรวจสอบแล้ว */
-function leaveReviewedText(b, reviewerName) {
-  return [
-    '📣 P2-SMART สพป.แพร่ 2',
-    '',
-    '⏳ มีคำขออนุญาตลา — ผู้ตรวจสอบได้ตรวจสอบแล้ว รอการอนุมัติขั้นต้น',
-    '',
-    '📋 รายละเอียด:',
-    ...detailLines('leave', b),
-    `• ผู้ตรวจสอบ: ${reviewerName || '-'}`,
-  ].join('\n');
-}
+/** ชื่อบทบาทของผู้พิจารณาตามขั้น — สายของแต่ละคนไม่เหมือนกัน อาจข้ามขั้นได้ */
+const LEAVE_ROLE = {
+  1: { doer: 'ผู้ตรวจสอบ', waiting: 'รอการอนุมัติขั้นต้น' },
+  2: { doer: 'ผู้อนุมัติขั้นต้น', waiting: 'รอการอนุมัติ' },
+  3: { doer: 'ผู้อนุมัติ', waiting: 'รอการพิจารณาต่อ' },
+};
 
-/** ข้อความแจ้งผู้อนุมัติขั้นถัดไปว่าผู้อนุมัติขั้นต้นได้อนุมัติแล้ว */
-function leaveNextLevelText(b, deciderName) {
+/**
+ * ข้อความแจ้งผู้พิจารณาขั้นถัดไป
+ * @param {number} doneLevel ขั้นที่เพิ่งเสร็จไป (1 = ตรวจสอบ, 2 = อนุมัติขั้นต้น)
+ */
+function leaveNextLevelText(b, deciderName, doneLevel) {
+  const r = LEAVE_ROLE[doneLevel] || LEAVE_ROLE[2];
   return [
     '📣 P2-SMART สพป.แพร่ 2',
     '',
-    '⏳ มีคำขออนุญาตลา — ผู้อนุมัติขั้นต้นได้อนุมัติแล้ว รอการอนุมัติขั้นสุดท้าย',
+    `⏳ มีคำขออนุญาตลา — ${r.doer}ได้ดำเนินการแล้ว ${r.waiting}`,
     '',
     '📋 รายละเอียด:',
     ...detailLines('leave', b),
-    `• ผู้อนุมัติขั้นต้น: ${deciderName || '-'}`,
+    `• ${r.doer}: ${deciderName || '-'}`,
   ].join('\n');
 }
 
@@ -792,34 +790,19 @@ async function notifyLeaveSubmitted(id) {
   }
 }
 
-/** แจ้งผู้อนุมัติขั้นต้น (leave level 2) ว่าผู้ตรวจสอบตรวจสอบแล้ว */
-async function notifyLeaveReviewed(id, reviewerName) {
+/**
+ * แจ้งผู้พิจารณาขั้นถัดไปในสายของผู้ขอ
+ * @param {number} nextLevel ขั้นที่ต้องแจ้ง (2 หรือ 3 — มาจาก chain ที่ตั้งไว้)
+ * @param {number} doneLevel ขั้นที่เพิ่งเสร็จไป ใช้เลือกถ้อยคำในข้อความ
+ */
+async function notifyLeaveNextLevel(id, deciderName, nextLevel = 3, doneLevel = 2) {
   try {
     const b = await fetchLeaveRow(id);
     if (!b) return;
-    const ids = await leaveApproverIds(await leaveApproverKeyOf(b.user_id), 2, b.user_id);
+    const ids = await leaveApproverIds(await leaveApproverKeyOf(b.user_id), nextLevel, b.user_id);
     if (!ids.length) return;
     const users = await db.prepare(`SELECT id, telegram_token, telegram_chat_id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
-    const text = leaveReviewedText(b, reviewerName);
-    for (const u of users) {
-      if (u.telegram_token && u.telegram_chat_id) {
-        await sendTelegram({ token: u.telegram_token, chatId: u.telegram_chat_id, text });
-      }
-    }
-  } catch (e) {
-    console.error('[telegram] notifyLeaveReviewed error:', e.message);
-  }
-}
-
-/** แจ้งผู้อนุมัติขั้นถัดไป (level 3) ว่าผู้อนุมัติขั้นต้นอนุมัติแล้ว */
-async function notifyLeaveNextLevel(id, deciderName) {
-  try {
-    const b = await fetchLeaveRow(id);
-    if (!b) return;
-    const ids = await leaveApproverIds(await leaveApproverKeyOf(b.user_id), 3, b.user_id);
-    if (!ids.length) return;
-    const users = await db.prepare(`SELECT id, telegram_token, telegram_chat_id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
-    const text = leaveNextLevelText(b, deciderName);
+    const text = leaveNextLevelText(b, deciderName, doneLevel);
     for (const u of users) {
       if (u.telegram_token && u.telegram_chat_id) {
         await sendTelegram({ token: u.telegram_token, chatId: u.telegram_chat_id, text });
@@ -984,8 +967,8 @@ module.exports = {
   notifyVehicleEdited, notifyVehicleCancelled,
   memoSubmittedText, memoNextLevelText, memoForwardedText, memoResubmittedText,
   notifyMemoSubmitted, notifyMemoNextLevel, notifyMemoForwarded, notifyMemoResubmitted, notifyMemoReturned,
-  fetchLeaveRow, leaveSubmittedText, leaveDelegateText, leaveReviewedText, leaveNextLevelText,
-  notifyLeaveSubmitted, notifyLeaveReviewed, notifyLeaveNextLevel,
+  fetchLeaveRow, leaveSubmittedText, leaveDelegateText, leaveNextLevelText,
+  notifyLeaveSubmitted, notifyLeaveNextLevel,
   notifyLeaveCancelRequested, notifyLeaveCancelled,
   travelSubmittedText, travelNextLevelText, notifyTravelSubmitted, notifyTravelNextLevel,
   notifyRequest, sendTelegram,

@@ -29,29 +29,46 @@ async function getRequiredLevels(system) {
   return Math.min(3, Math.max(1, isNaN(n) ? 1 : n));
 }
 
+/** คีย์ settings ของชุดผู้ตรวจสอบ/ผู้อนุมัติการลา ตามกลุ่มของผู้ขอ */
+async function leaveApproverKeyFor(userId) {
+  const u = await db.prepare('SELECT user_group FROM users WHERE id = ?').get(userId);
+  return (u && u.user_group) === 'school' ? 'leave_approvers_school' : 'leave_approvers';
+}
+
 /**
- * จำนวนขั้นของ "ระบบลา" — ต่างจากระบบอื่นตรงนี้
+ * สายอนุมัติการลาของผู้ขอแต่ละคน = ขั้นที่ "ตั้งค่าไว้จริง" ในหน้าเจ้าหน้าที่การลา
  *
- * ระบบลามีปุ่ม "▭ ตรวจสอบ" เป็นขั้นแยกก่อน (PUT /leaves/:id/review)
- *   ปุ่มนั้น push { level: 1 } ลง approval_data เสร็จ แล้วปล่อย status = 'pending'
- *   ไว้รอ "ผู้อนุมัติขั้นต้น" → ขั้นที่ 1 ถูก "ตรวจสอบ" ใช้ไปแล้ว ไม่ใช่ขั้นอนุมัติ
+ * ผู้ดูแลระบบกำหนดสายรายคนในหน้า ⊛ เจ้าหน้าที่การลา (ต่อคน ต่อขั้น ❶/❷/❸)
+ *   เลือกไว้กี่ขั้น = ต้องอนุมัติกี่ขั้น และขั้นที่ไม่ได้เลือกจะถูกข้ามไป
+ *     ตั้ง ❶+❷+❸ → ตรวจสอบ → อนุมัติขั้นต้น → อนุมัติ   (3 ขั้น)
+ *     ตั้ง ❶+❸     → ตรวจสอบ → อนุมัติ                 (2 ขั้น ข้าม ❷)
+ *     ตั้ง ❶        → ตรวจสอบ                            (1 ขั้น)
  *
- * ⚠️ เคยพังตรงนี้ (เจอจริงบนระบบจริง approval_leave = 1)
- *   ถ้าเอา approval_leave มาเป็น required ตรง ๆ
- *     → หลังตรวจสอบ approvals.length = 1 → nextLevel = 2
- *     → 2 > 1 → ตอบ 400 "รายการนี้ได้รับการอนุมัติครบทุกขั้นแล้ว" ทันที
- *     → ปุ่ม "● อนุมัติขั้นต้น" กดไม่ได้เลย ทุกคำขอลา ทุกคน
+ * ⚠️ เคยนับจาก settings approval_leave ซึ่งเป็นค่ากลางของระบบ ไม่ใช่สายของผู้ขอ
+ *   ทำให้คนที่ตั้งครบ 3 ขั้น กด "อนุมัติขั้นต้น"แล้วจบทันที ไม่ส่งต่อผู้อนุมัติ
+ *   และคนที่ตั้ง 2 ขั้น กดแล้วค้าง เพราะขั้นที่ 3 ถูกข้ามไปแต่ระบบยังรอ
  *
- * จึงต้องบวก 1 เพื่อรวมขั้นตรวจสอบ และล็อกที่ 3 เพราะ UI มีแค่ 3 ระดับ
- *   approval_leave = 1 → ตรวจสอบ → อนุมัติขั้นต้น       (ครบที่ approval_level 2)
- *   approval_leave = 2 → ตรวจสอบ → ขั้นต้น → อนุมัติ      (ครบที่ approval_level 3)
- *   approval_leave = 3 → เหมือนข้างบน (ล็อกที่ 3 ไม่ให้หลุดไปหา level 4 ที่ไม่มี)
+ * ไม่มีการตั้งค่าเลย → คืน [1,2,3] (พฤติกรรมเดิม ไม่ทำให้คำขอค้าง)
  *
- * ระบบอื่น (ยานพาหนะ/ห้องประชุม/ไปราชการ/บันทึกข้อความ) ไม่มีขั้นตรวจสอบแยก
- * ทุกขั้นเดินผ่าน approve() ตรง ๆ จึงใช้ getRequiredLevels() ตามเดิม
+ * @returns {Promise<number[]>} เช่น [1,2,3] | [1,3] | [1]
  */
-async function leaveRequiredLevels() {
-  return Math.min(3, (await getRequiredLevels('leave')) + 1);
+async function leaveChainLevels(requesterId) {
+  const key = await leaveApproverKeyFor(requesterId);
+  const row = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(key);
+  let obj = {};
+  try { const p = JSON.parse(row ? row.value : '{}'); if (p && typeof p === 'object') obj = p; } catch (e) { /* ignore */ }
+  const chain = [];
+  for (const lv of [1, 2, 3]) {
+    const d = obj[String(lv)];
+    if (Array.isArray(d)) { if (d.length) chain.push(lv); continue; }
+    if (d && typeof d === 'object' && Number(d[String(requesterId)]) > 0) chain.push(lv);
+  }
+  return chain.length ? chain : [1, 2, 3];
+}
+
+/** จำนวนขั้นของคำขอลาคนนี้ = ความยาวของสายที่ตั้งไว้ (ไว้เรียกจากที่อื่นที่อยากได้แค่ตัวเลข) */
+async function leaveRequiredLevelsFor(requesterId) {
+  return (await leaveChainLevels(requesterId)).length;
 }
 
 function parseApprovals(data) {
@@ -290,7 +307,7 @@ async function sameTravelGroup(approverId, requesterId) {
  * @param {Function} [opts.levelLabelFn] ชื่อขั้นที่ใช้ในข้อความ (level) → string
  * @returns {object} {ok, message, approved, level, error?, code?}
  */
-async function approveRequest({ table, system, id, user, note, onFinal, canApproveFn, levelLabelFn, requiredFn }) {
+async function approveRequest({ table, system, id, user, note, onFinal, canApproveFn, levelLabelFn, requiredFn, levelsFn }) {
   if (!APPROVAL_SYSTEMS.includes(system)) return { error: 'ระบบไม่ถูกต้อง', code: 400 };
   const row = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
   if (!row) return { error: 'ไม่พบรายการ', code: 404 };
@@ -307,19 +324,43 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
    *     · canApproveFn → Promise truthy → if (!check(...)) ไม่เคยทำงาน
    *                     → ใครก็กดอนุมัติได้ ไม่ตรวจสิทธิ์ (เจอจริงที่ยานพาหนะ/ห้องประชุม)
    *     · levelLabelFn → ข้อความ error ออกมาเป็น "[object Promise]"
+   *     · levelsFn     → ถ้าไม่ await จะได้ Promise ซึ่งไม่ใช่ array
+   *                     → required = 0 → ทุกคำขาถือว่าอนุมัติครบทันที
    *   ผู้เรียกส่ง callback ที่คืน Promise ทั้งหมด (ดู routes/ops.js, routes/requests.js)
    */
-  const required = requiredFn ? await requiredFn(row) : await getRequiredLevels(system);
   const approvals = parseApprovals(row.approval_data);
-  const nextLevel = approvals.length + 1;
+  const doneCount = approvals.length;
+  let required;
+  let nextLevel;
+  let isFinal;                // ขั้นที่กำลังจะอนุมัติเป็นขั้นสุดท้ายของคำขอหรือไม่
+  let chainExhausted = false; // อนุมัติครบสายแล้วไม่มีขั้นถัดไป
+
+  if (levelsFn) {
+    // สายไม่ต้องต่อเนื่องก็ได้ เช่น [1,3] = ตรวจสอบ → อนุมัติ (ข้าม ❷ ที่ไม่ได้ตั้ง)
+    const lv = (await levelsFn(row) || []).filter(Boolean).map(Number);
+    const chain = lv.length ? lv : [1, 2, 3];
+    required = chain.length;
+    const next = chain[doneCount];
+    chainExhausted = !next;
+    // ⚠️ เดิมเทียบ nextLevel > required ซึ่งพังทันทีกับสายที่ไม่ต่อเนื่อง
+    //   เช่น [1,3]: ขั้นถัดไปคือ 3 แต่ required = 2 → 3 > 2 → ตอบว่า "ครบทุกขั้น" ทั้งที่ยังไม่ครบ
+    //   ต้องนับจาก "ตำแหน่ง" (ทำไปแล้วกี่ขั้น) ไม่ใช่เลขขั้น
+    nextLevel = next || chain[chain.length - 1] || required;
+    isFinal = doneCount + 1 >= required;
+  } else {
+    required = requiredFn ? await requiredFn(row) : await getRequiredLevels(system);
+    nextLevel = doneCount + 1;
+    chainExhausted = nextLevel > required;
+    isFinal = nextLevel >= required;
+  }
   const label = levelLabelFn ? await levelLabelFn(nextLevel) : levelLabel(nextLevel);
-  if (nextLevel > required) return { error: 'รายการนี้ได้รับการอนุมัติครบทุกขั้นแล้ว', code: 400 };
+  if (chainExhausted) return { error: 'รายการนี้ได้รับการอนุมัติครบทุกขั้นแล้ว', code: 400 };
   const check = canApproveFn || ((u, lvl) => auth.canApprove(u, lvl));
   if (!await check(user, nextLevel)) {
     return { error: `คุณไม่มีสิทธิ์อนุมัติ${label} (เฉพาะผู้ที่ได้รับมอบหมายเท่านั้น)`, code: 403 };
   }
 
-  if (nextLevel >= required && onFinal) {
+  if (isFinal && onFinal) {
     // ⚠️ ต้อง await — callback ที่ส่งมาหลายตัวเป็น async
     //   ถ้าไม่ await จะได้ Promise ซึ่ง "truthy เสมอ" → if (err) ผ่านเสมอ
     //   → return Promise ออกไปก่อนถึงบรรทัด UPDATE → อนุมัติขั้นสุดท้ายไม่เคยบันทึก
@@ -341,7 +382,7 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
     note: (note || '').trim(),
   });
 
-  const done = nextLevel >= required;
+  const done = isFinal;
   await db.prepare(`UPDATE ${table} SET approval_level = ?, approval_data = ?, status = ?, note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
     .run(nextLevel, JSON.stringify(approvals), done ? 'approved' : 'pending',
       (note || '').trim(), user.id, auth.now(), id);
@@ -353,7 +394,9 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
     required,
     message: done
       ? `✅ อนุมัติครบทุกขั้นแล้ว รายการได้รับการอนุมัติอย่างเป็นทางการ`
-      : `✅ อนุมัติ${label}แล้ว ยังเหลืออีก ${required - nextLevel} ขั้น`,
+      // ⚠️ เคยใช้ required - nextLevel ซึ่งติดลบได้เมื่อเลขขั้นไม่เรียง 1,2,3
+      //   เช่นสาย [1,3] ที่เหลือขั้นเดียว: required(2) - nextLevel(3) = -1 → ขึ้นว่า "เหลืออีก -1 ขั้น"
+      : `✅ อนุมัติ${label}แล้ว ยังเหลืออีก ${required - doneCount - 1} ขั้น`,
   };
 }
 
@@ -381,7 +424,7 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
 }
 
 module.exports = {
-  APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevels, parseApprovals,
+  APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevelsFor, leaveApproverKeyFor, leaveChainLevels, parseApprovals,
   getSystemApprovers, canApproveSystem, getUserSystemLevels, getLeaveApprovers,
   getMemoApproversPerPerson, getMemoApproverFor, canApproveMemoFor,
   canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelRequiredLevels, travelLevelLabel, approveRequest, rejectRequest,

@@ -225,14 +225,28 @@ function myLevels(r) {
 const isOwner = (r) => r.user_id === Auth.user?.id;
 const level2Approved = (r) => (r.approvals || []).some((a) => a.level === 2);
 
+/**
+ * สายอนุมัติของคำขอนี้ เช่น [1,2,3] = ตรวจสอบ→ขั้นต้น→อนุมัติ | [1,3] = ข้ามขั้น ❷
+ * มาจาก backend (อ่านค่าที่ admin เลือกไว้ในหน้าเจ้าหน้าที่การลา)
+ * ไม่มีค่า (เช่นข้อมูลเก่า) → ค่าเริ่มต้น 3 ขั้นเหมือนเดิม
+ */
+const chainOf = (r) => (Array.isArray(r.chain) && r.chain.length ? r.chain : [1, 2, 3]);
+
+/** ขั้นถัดไปที่ต้องกดอนุมัติ (เลขขั้น) หรือ null ถ้าไม่ต้องกด/จบแล้ว */
+function nextLevelOf(r) {
+  if (r.status !== 'pending') return null;
+  const chain = chainOf(r);
+  const done = (r.approvals || []).length;
+  return done < chain.length ? chain[done] : null;
+}
+
 function showReviewBtn(r) {
-  return r.status === 'pending' && !r.reviewed && myLevels(r).includes(1);
+  // ขั้นแรกของสายต้องเป็นผู้ตรวจสอบ (❶) ถึงจะมีปุ่ม "▭ ตรวจสอบ"
+  return r.status === 'pending' && !r.reviewed && chainOf(r)[0] === 1 && myLevels(r).includes(1);
 }
-function showLevel2Btn(r) {
-  return r.status === 'pending' && r.reviewed && !level2Approved(r) && myLevels(r).includes(2);
-}
-function showLevel3Btn(r) {
-  return r.status === 'pending' && (r.approvals || []).length >= 2 && myLevels(r).includes(3);
+/** ปุ่มอนุมัติขั้นถัดไป — โชว์เฉพาะขั้นที่กำลังรอคนนี้อยู่จริงตามสาย */
+function showApproveBtn(r, level) {
+  return nextLevelOf(r) === level && myLevels(r).includes(level);
 }
 /** ปุ่มลบของเจ้าของ: ได้ถ้ายังไม่อนุมัติขั้นต้น */
 function showOwnerDelete(r) {
@@ -494,7 +508,16 @@ function statusPill(r) {
                     ▭ ตรวจสอบ
                   </button>
 
-                  <template v-if="showLevel2Btn(r)">
+                  <!--
+                    ปุ่มอนุมัติ/ไม่อนุมัติ ยึด "สาย" ของคำขอนี้
+                    สายมาจากที่ admin เลือกไว้รายคนในหน้า ⊛ เจ้าหน้าที่การลา
+                      ตั้ง ❶+❷+❸ → ปุ่มอนุมัติขั้นต้น แล้วส่งต่อผู้อนุมัติ
+                      ตั้ง ❶+❸     → ข้าม ❷ ขึ้นปุ่มอนุมัติ ❸ เลย
+                      ตั้ง ❶        → ไม่มีปุ่มอนุมัติ (จบที่ตรวจสอบ)
+                    ⚠️ เคยใช้ nextLevel = approvals.length + 1 แบบตายตัว
+                       ทำให้คนที่ตั้ง 3 ขั้น กด "อนุมัติขั้นต้น" แล้วจบทันที ไม่ส่งต่อผู้อนุมัติ
+                  -->
+                  <template v-if="showApproveBtn(r, 2)">
                     <button class="btn btn-xs btn-primary" @click="decide(r, 'approve', 'อนุมัติขั้นต้น')">
                       ● อนุมัติขั้นต้น
                     </button>
@@ -503,7 +526,7 @@ function statusPill(r) {
                     </button>
                   </template>
 
-                  <template v-if="showLevel3Btn(r)">
+                  <template v-if="showApproveBtn(r, 3)">
                     <button class="btn btn-xs btn-primary" @click="decide(r, 'approve', 'อนุมัติ')">
                       ● อนุมัติ
                     </button>

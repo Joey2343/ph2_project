@@ -1000,8 +1000,16 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        name: 'แท็บตั้งค่ามี dropdown ครบ 4 ระบบ',
-        check: `['as-approval_vehicle','as-approval_room','as-approval_travel','as-approval_leave'].every(id => !!document.getElementById(id))`,
+        // ⚠️ ระบบลาไม่มี dropdown "จำนวนขั้น" แล้ว — จำนวนขั้นมาจากหน้าเจ้าหน้าที่การลา (รายคน)
+        //   เคยมี approval_leave แต่ค่าไม่มีผลกับระบบลา และค่าเริ่มต้นทำให้ปุ่มอนุมัติได้ 400
+        //   ถ้าวันหนึ่งมี dropdown ระบบลากลับมา แปลว่าเผลอใส่ตัวเลือกที่ไม่มีผลอีกแล้ว
+        name: 'แท็บตั้งค่ามี dropdown 3 ระบบ และไม่มีของระบบลา',
+        check: `['as-approval_vehicle','as-approval_room','as-approval_travel'].every(id => !!document.getElementById(id))
+                && !document.getElementById('as-approval_leave')`,
+      },
+      {
+        name: 'หน้าตั้งค่าอธิบายว่าระบบลาตั้งที่หน้าเจ้าหน้าที่การลา',
+        check: `document.body.innerText.includes('เจ้าหน้าที่การลา')`,
       },
       {
         name: 'สลับไปแท็บ "โหมดจำลองวันที่" ได้',
