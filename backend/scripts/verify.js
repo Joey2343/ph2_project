@@ -146,6 +146,13 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  // คนละเรื่องกับ test-leave-flow: ตัวนั้นจบที่ "ผู้ตรวจสอบกดตรวจสอบได้"
+  // ยังไม่เคยกดอนุมัติต่อ — พอดีกับจุดที่พังจริง (ปุ่มอนุมัติขั้นต้นได้ 400 เสมอ)
+  console.log('\n[ทดสอบสายอนุมัติการลา: ตรวจสอบ → อนุมัติขั้นต้น → อนุมัติ]');
+  results.push(run('test-leave-approve-flow', [path.join(__dirname, 'test-leave-approve-flow.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {

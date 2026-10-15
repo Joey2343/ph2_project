@@ -956,6 +956,11 @@ router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
   }
   if (!canDo) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์อนุมัติขั้นนี้' });
   const result = await approvals.approveRequest({ table: 'leave_requests', system: 'leave', id, user: req.user, note,
+    // ⚠️ ต้องใช้ leaveRequiredLevels ไม่ใช่ค่า approval_leave ตรง ๆ
+    //   ระบบลามีปุ่ม "ตรวจสอบ" เป็นขั้นแยกที่กิน level 1 ไปแล้ว
+    //   ถ้าใช้ approval_leave ตรง ๆ (ค่าเริ่มต้น 1) ปุ่ม "อนุมัติขั้นต้น" จะได้ 400 เสมอ
+    //   ดูที่ approvals.leaveRequiredLevels()
+    requiredFn: () => approvals.leaveRequiredLevels(),
     canApproveFn: () => canDo });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
   if (result.approved) {

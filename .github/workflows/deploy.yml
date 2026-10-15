@@ -72,6 +72,10 @@ jobs:
         run: npm run verify:idle
         working-directory: frontend
 
+      - name: ตรวจปุ่มลบซ้ำในหน้าเว็บ
+        run: npm run verify:dupbtn
+        working-directory: frontend
+
       - name: Build Frontend
         run: npm run build
         working-directory: frontend

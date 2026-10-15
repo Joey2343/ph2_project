@@ -512,9 +512,19 @@ function statusPill(r) {
                     </button>
                   </template>
 
+                  <!--
+                    ⚠️ เคยมีปุ่มนี้สองปุ่มติดกัน ทำงานเหมือนกันเป๊ะ
+                       · ปุ่มแรก  v-if="showOwnerDelete(r)"  → เจ้าของรายการ (ยังไม่อนุมัติขั้น 2)
+                       · ปุ่มหลัง v-if="Auth.isAdmin()"      → ผู้ดูแลระบบ
+                       ถ้าผู้ใช้เป็นเจ้าของและเป็น admin พร้อมกัน (เช่น admin ที่ยื่นลาเอง)
+                       → ปุ่ม ✕ โผล่ 2 ปุ่ม ทำอย่างเดียวกัน
+
+                       รวมเป็นปุ่มเดียวใช้เงื่อนไข OR → ไม่มีทางซ้ำ และยังครอบคลุมทั้งสองกรณี
+                  -->
                   <button
-                    v-if="showOwnerDelete(r)"
+                    v-if="showOwnerDelete(r) || Auth.isAdmin()"
                     class="btn btn-xs btn-outline danger-btn"
+                    title="ลบรายการคำขอลา"
                     @click="remove(r)"
                   >
                     ✕
@@ -548,14 +558,9 @@ function statusPill(r) {
                   >
                     ✎
                   </button>
-                  <button
-                    v-if="Auth.isAdmin()"
-                    class="btn btn-xs btn-outline danger-btn"
-                    title="ลบ"
-                    @click="remove(r)"
-                  >
-                    ✕
-                  </button>
+                  <!-- ปุ่มลบอยู่ข้างบนแล้ว (รวมเงื่อนไขเจ้าของ + admin ไว้ปุ่มเดียว)
+                       ถ้าใส่ซ้ำตรงนี้ ผู้ใช้ที่เป็นทั้งเจ้าของและ admin จะเห็นปุ่ม ✕ 2 ปุ่ม
+                       แก้กันไว้ที่ scripts/check-dup-buttons.mjs -->
                 </div>
               </td>
             </tr>

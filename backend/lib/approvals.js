@@ -29,6 +29,31 @@ async function getRequiredLevels(system) {
   return Math.min(3, Math.max(1, isNaN(n) ? 1 : n));
 }
 
+/**
+ * จำนวนขั้นของ "ระบบลา" — ต่างจากระบบอื่นตรงนี้
+ *
+ * ระบบลามีปุ่ม "▭ ตรวจสอบ" เป็นขั้นแยกก่อน (PUT /leaves/:id/review)
+ *   ปุ่มนั้น push { level: 1 } ลง approval_data เสร็จ แล้วปล่อย status = 'pending'
+ *   ไว้รอ "ผู้อนุมัติขั้นต้น" → ขั้นที่ 1 ถูก "ตรวจสอบ" ใช้ไปแล้ว ไม่ใช่ขั้นอนุมัติ
+ *
+ * ⚠️ เคยพังตรงนี้ (เจอจริงบนระบบจริง approval_leave = 1)
+ *   ถ้าเอา approval_leave มาเป็น required ตรง ๆ
+ *     → หลังตรวจสอบ approvals.length = 1 → nextLevel = 2
+ *     → 2 > 1 → ตอบ 400 "รายการนี้ได้รับการอนุมัติครบทุกขั้นแล้ว" ทันที
+ *     → ปุ่ม "● อนุมัติขั้นต้น" กดไม่ได้เลย ทุกคำขอลา ทุกคน
+ *
+ * จึงต้องบวก 1 เพื่อรวมขั้นตรวจสอบ และล็อกที่ 3 เพราะ UI มีแค่ 3 ระดับ
+ *   approval_leave = 1 → ตรวจสอบ → อนุมัติขั้นต้น       (ครบที่ approval_level 2)
+ *   approval_leave = 2 → ตรวจสอบ → ขั้นต้น → อนุมัติ      (ครบที่ approval_level 3)
+ *   approval_leave = 3 → เหมือนข้างบน (ล็อกที่ 3 ไม่ให้หลุดไปหา level 4 ที่ไม่มี)
+ *
+ * ระบบอื่น (ยานพาหนะ/ห้องประชุม/ไปราชการ/บันทึกข้อความ) ไม่มีขั้นตรวจสอบแยก
+ * ทุกขั้นเดินผ่าน approve() ตรง ๆ จึงใช้ getRequiredLevels() ตามเดิม
+ */
+async function leaveRequiredLevels() {
+  return Math.min(3, (await getRequiredLevels('leave')) + 1);
+}
+
 function parseApprovals(data) {
   try {
     const arr = JSON.parse(data || '[]');
@@ -356,7 +381,7 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
 }
 
 module.exports = {
-  APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, parseApprovals,
+  APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevels, parseApprovals,
   getSystemApprovers, canApproveSystem, getUserSystemLevels, getLeaveApprovers,
   getMemoApproversPerPerson, getMemoApproverFor, canApproveMemoFor,
   canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelRequiredLevels, travelLevelLabel, approveRequest, rejectRequest,
