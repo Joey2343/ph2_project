@@ -234,9 +234,38 @@ async function getTravelChain(requesterId) {
   return { group, entry: mapping[String(requesterId)] || null };
 }
 
-/** จำนวนขั้นอนุมัติไปราชการของผู้ขอแต่ละคน: office = ตาม settings (เดิม) | school = 3 ขั้น */
+/**
+ * สายอนุมัติไปราชการของผู้ขอแต่ละคน = คอลัมน์ที่ admin เลือกไว้ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ
+ *
+ *   สาย สพป.แพร่ เขต 2 : supervisor = ขั้น 1 (ผู้บังคับบัญชาขั้นต้น) · approver = ขั้น 2 (ผู้อนุมัติ)
+ *   สายสถานศึกษา      : reviewer = ขั้น 1 · supervisor = ขั้น 2 · approver = ขั้น 3
+ *   คอลัมน์ที่ไม่ได้เลือก = ขั้นนั้นถูกข้ามไป (เลขขั้นยังเป็นของเดิม)
+ *     ตั้ง supervisor + approver → [1,2]  ·  ตั้งแค่ supervisor → [1]  ·  ตั้งแค่ approver → [2]
+ *
+ * ⚠️ เคยนับจาก settings approval_travel ซึ่งเป็นค่ากลางของระบบ
+ *   บนระบบจริง approval_travel = 1 → ทุกคำขอจบที่ขั้น 1 ทันที
+ *   → คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกใช้ (จริง: นิตยาอนุมัติจบ ทั้งที่ตั้งมนัสไว้ขั้น 2)
+ *   เป็นบั๊กชนิดเดียวกับที่เจอที่ระบบลา
+ *
+ * ไม่ได้ตั้งอะไรเลย → คืนสายเต็มของกลุ่มนั้น (ไม่ทำให้คำขอค้าง)
+ *
+ * @returns {Promise<number[]>} เช่น [1,2] | [1] | [2] | [1,2,3]
+ */
+async function travelChainLevels(requesterId) {
+  const { group, entry } = await getTravelChain(requesterId);
+  const full = group === 'school' ? [1, 2, 3] : [1, 2];
+  if (!entry) return full;
+  const chain = [];
+  for (const lv of full) {
+    const field = group === 'school' ? ['reviewer', 'supervisor', 'approver'][lv - 1] : ['supervisor', 'approver'][lv - 1];
+    if (Number(entry[field]) > 0) chain.push(lv);
+  }
+  return chain.length ? chain : full;
+}
+
+/** จำนวนขั้นอนุมัติไปราชการของผู้ขอแต่ละคน = ความยาวของสายที่ตั้งไว้ */
 async function travelRequiredLevels(requesterId) {
-  return await userGroupOf(requesterId) === 'school' ? 3 : await getRequiredLevels('travel');
+  return (await travelChainLevels(requesterId)).length;
 }
 
 /** ชื่อขั้นอนุมัติไปราชการของผู้ขอแต่ละคน */
@@ -427,5 +456,5 @@ module.exports = {
   APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevelsFor, leaveApproverKeyFor, leaveChainLevels, parseApprovals,
   getSystemApprovers, canApproveSystem, getUserSystemLevels, getLeaveApprovers,
   getMemoApproversPerPerson, getMemoApproverFor, canApproveMemoFor,
-  canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelRequiredLevels, travelLevelLabel, approveRequest, rejectRequest,
+  canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelChainLevels, travelRequiredLevels, travelLevelLabel, approveRequest, rejectRequest,
 };

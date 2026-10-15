@@ -591,11 +591,16 @@ async function migrate() {
 // ── Seed ────────────────────────────────────────────────────────────────────
 async function seed() {
   // จำนวนขั้นการอนุมัติของแต่ละระบบ (ห้องประชุม = 2 ขั้น: อนุมัติขั้นต้น → อนุมัติขั้นสุดท้าย)
+  //
+  // ⚠️ ไม่ seed approval_travel / approval_leave อีกแล้ว
+  //   สองระบบนี้นับจำนวนขั้นจากคอลัมน์ที่ admin เลือกรายคน ไม่ใช่ค่ากลาง
+  //     · ระบบลา    → leaveChainLevels()      อ่าน leave_approvers
+  //     · ไปราชการ → travelChainLevels()    อ่าน travel_approvers
+  //   ค่าเดิม (1) เคยทำให้คอลัมน์ "ผู้อนุมัติ"/"ผู้ตรวจสอบ" ที่ตั้งไว้ไม่เคยถูกใช้
+  //   ถ้าใครเผลอกลับไปอ่านค่านี้ จะกลับไปพังซ้ำแบบเดิม — ดู approvals.js
   for (const [key, def] of [
     ['approval_vehicle', '2'],
     ['approval_room', '2'],
-    ['approval_travel', '1'],
-    ['approval_leave', '1'],
     ['time_edit_users', '[]'],
     ['room_approvers', '{}'],
     ['vehicle_approvers', '{}'],

@@ -969,7 +969,15 @@ router.get('/settings/approvals', auth.requireAdmin, async (req, res) => {
 
 router.put('/settings/approvals', auth.requireAdmin, async (req, res) => {
   const b = req.body || {};
-  const keys = ['approval_vehicle', 'approval_room', 'approval_travel', 'approval_leave'];
+  /*
+   * ⚠️ มีแค่ 2 ระบบที่ยังใช้ "จำนวนขั้น" จากค่ากลางนี้จริง
+   *   · ระบบลา    → นับจากคอลัมน์ที่เลือกในหน้า ⊛ เจ้าหน้าที่การลา (รายคน)
+   *   · ไปราชการ → นับจากคอลัมน์ที่เลือกในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ (รายคน)
+   *   เคยรับ approval_travel / approval_leave มาบันทึกด้วย แต่ค่าไม่มีผลกับระบบจริง
+   *   (approval_travel = 1 ทำให้คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกพิจารณา)
+   *   ถ้าวันหนึ่งมีการเพิ่มระบบเข้ามา ต้องเพิ่ม key กลับที่นี่ด้วย
+   */
+  const keys = ['approval_vehicle', 'approval_room'];
   for (const k of keys) {
     if (b[k] !== undefined) {
       const n = Math.min(3, Math.max(1, parseInt(b[k], 10) || 1));

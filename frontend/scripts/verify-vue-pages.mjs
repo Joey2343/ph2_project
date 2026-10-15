@@ -1062,12 +1062,22 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        // ⚠️ ระบบลาไม่มี dropdown "จำนวนขั้น" แล้ว — จำนวนขั้นมาจากหน้าเจ้าหน้าที่การลา (รายคน)
-        //   เคยมี approval_leave แต่ค่าไม่มีผลกับระบบลา และค่าเริ่มต้นทำให้ปุ่มอนุมัติได้ 400
-        //   ถ้าวันหนึ่งมี dropdown ระบบลากลับมา แปลว่าเผลอใส่ตัวเลือกที่ไม่มีผลอีกแล้ว
-        name: 'แท็บตั้งค่ามี dropdown 3 ระบบ และไม่มีของระบบลา',
-        check: `['as-approval_vehicle','as-approval_room','as-approval_travel'].every(id => !!document.getElementById(id))
-                && !document.getElementById('as-approval_leave')`,
+        // ⚠️ ระบบลา และระบบไปราชการ ไม่มี dropdown "จำนวนขั้น" แล้ว
+        //   จำนวนขั้นของสองระบบนี้มาจากหน้าตั้งค่าเฉพาะรายคน
+        //     · ระบบลา   → หน้า ⊛ เจ้าหน้าที่การลา
+        //     · ไปราชการ → หน้า ⊛ กำหนดผู้อนุมัติไปราชการ
+        //   เคยมีทั้งสองระบบในหน้านี้ แต่ค่าไม่มีผลจริง
+        //   (approval_travel = 1 ทำให้คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกพิจารณา)
+        //   เหลือแค่ยานพาหนะ + ห้องประชุม ที่ยังนับจากค่ากลางจริง
+        //   ถ้าวันหนึ่ง dropdown ของลา/ไปราชการกลับมา แปลว่าเผลอใส่ตัวเลือกที่ไม่มีผลอีกแล้ว
+        name: 'แท็บตั้งค่ามี dropdown 2 ระบบ และไม่มีของระบบลา/ไปราชการ',
+        check: `['as-approval_vehicle','as-approval_room'].every(id => !!document.getElementById(id))
+                && !document.getElementById('as-approval_leave')
+                && !document.getElementById('as-approval_travel')`,
+      },
+      {
+        name: 'หน้าตั้งค่าบอกว่าลา/ไปราชการไปตั้งที่หน้าของตัวเอง',
+        check: `document.body.innerText.includes('เจ้าหน้าที่การลา') && document.body.innerText.includes('กำหนดผู้อนุมัติไปราชการ')`,
       },
       {
         name: 'หน้าตั้งค่าอธิบายว่าระบบลาตั้งที่หน้าเจ้าหน้าที่การลา',

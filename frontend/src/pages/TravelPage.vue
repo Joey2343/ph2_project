@@ -88,14 +88,25 @@ onMounted(load);
  * โครงสร้างต่างกันตามสายของ "ผู้ขอ" ไม่ใช่สายของหน้าที่เห็น
  *   สาย สพป.   : ขั้น1 supervisor, ขั้น2 approver
  *   สายสถานศึกษา: ขั้น1 reviewer, ขั้น2 supervisor, ขั้น3 approver
+ *
+ * ⚠️ จำนวนขั้นไม่ได้นับจากค่ากลางของระบบ แต่มาจากคอลัมน์ที่ admin เลือกไว้
+ *   รายคนในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ (คอลัมน์ที่ไม่ได้เลือก = ข้ามไป)
+ *   backend ส่ง chain มาให้ในแต่ละรายการ เช่น [1,2] = supervisor → approver
  */
 function requestIsSchool(r) {
   return (r.user_group || 'office') === 'school';
 }
 
-/** ขั้นถัดไปที่ต้องดำเนินการ */
+/** สายอนุมัติของคำขอนี้ — ไม่มีค่า (ข้อมูลเก่า) → ค่าเริ่มต้นตามกลุ่ม */
+const chainOf = (r) => (Array.isArray(r.chain) && r.chain.length
+  ? r.chain
+  : (requestIsSchool(r) ? [1, 2, 3] : [1, 2]));
+
+/** ขั้นถัดไปที่ต้องดำเนินการ (เลขขั้น) หรือ null ถ้าครบสายแล้ว */
 function nextLevel(r) {
-  return UI.approvalDone(r) + 1;
+  const chain = chainOf(r);
+  const done = UI.approvalDone(r);
+  return done < chain.length ? chain[done] : null;
 }
 
 /** ผู้ใช้คนนี้อนุมัติคำขอนี้ในขั้นที่ยังรออยู่หรือไม่ */
@@ -107,21 +118,18 @@ function canApprove(r) {
   if (!u.can_approve) return false;
 
   const next = nextLevel(r);
+  if (next == null) return false;
   const school = requestIsSchool(r);
   const entry = school
     ? approversSchool.value[String(r.user_id)]
     : approvers.value[String(r.user_id)];
   if (!entry) return false;
 
-  if (school) {
-    if (next === 1) return Number(entry.reviewer) === u.id;
-    if (next === 2) return Number(entry.supervisor) === u.id;
-    if (next === 3) return Number(entry.approver) === u.id;
-    return false;
-  }
-  if (next === 1) return Number(entry.supervisor) === u.id;
-  if (next === 2) return Number(entry.approver) === u.id;
-  return false;
+  // เลขขั้น → ช่องที่ตั้ง (ข้ามคอลัมน์ที่ไม่ได้เลือกไปแล้ว)
+  const field = school
+    ? ['reviewer', 'supervisor', 'approver'][next - 1]
+    : ['supervisor', 'approver'][next - 1];
+  return !!field && Number(entry[field]) === u.id;
 }
 
 function canDecide(r) {

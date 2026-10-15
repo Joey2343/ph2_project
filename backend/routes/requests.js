@@ -640,7 +640,6 @@ router.get('/travel', auth.requireAuth, async (req, res) => {
   sql = applyYearFilter(sql, args, 't.date_from', year);
   sql += ' ORDER BY t.id DESC';
   const rows = await db.prepare(sql).all(...args);
-  const required = await approvals.getRequiredLevels('travel');
   // ส่ง travelApprovers (สาย สพป.แพร่ เขต 2) + travelApproversSchool (สายสถานศึกษา 3 ขั้น) เพื่อให้ frontend ตรวจสอบสิทธิ์
   let travelApprovers = {};
   let travelApproversSchool = {};
@@ -653,6 +652,9 @@ router.get('/travel', auth.requireAuth, async (req, res) => {
   // ⚠️ ห้าม map(async ...) ตรง ๆ — ดูคำอธิบายที่ GET /memos ด้านบน
   const out = await Promise.all(rows.map(async (r) => ({
     ...r,
+    // สายจริงของผู้ขอคนนี้ (ขั้นที่ตั้งไว้ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ)
+    // ให้หน้าเว็บวาดปุ่มตรงกับ backend ไม่ต้องเดาเอง
+    chain: await approvals.travelChainLevels(r.user_id),
     required_levels: await approvals.travelRequiredLevels(r.user_id),
     approvals: approvals.parseApprovals(r.approval_data),
   })));
@@ -691,17 +693,23 @@ router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
   // ถ้ามี position ให้ใช้ position ที่เลือกแทน position ของผู้ใช้
   const user = position ? Object.assign({}, req.user, { position }) : req.user;
   const row = await db.prepare('SELECT user_id FROM travel_requests WHERE id = ?').get(Number(req.params.id));
+  const chain = row ? await approvals.travelChainLevels(row.user_id) : [1, 2];
   const result = await approvals.approveRequest({ table: 'travel_requests', system: 'travel', id: Number(req.params.id), user, note,
     canApproveFn: async (u, lvl) => { return  await approvals.canTravelApprover(u, lvl, Number(req.params.id)) },
-    requiredFn: (r) => approvals.travelRequiredLevels(r.user_id),
+    // ⚠️ ต้องส่งสายจริง ไม่ใช่ค่า approval_travel ตรง ๆ
+    //   ค่ากลางทำให้คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกใช้ (จริงบนระบบจริง approval_travel = 1)
+    //   ดูที่ approvals.travelChainLevels()
+    levelsFn: () => approvals.travelChainLevels(row.user_id),
     levelLabelFn: (lvl) => approvals.travelLevelLabel(row ? row.user_id : null, lvl) });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
   if (result.approved) {
     // อนุมัติครบขั้นแล้ว → แจ้งเตือน Telegram (ข้อความสีเขียว 🟢) ไปยังผู้ยื่นคำขอ
     await telegram.notifyRequest({ system: 'travel', id: Number(req.params.id), approved: true, deciderName: req.user.full_name, note });
   } else if (result.level >= 1) {
-    // ขั้นกลาง (ยังไม่ครบ): L1 ผู้ตรวจสอบยืนยัน → แจ้ง ขั้น2 | L2 ผู้บังคับบัญชาขั้นต้นยืนยัน → แจ้ง ขั้น3 (สายสถานศึกษา)
-    await telegram.notifyTravelNextLevel(Number(req.params.id), req.user.full_name);
+    // ยังไม่ครบสาย → แจ้งผู้พิจารณาขั้นถัดไปตามสายจริง
+    // ⚠️ ต้องหาจาก chain ไม่ใช่เดาเองว่าขั้น 2 คือใคร
+    const nextLv = chain[chain.indexOf(result.level) + 1];
+    if (nextLv) await telegram.notifyTravelNextLevel(Number(req.params.id), req.user.full_name, nextLv);
   }
   res.json(result);
 });

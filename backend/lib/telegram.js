@@ -929,26 +929,32 @@ async function notifyTravelSubmitted(id) {
   }
 }
 
-/** ส่งแจ้งเตือนไปหาผู้อนุมัติเมื่อผู้บังคับบัญชาขั้นต้นตรวจสอบแล้ว */
-async function notifyTravelNextLevel(id, deciderName) {
+/**
+ * ส่งแจ้งเตือนไปหาผู้พิจารณาขั้นถัดไปในสายของผู้ขอ
+ * @param {number} nextLevel ขั้นที่ต้องแจ้ง (1/2/3 — มาจาก chain ที่ตั้งไว้)
+ */
+async function notifyTravelNextLevel(id, deciderName, nextLevel) {
   try {
     const b = await fetchTravelRow(id);
     if (!b) return;
     const text = travelNextLevelText(b, deciderName);
-    // ขั้นถัดไปตามสายของผู้ขอ: school 3 ขั้น (reviewer→supervisor→approver) | office 2 ขั้น (supervisor→approver)
+    // สายอนุมัติตามกลุ่มผู้ขอ: school → reviewer/supervisor/approver | office → supervisor/approver
     const gu = await db.prepare('SELECT user_group, school_code FROM users WHERE id = ?').get(b.user_id);
     const isSchool = gu && ((gu.user_group || 'office') === 'school');
-    const doneLevels = Math.max(1, Number(b.approval_level) || 1);
+    // ⚠️ ต้องระบุขั้นถัดไปมาจาก chain — เดิมเดาเองว่า "ขั้น 1 แล้วส่ง approver"
+    //   ถ้าสายข้ามขั้น (เช่นตั้งแค่ supervisor+approver) จะแจ้งผิดคน
+    const field = isSchool
+      ? ['reviewer', 'supervisor', 'approver'][Number(nextLevel) - 1]
+      : ['supervisor', 'approver'][Number(nextLevel) - 1];
+    if (!field) return;
     const settingRow = await db.prepare("SELECT value FROM settings WHERE `key` = ?").get(isSchool ? 'travel_approvers_school' : 'travel_approvers');
     let mapping = {};
     try { mapping = JSON.parse(settingRow ? settingRow.value : '{}'); } catch (e) { /* ignore */ }
     const entry = mapping[String(b.user_id)];
     if (!entry) return;
-    let approverId = 0;
-    if (isSchool) approverId = doneLevels === 1 ? Number(entry.supervisor) : Number(entry.approver);
-    else approverId = Number(entry.approver);
-    if (!approverId) return;
-    const u = await db.prepare('SELECT telegram_token, telegram_chat_id FROM users WHERE id = ?').get(approverId);
+    const targetId = Number(entry[field]);
+    if (!targetId) return;
+    const u = await db.prepare('SELECT telegram_token, telegram_chat_id FROM users WHERE id = ?').get(targetId);
     if (u && u.telegram_token && u.telegram_chat_id) {
       await sendTelegram({ token: u.telegram_token, chatId: u.telegram_chat_id, text });
     }

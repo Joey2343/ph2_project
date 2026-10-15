@@ -153,6 +153,12 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  // บั๊กชนิดเดียวกัน: approval_travel เป็นค่ากลาง ทำให้คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกใช้
+  console.log('\n[ทดสอบสายอนุมัติไปราชการ: จำนวนขั้นต้องมาจากคอลัมน์ที่ตั้งรายคน]');
+  results.push(run('test-travel-chain', [path.join(__dirname, 'test-travel-chain.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
+
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
   const smokeUrl = process.env.SMOKE_DATABASE_URL || '';
   if (!smokeUrl) {
