@@ -450,7 +450,27 @@ router.put('/memos/:id/approve', auth.requireAuth, async (req, res) => {
   } else {
     message = `✅ อนุมัติ${approvals.levelLabel(nextLevel)}แล้ว ยังเหลืออีก ${required - nextLevel} ขั้น`;
   }
-  res.json({ ok: true, approved: done, level: nextLevel, required, mode, message });
+  // row = สถานะจริงของแถวหลังบันทึก ให้หน้าเว็บอัปเดตเฉพาะแถวนี้ได้เลย ไม่ต้องโหลดตารางใหม่
+  // ⚠️ ต้องคืน approvals ด้วย เพราะ UI.approvalDone() ใช้ approvals.length ก่อน approval_level
+  res.json({
+    ok: true,
+    approved: done,
+    level: nextLevel,
+    required,
+    mode,
+    row: {
+      approval_level: nextLevel,
+      approvals: approvalsArr,
+      status: done ? 'approved' : 'submitted',
+      required_levels: required,
+      note: note || '',
+      decided_by: req.user.id,
+      decided_at: auth.now(),
+      next_approver_id: storeNext,
+      next_approver_name: storeNext ? nextApproverName : null,
+    },
+    message,
+  });
 });
 
 // ไม่อนุมัติบันทึกข้อความ (ผู้มีสิทธิ์ขั้นที่กำลังรอ หรือ admin)
@@ -469,7 +489,11 @@ router.put('/memos/:id/reject', auth.requireAuth, async (req, res) => {
     .run(note, req.user.id, auth.now(), id);
   // แจ้งเตือน Telegram (สีแดง 🔴) ไปยังผู้จัดทำทันที
   await telegram.notifyRequest({ system: 'memo', id, approved: false, deciderName: req.user.full_name, note });
-  res.json({ ok: true, message: 'ไม่อนุมัติบันทึกข้อความนี้แล้ว' });
+  res.json({
+    ok: true,
+    row: { status: 'rejected', note, decided_by: req.user.id, decided_at: auth.now(), approvals: approvalsArr, approval_level: nextLevel - 1 },
+    message: 'ไม่อนุมัติบันทึกข้อความนี้แล้ว',
+  });
 });
 
 // ส่งกลับเพื่อให้แก้ไข (ผู้มีสิทธิ์ขั้นที่กำลังรอ หรือ admin) — ผู้จัดทำแก้ไขแล้วกดส่งใหม่ได้
@@ -489,7 +513,11 @@ router.put('/memos/:id/return', auth.requireAuth, async (req, res) => {
     .run(note, req.user.id, auth.now(), id);
   // แจ้งเตือนผู้จัดทำ (การ์ดหน้าแรก + Telegram)
   await telegram.notifyMemoReturned(id, req.user.full_name, note);
-  res.json({ ok: true, message: 'ส่งกลับเพื่อให้แก้ไขแล้ว — ผู้จัดทำจะได้รับแจ้งเตือน' });
+  res.json({
+    ok: true,
+    row: { status: 'returned', note: '', revision_note: note, decided_by: req.user.id, decided_at: auth.now(), approvals: approvalsArr, approval_level: nextLevel - 1 },
+    message: 'ส่งกลับเพื่อให้แก้ไขแล้ว — ผู้จัดทำจะได้รับแจ้งเตือน',
+  });
 });
 
 // ลงนามในร่างเอกสาร (ผู้อนุมัติขั้นที่ 2/3) — ฝังลายเซ็นของผู้ลงนามลงในไฟล์ร่างหนังสือส่ง แล้วเซฟทับไฟล์เดิมในระบบ
@@ -941,10 +969,28 @@ router.put('/leaves/:id/review', auth.requireAuth, async (req, res) => {
   const existingApprovals = approvals.parseApprovals(row.approval_data);
   existingApprovals.push({ level: 1, by: req.user.id, name: req.user.full_name, role: req.user.role, at: auth.now(), note: 'ตรวจสอบแล้ว' });
   if (reviewOnly) {
+    const decidedAt = auth.now();
     await db.prepare('UPDATE leave_requests SET reviewed = 1, approval_level = 1, reviewed_stats = ?, approval_data = ?, status = ?, decided_by = ?, decided_at = ? WHERE id = ?')
-      .run(reviewedStats ? JSON.stringify(reviewedStats) : null, JSON.stringify(existingApprovals), 'approved', req.user.id, auth.now(), id);
+      .run(reviewedStats ? JSON.stringify(reviewedStats) : null, JSON.stringify(existingApprovals), 'approved', req.user.id, decidedAt, id);
     await telegram.notifyRequest({ system: 'leave', id, approved: true, deciderName: req.user.full_name, note: 'ตรวจสอบแล้ว (ไม่มีขั้นอนุมัติถัดไป)' });
-    return res.json({ ok: true, chain, message: '✅ ตรวจสอบแล้ว อนุมัติเรียบร้อย (สายของคุณมีเพียงขั้นตรวจสอบ)' });
+    return res.json({
+      ok: true,
+      chain,
+      // row = สถานะจริงหลังบันทึก — สายที่ตั้งไว้มีแค่ขั้นตรวจสอบ
+      //   สถานะจึงเปลี่ยนเป็น approved ทันทีโดยไม่ต้องรอผู้อนุมัติขั้นถัดไป
+      //   (ถ้าไม่คืน row หน้าเว็บจะยังโชว์ "รออนุมัติ" จนกว่าจะรีเฟรช)
+      row: {
+        reviewed: 1,
+        approval_level: 1,
+        approvals: existingApprovals,
+        status: 'approved',
+        required_levels: chain.length,
+        chain,
+        decided_by: req.user.id,
+        decided_at: decidedAt,
+      },
+      message: '✅ ตรวจสอบแล้ว อนุมัติเรียบร้อย (สายของคุณมีเพียงขั้นตรวจสอบ)',
+    });
   }
 
   // เลื่อน approval_level → 1 เพื่อให้ระบบนับว่าคำขอกำลังรอผู้อนุมัติขั้นถัดไป
@@ -955,6 +1001,15 @@ router.put('/leaves/:id/review', auth.requireAuth, async (req, res) => {
   res.json({
     ok: true,
     chain,
+    // row = สถานะจริงหลังบันทึก — ยังรอผู้อนุมัติขั้นถัดไป แต่ขั้นที่ 1 (ตรวจสอบ) ถือว่าเสร็จแล้ว
+    row: {
+      reviewed: 1,
+      approval_level: 1,
+      approvals: existingApprovals,
+      status: 'pending',
+      required_levels: chain.length,
+      chain,
+    },
     message: next === 3
       ? '✅ ตรวจสอบแล้ว ส่งต่อผู้อนุมัติเรียบร้อย'
       : '✅ ตรวจสอบแล้ว ส่งต่อผู้อนุมัติขั้นต้นเรียบร้อย',
@@ -1060,7 +1115,12 @@ router.post('/leaves/:id/cancel-request', auth.requireAuth, async (req, res) => 
   await db.prepare("UPDATE leave_requests SET cancel_status = 'cancel_requested' WHERE id = ?").run(id);
   // แจ้งเตือน Telegram ไปยังผู้ตรวจสอบ (level 1 ของผู้ขอ) ว่ามีการขอยกเลิกวันลา
   await telegram.notifyLeaveCancelRequested(id);
-  res.json({ ok: true, message: 'ส่งคำขอยกเลิกวันลาไปยังผู้ตรวจสอบเรียบร้อย' });
+  // row = สถานะจริงหลังบันทึก ให้หน้าเว็บอัปเดตแถวนี้ทันที
+  res.json({
+    ok: true,
+    row: { id, cancel_status: 'cancel_requested' },
+    message: 'ส่งคำขอยกเลิกวันลาไปยังผู้ตรวจสอบเรียบร้อย',
+  });
 });
 
 // ผู้ตรวจสอบ: ยืนยันยกเลิกวันลา → ลบรายการ (สถิติคำนวณใหม่อัตโนมัติเพราะนับจากตาราง) + แจ้งผู้ขอ

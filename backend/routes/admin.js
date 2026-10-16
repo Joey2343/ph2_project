@@ -104,7 +104,8 @@ router.post('/cert-status/:id', auth.requireAuth, async (req, res) => {
   if (!row || row.doc_type !== 'certificate') return res.status(404).json({ error: 'not found' });
   if (req.user.role !== 'admin' && !await isCertStaffUser(req.user.id)) return res.status(403).json({ error: 'ไม่มีสิทธิ์เปลี่ยนสถานะ' });
   await db.prepare('UPDATE documents SET cert_status = ? WHERE id = ?').run('เสร็จแล้ว', req.params.id);
-  res.json({ ok: true });
+  // row = สถานะจริงหลังบันทึก ให้หน้าเว็บอัปเดตแถวนี้ทันที
+  res.json({ ok: true, row: { id: Number(req.params.id), cert_status: 'เสร็จแล้ว' } });
 });
 
 async function isCertStaffUser(userId) {
@@ -1204,7 +1205,13 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
       WHERE document_id = ? AND user_id = ?
     `).run(docId, userId);
   }
-  res.json({ ok: true });
+  // row = สถานะจริงหลังทำเครื่องหมายว่าอ่านแล้ว
+  //   หน้าเว็บใช้อัปเดตแถวนี้ทันที ไม่ต้องรอผู้ใช้รีเฟรชเอง
+  //   (เคยต้องรีเฟรชเพราะ response เดิมคืนแค่ { ok: true } ไม่มีข้อมูลให้อัปเดต)
+  res.json({
+    ok: true,
+    row: { id: docId, is_read: 1, read_at: auth.now() },
+  });
 });
 
 // GET /my-incoming-registered - get documents registered as incoming by current user

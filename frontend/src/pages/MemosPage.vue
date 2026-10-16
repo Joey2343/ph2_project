@@ -18,6 +18,7 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { MEMO_LEVEL_NAMES } from '../lib/memo.js';
+import { applyRow, removeRow } from '../lib/row-update.js';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import MemoForm from '../components/ui/MemoForm.vue';
@@ -142,7 +143,16 @@ function openDecide(m, action) {
   decideAction.value = action;
 }
 
-async function afterChange() {
+/**
+ * หลังมีการเปลี่ยนแปลง
+ *
+ * @param {object|null} payload  { id, row } จาก dialog ตัดสินใจ → อัปเดตเฉพาะแถวนั้น
+ *                                ถ้าไม่มี (เช่น บันทึกฟอร์ม) → โหลดใหม่ทั้งตาราง
+ */
+async function afterChange(payload) {
+  const id = payload && payload.id;
+  const row = payload && payload.row;
+  if (id && row && applyRow(rows.value, id, { row }, null)) return;
   await load();
 }
 
@@ -178,7 +188,7 @@ async function remove(m) {
   try {
     const res = await api.del('/memos/' + m.id);
     UI.toast(res.message);
-    await load();
+    if (!removeRow(rows.value, m.id)) load();
   } catch (e) {
     UI.toast(e.message, 'error');
   }

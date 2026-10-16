@@ -881,7 +881,26 @@ router.put('/vehicle-bookings/:id/approve', auth.requireAuth, async (req, res) =
     await telegram.notifyVehicleNextLevel(Number(req.params.id), req.user.full_name);
     await telegram.notifyVehicleDriver(Number(req.params.id), req.user.full_name);
   }
-  res.json(result);
+  /*
+   * เติมยานพาหนะ + พนักงานขับรถ + ชื่อ/ทะเบียน เข้าไปใน row ที่คืนกลับ
+   *
+   * ⚠️ จำเป็นมาก: ขั้นตอนก่อนหน้านี้แก้ vehicle_id / driver_name ในฐานไปแล้ว
+   *   แต่ไม่ได้คืนค่ากลับ → ถ้าหน้าเว็บอัปเดตเฉพาะแถว (ไม่โหลดใหม่)
+   *   คอลัมน์ "ยานพาหนะ" และ "พนักงานขับรถ" จะยังโชว์ค่าเก่า
+   *   คือผู้อนุมัติเพิ่งจัดรถให้แล้ว แต่หน้าจอยังขึ้นว่า "มอบเจ้าหน้าที่จัดให้"
+   */
+  const fresh = await db.prepare(`SELECT vehicle_id, driver_name FROM vehicle_bookings WHERE id = ?`).get(bookingId);
+  const vh = fresh && fresh.vehicle_id
+    ? await db.prepare('SELECT name, plate FROM vehicles WHERE id = ?').get(fresh.vehicle_id)
+    : null;
+  res.json(Object.assign({}, result, {
+    row: Object.assign({}, result.row, {
+      vehicle_id: fresh ? fresh.vehicle_id : null,
+      driver_name: (fresh && fresh.driver_name) || '',
+      vehicle_name: vh ? vh.name : null,
+      plate: vh ? vh.plate : null,
+    }),
+  }));
 });
 
 router.put('/vehicle-bookings/:id/reject', auth.requireAuth, async (req, res) => {

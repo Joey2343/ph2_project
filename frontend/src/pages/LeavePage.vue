@@ -27,6 +27,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
+import { applyRow, removeRow } from '../lib/row-update.js';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import LeaveForm from '../components/ui/LeaveForm.vue';
@@ -271,7 +272,16 @@ function openReview(r) { review.value = r; }
 function openForm() { editTarget.value = null; formOpen.value = true; }
 function openEdit(r) { editTarget.value = r; formOpen.value = true; }
 
-async function afterChange() {
+/**
+ * หลังมีการเปลี่ยนแปลง (ตรวจสอบแล้ว / อนุมัติ / บันทึกฟอร์ม)
+ *
+ * @param {object|null} payload  { id, row } จาก dialog · ถ้ามี → อัปเดตเฉพาะแถวนั้น
+ *                                ถ้าไม่มี (เช่น บันทึกฟอร์มที่เปลี่ยนหลายคอลัมน์) → โหลดใหม่ทั้งตาราง
+ */
+async function afterChange(payload) {
+  const id = payload && payload.id;
+  const row = payload && payload.row;
+  if (id && row && applyRow(rows.value, id, { row }, null)) return;
   await load();
 }
 
@@ -291,7 +301,8 @@ async function decide(r, action, customLabel) {
   try {
     const res = await api.put(`/leaves/${r.id}/${action}`, {});
     UI.toast(res.message);
-    await load();
+    // อัปเดตเฉพาะแถวนี้ ตารางไม่หายไปรีโหลดทั้งหน้า
+    applyRow(rows.value, r.id, res, load);
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -304,7 +315,7 @@ async function sendApproveNote(note) {
   try {
     const res = await api.put(`/leaves/${r.id}/approve`, { note });
     UI.toast(res.message);
-    await load();
+    applyRow(rows.value, r.id, res, load);
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -316,7 +327,7 @@ async function remove(r) {
   try {
     const res = await api.del('/leaves/' + r.id);
     UI.toast(res.message);
-    await load();
+    if (!removeRow(rows.value, r.id)) load();
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -332,7 +343,7 @@ async function requestCancel(r) {
   try {
     const res = await api.post(`/leaves/${r.id}/cancel-request`, {});
     UI.toast(res.message);
-    await load();
+    applyRow(rows.value, r.id, res, load);
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -347,7 +358,8 @@ async function confirmCancel(r) {
   try {
     const res = await api.put(`/leaves/${r.id}/cancel-confirm`, {});
     UI.toast(res.message);
-    await load();
+    // ยืนยันยกเลิกแล้ว = รายการถูกลบออกจากระบบ เอาออกจากตารางทันที
+    if (!removeRow(rows.value, r.id)) load();
   } catch (e) {
     UI.toast(e.message, 'error');
   }

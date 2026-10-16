@@ -19,10 +19,11 @@
       "verify:refpayload": "node scripts/check-ref-payload.mjs",
       "verify:forms": "node scripts/check-form-wiring.mjs",
     "verify:bookingcols": "node scripts/check-booking-columns.mjs",
+    "verify:rowupdate": "node scripts/check-row-update.mjs",
       "verify:idle": "node scripts/test-idle-timeout.mjs",
     "verify:dupbtn": "node scripts/check-dup-buttons.mjs",
       "verify:pages": "node scripts/verify-vue-pages.mjs --all",
-      "verify:all": "npm run build && node scripts/check-registry.mjs && node scripts/check-upload-paths.mjs && node scripts/check-print-windows.mjs && node scripts/check-ref-payload.mjs && node scripts/check-form-wiring.mjs && node scripts/check-dup-buttons.mjs && node scripts/check-booking-columns.mjs && node scripts/test-idle-timeout.mjs && node scripts/verify-build.mjs --server && node scripts/verify-vue-pages.mjs --all && node scripts/verify-runtime.mjs --all && node scripts/verify-runtime.mjs --auth",
+      "verify:all": "npm run build && node scripts/check-registry.mjs && node scripts/check-upload-paths.mjs && node scripts/check-print-windows.mjs && node scripts/check-ref-payload.mjs && node scripts/check-form-wiring.mjs && node scripts/check-dup-buttons.mjs && node scripts/check-booking-columns.mjs && node scripts/check-row-update.mjs && node scripts/test-idle-timeout.mjs && node scripts/verify-build.mjs --server && node scripts/verify-vue-pages.mjs --all && node scripts/verify-runtime.mjs --all && node scripts/verify-runtime.mjs --auth",
     "probe": "node scripts/probe-route.mjs"
   },
   "dependencies": {

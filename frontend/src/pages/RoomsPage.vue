@@ -17,6 +17,7 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { ExportFilterDialog } from '../ui/ExportFilter.js';
+import { applyRow, removeRow } from '../lib/row-update.js';
 import AppModal from '../components/ui/AppModal.vue';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalPill from '../components/ui/ApprovalPill.vue';
@@ -217,7 +218,8 @@ async function decideDirect(r, action) {
   try {
     const res = await api.put(`/room-bookings/${r.id}/${action}`, {});
     UI.toast(res.message);
-    await loadBookings();
+    // อัปเดตเฉพาะแถวนี้ ถ้าอัปเดตไม่ได้ค่อยโหลดใหม่
+    if (!applyRow(bookings.value, r.id, res, null)) await loadBookings();
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -229,7 +231,8 @@ async function removeBooking(r) {
   try {
     const res = await api.del('/room-bookings/' + r.id);
     UI.toast(res.message);
-    await loadBookings();
+    // เอาแถวออกทันที ตารางไม่ต้องหายไปทั้งหน้า
+    if (!removeRow(bookings.value, r.id)) await loadBookings();
   } catch (e) {
     UI.toast(e.message, 'error');
   }

@@ -88,7 +88,9 @@ async function doReview() {
     for (const t of TYPES.value) stats[t] = { used: Number(usedMap.value[t]) || 0 };
     const res = await api.put(`/leaves/${r.value.id}/review`, { reviewed_stats: stats });
     UI.toast(res.message);
-    emit('done');
+    // ส่งต่อ id + ค่าที่ backend บันทึกจริง ให้หน้าหลักอัปเดตเฉพาะแถวนี้
+    // (สายที่ตั้งไว้มีแค่ขั้นตรวจสอบ → สถานะเปลี่ยนเป็น "อนุมัติ" ทันที backend จึงคืน row มาให้)
+    emit('done', { id: r.value.id, row: res.row || null });
     emit('close');
   } catch (e) {
     UI.toast(e.message, 'error');

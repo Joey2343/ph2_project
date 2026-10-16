@@ -19,6 +19,7 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { ExportFilterDialog } from '../ui/ExportFilter.js';
+import { applyRow, removeRow } from '../lib/row-update.js';
 import AppModal from '../components/ui/AppModal.vue';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalPill from '../components/ui/ApprovalPill.vue';
@@ -345,7 +346,12 @@ async function submitApproveLevel1() {
   try {
     const res = await api.put(`/vehicle-bookings/${r.id}/approve`, payload);
     UI.toast(res.message);
-    await Promise.all([loadBookings(), loadNotices()]);
+    // backend คืนยานพาหนะ + พนักงานขับรถที่เลือกมาด้วย → อัปเดตเฉพาะแถวนี้
+    if (!applyRow(bookings.value, r.id, res, null)) {
+      await Promise.all([loadBookings(), loadNotices()]);
+    } else {
+      loadNotices();
+    }
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {
@@ -402,7 +408,13 @@ async function decideDirect(r, action) {
   try {
     const res = await api.put(`/vehicle-bookings/${r.id}/${action}`, {});
     UI.toast(res.message);
-    await Promise.all([loadBookings(), loadNotices()]);
+    // อัปเดตเฉพาะแถวนี้ (รวมยานพาหนะ/พนักงานขับรถที่ backend คืนมาให้)
+    // ถ้าอัปเดตไม่ได้ค่อยโหลดใหม่ — ประกันว่าข้อมูลตรงกับเซิร์ฟเวอร์เสมอ
+    if (!applyRow(bookings.value, r.id, res, null)) {
+      await Promise.all([loadBookings(), loadNotices()]);
+    } else {
+      loadNotices();
+    }
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -417,7 +429,12 @@ async function removeBooking(r) {
   try {
     const res = await api.del('/vehicle-bookings/' + r.id);
     UI.toast(res.message);
-    await Promise.all([loadBookings(), loadNotices()]);
+    // เอาแถวออกทันที ตารางไม่ต้องหายไปทั้งหน้า
+    if (!removeRow(bookings.value, r.id)) {
+      await Promise.all([loadBookings(), loadNotices()]);
+    } else {
+      loadNotices();
+    }
   } catch (e) {
     UI.toast(e.message, 'error');
   }

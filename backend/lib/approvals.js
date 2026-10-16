@@ -412,15 +412,35 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
   });
 
   const done = isFinal;
+  const decidedAt = auth.now(); // ค่าเดียว ใช้ทั้ง approval_data และคอลัมน์ decided_at ต้องตรงกัน
+  approvals[approvals.length - 1].at = decidedAt;
+  const cleanNote = (note || '').trim();
+  approvals[approvals.length - 1].note = cleanNote;
   await db.prepare(`UPDATE ${table} SET approval_level = ?, approval_data = ?, status = ?, note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
     .run(nextLevel, JSON.stringify(approvals), done ? 'approved' : 'pending',
-      (note || '').trim(), user.id, auth.now(), id);
+      cleanNote, user.id, decidedAt, id);
 
   return {
     ok: true,
     approved: done,
     level: nextLevel,
     required,
+    /*
+     * row = สถานะจริงของแถวหลังบันทึกแล้ว
+     *
+     * คืนกลับไปให้หน้าเว็บอัปเดตเฉพาะแถวนี้ได้เลย ไม่ต้องโหลดตารางใหม่ทั้งหน้า
+     * ⚠️ ต้องคืน approvals ด้วย เพราะ UI.approvalDone() ใช้ approvals.length ก่อน approval_level
+     *    ถ้าอัปเดตแค่ approval_level ป้าย "อนุมัติแล้ว x/y ขั้น" จะเพี้ยน
+     */
+    row: {
+      approval_level: nextLevel,
+      approvals,
+      status: done ? 'approved' : 'pending',
+      required_levels: required,
+      note: cleanNote,
+      decided_by: user.id,
+      decided_at: decidedAt,
+    },
     message: done
       ? `✅ อนุมัติครบทุกขั้นแล้ว รายการได้รับการอนุมัติอย่างเป็นทางการ`
       // ⚠️ เคยใช้ required - nextLevel ซึ่งติดลบได้เมื่อเลขขั้นไม่เรียง 1,2,3
@@ -447,9 +467,23 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
    */
   const ok = allowFn ? await allowFn(user) : auth.isApprover(user);
   if (!ok) return { error: 'คุณไม่มีสิทธิ์พิจารณาคำขอ', code: 403 };
+  const decidedAt = auth.now();
+  const cleanNote = (note || '').trim();
   await db.prepare(`UPDATE ${table} SET status = 'rejected', note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
-    .run((note || '').trim(), user.id, auth.now(), id);
-  return { ok: true, message: 'ไม่อนุมัติรายการนี้แล้ว' };
+    .run(cleanNote, user.id, decidedAt, id);
+  // row = สถานะจริงหลังบันทึก ให้หน้าเว็บอัปเดตเฉพาะแถวนี้ได้เลย (ดูหมายเหตุใน approveRequest)
+  return {
+    ok: true,
+    row: {
+      status: 'rejected',
+      note: cleanNote,
+      decided_by: user.id,
+      decided_at: decidedAt,
+      approval_level: row.approval_level,
+      approvals: row.approval_data ? parseApprovals(row.approval_data) : (row.approvals || []),
+    },
+    message: 'ไม่อนุมัติรายการนี้แล้ว',
+  };
 }
 
 module.exports = {

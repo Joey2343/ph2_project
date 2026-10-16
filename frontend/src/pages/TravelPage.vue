@@ -19,6 +19,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
+import { applyRow, removeRow } from '../lib/row-update.js';
 import { ExportFilterDialog } from '../ui/ExportFilter.js';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import TravelForm from '../components/ui/TravelForm.vue';
@@ -248,7 +249,8 @@ async function onDecide(out) {
       res = await api.put(`/travel/${r.id}/approve`, body);
     }
     UI.toast(res.message);
-    await load();
+    // อัปเดตเฉพาะแถวนี้ ตารางไม่หายไปรีโหลดทั้งหน้า
+    applyRow(requests.value, r.id, res, load);
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -261,7 +263,7 @@ async function remove(r) {
   try {
     const res = await api.del('/travel/' + r.id);
     UI.toast(res.message);
-    await load();
+    if (!removeRow(requests.value, r.id)) load();
   } catch (e) {
     UI.toast(e.message, 'error');
   }

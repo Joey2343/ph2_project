@@ -30,6 +30,7 @@ import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { DocumentsView } from '../views/DocumentsView.js';
 import { docTypeMeta, parseFiles } from '../lib/documents.js';
+import { applyRow, removeRow } from '../lib/row-update.js';
 import { printHonorFile } from '../lib/documents-form.js';
 import AppModal from '../components/ui/AppModal.vue';
 import DocumentsDetailModal from '../components/documents/DocumentsDetailModal.vue';
@@ -303,6 +304,19 @@ function openDetail(r) {
   detailDoc.value = r;
 }
 
+/**
+ * dialog ทำเครื่องหมายว่าอ่านแล้ว → อัปเดตแถวนั้นทันที
+ *
+ * ⚠️ เคยเป็นบั๊ก: backend บันทึก is_read เรียบร้อย แต่หน้าเว็บไม่รู้จัก
+ *   แถวยังโชว์ "🆕 ใหม่" และตัวนับยังนับเป็นรายการใหม่
+ *   ผู้ใช้ต้องรีเฟรชเองถึงจะเห็นว่าอ่านแล้ว (เจอจริงบนหน้าหนังสือรับ)
+ */
+function onDetailRead(id) {
+  // ไม่ต้องรีโหลดทั้งตาราง — แก้แค่แถวนี้ แล้วตัวนับ "รายการใหม่" จะคำนวณใหม่เอง
+  const row = docs.value.find((d) => String(d.id) === String(id));
+  if (row && row.is_read !== undefined) row.is_read = 1;
+}
+
 /** เปิดแบบฟอร์มหนังสือรับรอง A4 */
 function openCertA4(r) {
   certA4Doc.value = r;
@@ -313,9 +327,10 @@ function openCertA4(r) {
 /** ทำเครื่องหมายหนังสือรับรองว่าดำเนินการเสร็จแล้ว */
 async function markCertDone(r) {
   try {
-    await api.post('/cert-status/' + r.id, {});
+    const res = await api.post('/cert-status/' + r.id, {});
     UI.toast('ดำเนินการเสร็จแล้ว', 'success');
-    load();
+    // อัปเดตเฉพาะแถวนี้ — ไม่ต้องโหลดทั้งตาราง (backend คืน cert_status ที่บันทึกจริงมาให้)
+    applyRow(docs.value, r.id, res, load);
   } catch (e) {
     UI.toast(e.message || 'ไม่สำเร็จ', 'error');
   }
@@ -328,7 +343,8 @@ async function removeDoc(r) {
   try {
     const res = await api.del('/documents/' + r.id);
     UI.toast(res.message);
-    load();
+    // เอาแถวออกทันที ตารางไม่ต้องหายไปทั้งหน้า
+    if (!removeRow(docs.value, r.id)) load();
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -351,7 +367,9 @@ async function unregister(r) {
     fd.append('is_registered', '0');
     await api.putForm('/documents/' + r.id, fd);
     UI.toast('นำออกจากทะเบียนเรียบร้อย');
-    load();
+    // นำออกจากทะเบียนแล้ว = ไม่อยู่ในแท็บนี้อีกต่อไป
+    //   (หนังสือยังอยู่ใน "หนังสือรับ" — คนละแท็บ จึงไม่ต้องโหลดใหม่)
+    if (!removeRow(docs.value, r.id)) load();
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -1030,7 +1048,7 @@ function showAllYears() {
   </AppModal>
 
   <!-- ---------- dialog ที่ย้ายมาเป็น Vue ---------- -->
-  <DocumentsDetailModal :doc="detailDoc" @close="detailDoc = null" />
+  <DocumentsDetailModal :doc="detailDoc" @close="detailDoc = null" @read="onDetailRead" />
 
   <DocumentsCertA4Modal :doc="certA4Doc" @close="certA4Doc = null" />
 

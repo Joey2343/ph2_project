@@ -121,6 +121,11 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  console.log('\n[ทดสอบ endpoint เปลี่ยนสถานะต้องคืนค่าจริงของแถว — ให้หน้าเว็บอัปเดตทันที]');
+  results.push(run('test-row-patch', [path.join(__dirname, 'test-row-patch.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

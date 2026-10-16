@@ -550,6 +550,7 @@ ph2_project/
 | `npm run verify:pages` | ตรวจทุกหน้า Vue แบบละเอียด (เปิด Chrome จริง) |
 | `npm run verify:runtime` | ตรวจทุกเมนู + จับ runtime error |
 | `npm run verify:auth` | ตรวจหน้าเข้าสู่ระบบ/ลงทะเบียน |
+| `npm run verify:rowupdate` | ตรวจทุกหน้าอัปเดตสถานะเฉพาะแถว ไม่โหลดตารางใหม่ |
 | `npm run verify:all` | ทุกชุด **รวม `npm run build` เป็นขั้นแรก** (ต้องรัน backend อยู่) |
 | `npm run port` | แปลงซอร์สรุ่นเดิม → `docs/legacy/ported-views/` |
 | `npm run probe` | ดู route resolution ของหน้าที่ระบุ |
@@ -588,6 +589,35 @@ ph2_project/
     เสมอ → เป็นไฟล์เดี่ยว แต่ถ้าวันหนึ่งเปลี่ยนไปใช้หลายไฟล์ ต้องผ่าน `deleteUploadedFile()` เหมือนกัน
 - **สิทธิ์แก้ไขรายการ** — admin · สารบัญเขต · เจ้าของรายการเท่านั้น
   (หนังสือรับรอง: เจ้าหน้าที่หนังสือรับรองเท่านั้นที่แก้ได้)
+- **เปลี่ยนสถานะแล้วหน้าเว็บต้องเปลี่ยนทันที** — ห้ามรอผู้ใช้รีเฟรช
+  | ทำแบบนี้ | ห้ามทำ |
+  |---|---|
+  | backend คืน `row` = สถานะจริงหลังบันทึก | คืนแค่ `{ ok: true, message }` แล้วให้หน้าเว็บเดาเอง |
+  | หน้าเว็บเรียก `applyRow()` / `removeRow()` อัปเดตเฉพาะแถว | เรียก `load()` ใหม่ทั้งตาราง (ตารางหาย ขึ้น "กำลังโหลดข้อมูล...") |
+
+  ```js
+  // backend — คืนสถานะจริง ห้ามให้หน้าเว็บเดา
+  res.json({ ok: true, message, row: { status, approval_level, approvals, required_levels } });
+
+  // frontend — อัปเดตเฉพาะแถว (มี fallback โหลดใหม่เมื่อหาแถวไม่เจอ)
+  applyRow(rows.value, r.id, res, load);
+  // ลบ/นำออก → เอาแถวออกทันที
+  if (!removeRow(rows.value, r.id)) load();
+  ```
+
+  ⚠️ **ต้องคืน `approvals` ด้วยเสมอ** ไม่ใช่แค่ `approval_level`
+  เพราะ `UI.approvalDone()` เลือก `approvals.length` **ก่อน** `approval_level`
+  ถ้าอัปเดตแค่ `approval_level` ป้าย "อนุมัติแล้ว x/y ขั้น" จะเพี้ยน
+
+  ⚠️ **ถ้า endpoint แก้หลายคอลัมน์ ให้คืนมาให้ครบ** (เช่น อนุมัติยานพาหนะขั้นต้น
+  ที่ยังจัดรถ+พนักงานขับรถด้วย — ถ้าไม่คืน `vehicle_id`/`vehicle_name`/`driver_name`
+  คอลัมน์ "ยานพาหนะ" จะโชว์ "มอบเจ้าหน้าที่จัดให้" ทั้งที่เพิ่งจัดรถให้แล้ว)
+
+  เก็บข้อมูลสถานะเปลี่ยนที่อาจหลุด: dialog ที่แก้สถานะเองต้อง `emit` บอกหน้าหลัก
+  (เช่น `DocumentsDetailModal` ทำเครื่องหมายว่าอ่านแล้ว → ต้อง `emit('read', id)`)
+  เคยไม่ emit เลย → หน้าเว็บไม่รู้จัก ผู้ใช้ต้องรีเฟรชเองถึงเห็น "อ่านแล้ว"
+
+  กันไว้แล้วที่ `check-row-update.mjs` (`npm run verify:rowupdate`)
 - **localStorage** — เก็บแท็บ/หน้าที่เคยค้างไว้ของหนังสือราชการ ล้างได้จาก DevTools
 
 ---

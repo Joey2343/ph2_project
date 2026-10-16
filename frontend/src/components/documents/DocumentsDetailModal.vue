@@ -22,7 +22,8 @@ const props = defineProps({
   doc: { type: Object, default: null },
 });
 
-const emit = defineEmits(['close']);
+/** 'read' = ทำเครื่องหมายว่าอ่านแล้วสำเร็จ (ส่ง id หนังสือ) ให้หน้าหลักอัปเดตแถวทันที */
+const emit = defineEmits(['close', 'read']);
 
 /* ---------- ชื่อผู้ลงนามเกียรติบัตร ---------- */
 /**
@@ -58,8 +59,11 @@ watch(
     if (!d) return;
     loadSigner(d);
     // ถ้าเป็นผู้รับและยังไม่ได้อ่าน → ทำเครื่องหมายว่าอ่านแล้ว (ไม่รอผลลัพธ์ เหมือนของเดิม)
+    // ⚠️ ต้องบอกหน้าหลักด้วย มิฉะนั้นแถวจะยังโชว์ "🆕 ใหม่" จนกว่าจะรีเฟรช
     if (d.is_read !== undefined && !d.is_read) {
-      api.put('/document-recipients/' + d.id + '/read').catch(() => {});
+      api.put('/document-recipients/' + d.id + '/read')
+        .then(() => emit('read', d.id))
+        .catch(() => {});
     }
   },
   { immediate: true },

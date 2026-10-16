@@ -198,7 +198,8 @@ async function submit() {
   try {
     const res = await api.put(`/memos/${m.value.id}/${isApprove.value ? 'approve' : 'reject'}`, p);
     UI.toast(res.message);
-    emit('done');
+    // ส่ง id + สถานะจริงที่ backend บันทึก ให้หน้าหลักอัปเดตเฉพาะแถวนี้
+    emit('done', { id: m.value.id, row: res.row || null });
     emit('close');
   } catch (e) {
     UI.toast(e.message, 'error');
@@ -215,7 +216,7 @@ async function sendBack() {
   try {
     const res = await api.put(`/memos/${m.value.id}/return`, { note: t });
     UI.toast(res.message);
-    emit('done');
+    emit('done', { id: m.value.id, row: res.row || null });
     emit('close');
   } catch (e) {
     UI.toast(e.message, 'error');
