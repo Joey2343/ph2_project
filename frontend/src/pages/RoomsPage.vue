@@ -456,6 +456,7 @@ function openExportDialog() {
             <thead>
               <tr>
                 <th>วันที่</th>
+                <th>วันที่จอง</th>
                 <th>ห้องประชุม</th>
                 <th>ผู้จอง</th>
                 <th>เวลา</th>
@@ -468,6 +469,7 @@ function openExportDialog() {
             <tbody>
               <tr v-for="r in bookings" :key="r.id">
                 <td>{{ UI.date(r.date) }}</td>
+                <td class="nowrap" :title="r.created_at || ''">{{ UI.dateTime(r.created_at) }}</td>
                 <td>
                   <div>{{ r.room_name }}</div>
                   <div class="hint">รองรับ {{ r.room_capacity }} คน</div>

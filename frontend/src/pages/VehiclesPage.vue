@@ -865,6 +865,7 @@ function canCancelRow(r) {
             <thead>
               <tr>
                 <th>วันที่</th>
+                <th>วันที่จอง</th>
                 <th>ผู้จอง</th>
                 <th>ยานพาหนะ</th>
                 <th>เวลา</th>
@@ -881,6 +882,7 @@ function canCancelRow(r) {
             <tbody>
               <tr v-for="r in visibleBookings" :key="r.id">
                 <td>{{ dateCell(r) }}</td>
+                <td class="nowrap" :title="r.created_at || ''">{{ UI.dateTime(r.created_at) }}</td>
                 <td class="nowrap">{{ UI.personName(r) }}</td>
                 <td>
                   <div>{{ vehicleCell(r).title }}</div>
