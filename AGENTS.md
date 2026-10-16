@@ -536,6 +536,8 @@ ph2_project/
 | `npm run db:inspect` | ดูตาราง/คอลัมน์/จำนวนแถว |
 | `npm run db:init` | สร้าง schema + migration + seed |
 | `npm run db:import-schools` | โหลดข้อมูลโรงเรียนจริงจาก pikud/Definition.csv |
+| `npm run uploads:find` | หาไฟล์ใน `public/uploads/` ที่ไม่มีอะไรอ้างถึง (รายงานอย่างเดียว) |
+| `npm run uploads:check-backup` | ตรวจว่าไฟล์ใน `uploads/_backup_orphan/` มีฐานข้อมูลอ้างถึงไหม — **ต้องรันก่อนลบสำรอง** |
 
 ### frontend
 
@@ -548,7 +550,7 @@ ph2_project/
 | `npm run verify:pages` | ตรวจทุกหน้า Vue แบบละเอียด (เปิด Chrome จริง) |
 | `npm run verify:runtime` | ตรวจทุกเมนู + จับ runtime error |
 | `npm run verify:auth` | ตรวจหน้าเข้าสู่ระบบ/ลงทะเบียน |
-| `npm run verify:all` | ทุกชุด (ต้องรัน backend อยู่) |
+| `npm run verify:all` | ทุกชุด **รวม `npm run build` เป็นขั้นแรก** (ต้องรัน backend อยู่) |
 | `npm run port` | แปลงซอร์สรุ่นเดิม → `docs/legacy/ported-views/` |
 | `npm run probe` | ดู route resolution ของหน้าที่ระบุ |
 
@@ -608,14 +610,16 @@ node -e "const fs=require('fs'),p=require('path');
  e.isDirectory()?w(f):/\.(js|vue)\$/.test(e.name)&&((fs.readFileSync(f,'utf8').match(/�/g)||[]).length&&console.log('BAD',f));
 }})('frontend/src');console.log('done')"
 
-# 2) build + verify ครบ (ต้องเปิด backend ไว้ในเทอร์มินัลอีกตัว)
-cd frontend && npm run build
+# 2) verify ครบ (ต้องเปิด backend ไว้ในเทอร์มินัลอีกตัว)
 npm run verify:registry
 npm run verify:build -- --server
 npm run verify:pages
 npm run verify:runtime
 npm run verify:auth
-# หรือทุกอย่างรวดเดียว:  npm run verify:all
+# หรือทุกอย่างรวดเดียว (รวม npm run build ให้อัตโนมัติ):  npm run verify:all
+#   ⚠️ verify:pages / verify:runtime / verify:build ทดสอบไฟล์ใน frontend/dist/
+#      ไม่ใช่ src/ — ถ้า build ไม่ได้ run ก่อน มันจะไปทดสอบ dist/ เก่า
+#      แล้วรายงานผ่านทั้งที่โค้ดที่แก้ยังพังอยู่ (เคยเจอกรณีนี้จริง)
 
 # 3) backend (MariaDB ต้องรันอยู่ก่อน)
 cd ../backend
