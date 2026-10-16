@@ -865,10 +865,10 @@ function canCancelRow(r) {
             <thead>
               <tr>
                 <th>วันที่</th>
-                <th>วันที่จอง</th>
+                <th>เวลา</th>
+                <th>วันเขียนจอง</th>
                 <th>ผู้จอง</th>
                 <th>ยานพาหนะ</th>
-                <th>เวลา</th>
                 <th class="num">รวม (วัน)</th>
                 <th>พนักงานขับรถ</th>
                 <th class="num">ผู้โดยสาร</th>
@@ -882,13 +882,13 @@ function canCancelRow(r) {
             <tbody>
               <tr v-for="r in visibleBookings" :key="r.id">
                 <td>{{ dateCell(r) }}</td>
-                <td class="nowrap" :title="r.created_at || ''">{{ UI.dateTime(r.created_at) }}</td>
+                <td>{{ UI.time(r.start_time) }} - {{ UI.time(r.end_time) }}</td>
+                <td class="nowrap">{{ UI.date(r.created_at) }}</td>
                 <td class="nowrap">{{ UI.personName(r) }}</td>
                 <td>
                   <div>{{ vehicleCell(r).title }}</div>
                   <div class="hint">{{ vehicleCell(r).hint }}</div>
                 </td>
-                <td>{{ UI.time(r.start_time) }} - {{ UI.time(r.end_time) }}</td>
                 <td class="num">{{ r.total_days || 1 }} วัน</td>
                 <td>{{ driverCell(r) }}</td>
                 <td class="num">{{ passengerCell(r) }}</td>

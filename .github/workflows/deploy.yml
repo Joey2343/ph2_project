@@ -76,8 +76,8 @@ jobs:
         run: npm run verify:dupbtn
         working-directory: frontend
 
-      - name: ตรวจรูปแบบวันที่จอง
-        run: npm run verify:datetime
+      - name: ตรวจคอลัมน์ตารางรายการจอง
+        run: npm run verify:bookingcols
         working-directory: frontend
 
       - name: Build Frontend
