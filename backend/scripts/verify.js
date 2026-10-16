@@ -116,6 +116,11 @@ function main() {
     env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
   }));
 
+  console.log('\n[ทดสอบลบหนังสือแล้วไฟล์แนบต้องหายจากดิสก์ — ไม่ใช่ค้างทุกครั้ง]');
+  results.push(run('test-upload-cleanup', [path.join(__dirname, 'test-upload-cleanup.js')], {
+    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

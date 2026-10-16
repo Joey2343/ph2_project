@@ -133,7 +133,37 @@ function uploadErrorHandler(err, req, res, next) {
   next();
 }
 
-function deleteUploadedFile(name) {
+/**
+ * แปลงค่าในคอลัมน์ไฟล์ → รายการชื่อไฟล์ (string เดี่ยว / JSON array / JSON object เดียว)
+ *
+ * ⚠️ ทำไมต้องมี
+ * คอลัมน์ไฟล์บางตัวเก็บไฟล์ได้หลายไฟล์ เช่น documents.file
+ *   1 ไฟล์  → "documents/a.png"
+ *   2+ ไฟล์ → '["documents/a.png","documents/b.png"]'   ← JSON array
+ * ถ้าส่งค่า array เข้าไปในโค้ดที่คิดว่าเป็นชื่อไฟล์เดี่ยว
+ * มันจะเห็น "/" ข้างใน JSON → ประกอบเป็นพาที่ไม่มีจริง → ไม่ลบอะไรเลย
+ * (เคยเกิดจริง: ลบหนังสือที่มี 2+ ไฟล์แนบ แล้วไฟล์ค้างบนดิสก์ทุกครั้ง)
+ */
+function parseFileList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((f) => typeof f === 'string' && f);
+  const s = String(value).trim();
+  if (!s) return [];
+  if (s[0] === '[' || s[0] === '{') {
+    try {
+      const d = JSON.parse(s);
+      if (Array.isArray(d)) return d.filter((f) => typeof f === 'string' && f);
+      if (d && typeof d.file === 'string' && d.file) return [d.file];
+      return [];
+    } catch (e) {
+      // ไม่ใช่ JSON → ถือว่าเป็นชื่อไฟล์ธรรมดา (ข้อมูลเก่าบางแถวอาจเป็นแบบนี้)
+    }
+  }
+  return [s];
+}
+
+/** ลบไฟล์เดี่ยวจากดิสก์ (รับได้ทั้งแบบมีโฟลเดอร์ข้างหน้า และแบบชื่อไฟล์เปล่า) */
+function deleteOneFile(name) {
   if (!name || name.includes('..') || name.startsWith('/')) return;
   if (name.includes('/')) {
     const p = path.join(UPLOAD_DIR, name);
@@ -147,6 +177,14 @@ function deleteUploadedFile(name) {
   }
   const p = path.join(UPLOAD_DIR, name);
   if (fs.existsSync(p)) fs.unlinkSync(p);
+}
+
+/**
+ * ลบไฟล์ที่ผูกกับรายการ (รองรับทั้งไฟล์เดี่ยว และ JSON array ที่เก็บในคอลัมน์)
+ * เรียกจุดเดียวจบทุกกรณี — ไม่ต้องให้ผู้เรียกไปแยกเองว่าเป็น array หรือไม่
+ */
+function deleteUploadedFile(name) {
+  for (const f of parseFileList(name)) deleteOneFile(f);
 }
 
 function renameAsCitizen(oldName, citizenId, kind) {
@@ -211,5 +249,5 @@ module.exports = {
   uploadDocuments, uploadStaff, uploadProfile, uploadVehicles,
   uploadMemos, uploadTravel, uploadLeaves,
   uploadImages, uploadFiles, uploadMemoFiles,
-  uploadErrorHandler, deleteUploadedFile, renameAsCitizen,
+  uploadErrorHandler, deleteUploadedFile, parseFileList, renameAsCitizen,
 };
