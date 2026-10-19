@@ -9,6 +9,7 @@ const auth = require('../lib/auth');
 const { uploadDocuments, uploadStaff, createDynamicUpload, getUploadSubdir, uploadErrorHandler, deleteUploadedFile, renameAsCitizen } = require('../lib/uploads');
 const cleanup = require('../lib/cleanup');
 const staffSort = require('../lib/staff-sort');
+const telegram = require('../lib/telegram');
 const uploadDocDynamic = createDynamicUpload('documents');
 
 const router = express.Router();
@@ -110,6 +111,74 @@ router.post('/cert-status/:id', auth.requireAuth, async (req, res) => {
 
 async function isCertStaffUser(userId) {
   return !!await db.prepare("SELECT id FROM document_staff WHERE staff_type = 'certificate' AND user_id = ?").get(userId);
+}
+
+/**
+ * ส่งกลับหนังสือจากสถานศึกษา เพื่อให้ไปแก้ไข
+ *
+ * ทำไมต้องมี
+ * ──────────
+ * โรงเรียนส่งหนังสือเข้ามาที่ สพป. แล้วข้อมูลผิด (เลขหนังสือ/ชื่อเรื่อง/ปลายทาง)
+ * เดิมต้องโทรหรือไปบอกเพื่อให้โรงเรียนแก้ แล้วส่งใหม่อีกรอบ
+ * → ตอนนี้ สพป. กดส่งกลับพร้อมระบุสาเหตุ → โรงเรียนเห็นในรายการหนังสือส่งของตัวเองทันที
+ *
+ * เงื่อนไข
+ *   · เฉพาะหนังสือที่ "ส่งมาจากสถานศึกษา" (sender_type = 'school') เท่านั้น
+ *     หนังสือของ สพป. เองไม่ต้องส่งกลับตัวเอง
+ *   · ผู้กดต้องเป็น admin หรือเจ้าหน้าที่สารบัญเขต
+ *   · ต้องกรอกสาเหตุเสมอ (บังคับ) — ไม่งั้นโรงเรียนไม่รู้จะแก้อะไร
+ *   · ส่งกลับซ้ำได้ ถ้ายังไม่แก้ (ทับสาเหตุเดิม + เวลาใหม่)
+ *
+ * หลังส่งกลับ หนังสือยังอยู่ในรายการของ สพป. (เปลี่ยนสถานะเป็น 'returned')
+ * คนไม่ได้ทำงานที่ สพป. จะเห็นสถานะว่า "รอให้โรงเรียนแก้ไข"
+ */
+router.put('/documents/:id/return', auth.requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const row = await db.prepare('SELECT * FROM documents WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'ไม่พบหนังสือ' });
+
+  if (String(row.sender_type || '') !== 'school') {
+    return res.status(400).json({ error: 'ส่งกลับได้เฉพาะหนังสือที่ส่งมาจากสถานศึกษาเท่านั้น' });
+  }
+  const isOfficeClerk = req.user.role === 'admin'
+    || !!await db.prepare("SELECT id FROM document_staff WHERE staff_type = 'office' AND user_id = ?").get(req.user.id);
+  if (!isOfficeClerk) return res.status(403).json({ error: 'เฉพาะเจ้าหน้าที่สารบัญเขตเท่านั้นที่ส่งกลับหนังสือได้' });
+
+  const note = ((req.body || {}).note || '').trim();
+  if (!note) return res.status(400).json({ error: 'กรุณากรอกสาเหตุที่ส่งกลับเพื่อแก้ไข' });
+
+  const returnedAt = auth.now();
+  await db.prepare(`UPDATE documents SET status = 'returned', revision_note = ?, returned_at = ?, returned_by = ? WHERE id = ?`)
+    .run(note, returnedAt, req.user.id, id);
+
+  // แจ้งผู้ส่ง (เจ้าหน้าที่โรงเรียน) ทาง Telegram ให้รู้ว่าต้องแก้อะไร
+  await telegram.notifyDocumentReturned(id, req.user.full_name, note);
+
+  // row = สถานะจริงหลังบันทึก → หน้าเว็บอัปเดตเฉพาะแถวนี้ ไม่ต้องโหลดทั้งตาราง
+  res.json({
+    ok: true,
+    row: { id, status: 'returned', revision_note: note, returned_at: returnedAt, returned_by: req.user.id },
+    message: 'ส่งกลับเพื่อแก้ไขแล้ว — โรงเรียนจะได้รับแจ้งเตือน',
+  });
+});
+
+/**
+ * โรงเรียนแก้หนังสือที่ถูกส่งกลับมาแล้วส่งอีกครั้ง → ล้างสถานะ "ส่งกลับ"
+ *
+ * เรียกจาก PUT /documents/:id เมื่อผู้แก้ไขเป็นคนส่งหนังสือนั้นเอง
+ * ต้องล้างให้ครบ ไม่งั้นหนังสือจะค้างสถานะ 'returned' และโรงเรียนแก้ไปเรื่อย ๆ
+ *   และ สพป. จะเห็นสถานะ "รอให้โรงเรียนแก้ไข" ทั้งที่โรงเรียนแก้แล้ว
+ * รวมถึงล้างธง "อ่านแล้ว" ของผู้รับฝั่ง สพป. ด้วย ให้เห็นเป็นหนังสือใหม่ที่ยังไม่ได้อ่าน
+ */
+async function clearReturnedState(docId, senderUserId) {
+  const row = await db.prepare('SELECT status, created_by FROM documents WHERE id = ?').get(docId);
+  if (!row || row.status !== 'returned') return false;
+  // ป้องกันคนอื่นในโรงเรียนเดียวกันแก้ทับโดยไม่ตั้งใจ — ให้ผู้ส่งเดิมเป็นคนเคลียร์สถานะ
+  if (senderUserId && row.created_by && Number(row.created_by) !== Number(senderUserId)) return false;
+  await db.prepare(`UPDATE documents SET status = 'received', revision_note = NULL, returned_at = NULL, returned_by = NULL WHERE id = ?`)
+    .run(docId);
+  await db.prepare('UPDATE document_recipients SET is_read = 0, read_at = NULL WHERE document_id = ?').run(docId);
+  return true;
 }
 
 // ---------- เจ้าหน้าที่หนังสือรับรอง (admin only) ----------
@@ -464,7 +533,26 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
       (b.reg_no ?? row.reg_no ?? '').toString().trim(), (b.workgroup ?? row.workgroup ?? '').toString().trim(),
       (b.is_registered !== undefined ? (Number(b.is_registered) ? 1 : 0) : (row.is_registered ? 1 : 0)),
       (b.requester ?? (row.requester || '')).trim(), (b.cert_position ?? (row.cert_position || '')).trim(), (b.officer ?? (row.officer || '')).trim(), (b.owner_group ?? (row.owner_group || '')).trim(), (b.order_registrar ?? (row.order_registrar || '')).trim(), id);
-  res.json({ ok: true, message: 'แก้ไขหนังสือเรียบร้อย' });
+
+  /*
+   * โรงเรียนแก้หนังสือที่ถูกส่งกลับมาแล้วส่งอีกครั้ง → ล้างสถานะ "ส่งกลับ"
+   *
+   * ⚠️ ต้องล้างธง "อ่านแล้ว" ของผู้รับฝั่ง สพป. ด้วย
+   *   ไม่งั้น สพป. จะเห็นเป็นหนังสือที่อ่านแล้ว (ไม่มีจุดต่างจากฉบับเก่าที่ส่งกลับไป)
+   *   แล้วหนังสือฉบับที่แก้แล้วจะหลุดสายตาจนกว่าจะมีคนกดเปิดดูอีกครั้ง
+   */
+  const wasReturned = await clearReturnedState(id, req.user.id);
+
+  // row = สถานะจริงหลังบันทึก → ให้หน้าเว็บอัปเดตเฉพาะแถวนี้ ไม่ต้องโหลดทั้งตาราง
+  res.json({
+    ok: true,
+    row: wasReturned
+      ? { id, status: 'received', revision_note: '', returned_at: '', returned_by: null }
+      : null,
+    message: wasReturned
+      ? 'แก้ไขหนังสือเรียบร้อย — ส่งกลับไปที่ สพป. เรียบร้อย'
+      : 'แก้ไขหนังสือเรียบร้อย',
+  });
 });
 
 // POST /honor-certificate — บันทึกภาพเกียรติบัตรที่ประกอบแล้ว (dataURL) ลง public/uploads/honors/

@@ -110,6 +110,10 @@ CREATE TABLE IF NOT EXISTS \`documents\` (
   \`cert_position\` varchar(255) DEFAULT '',
   \`owner_group\` varchar(255) DEFAULT '',
   \`order_registrar\` varchar(255) DEFAULT '',
+  \`status\` varchar(255) NOT NULL DEFAULT 'received',
+  \`revision_note\` mediumtext DEFAULT NULL,
+  \`returned_at\` varchar(30) DEFAULT NULL,
+  \`returned_by\` int(11) DEFAULT NULL,
   PRIMARY KEY (\`id\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
@@ -494,6 +498,14 @@ const COLUMN_MIGRATIONS = [
   ['documents', 'order_registrar', "order_registrar VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['documents', 'officer', "officer VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['documents', 'school_code', "school_code VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT ''"],
+  // ส่งกลับเพื่อแก้ไข (หนังสือจากสถานศึกษา → สพป.)
+  // ⚠️ revision_note ใช้ MEDIUMTEXT ไม่ใช่ VARCHAR
+  //   ตาราง documents มีคอลัมน์กว้าง ๆ อยู่แล้วหลายตัว
+  //   VARCHAR(8000) utf8mb4 = 32,000 ไบต์ → รวมแล้วเกินลิมิตแถว 65,535 (ER_TOO_BIG_ROWSIZE)
+  ['documents', 'status', "status VARCHAR(255) COLLATE utf8mb4_bin NOT NULL DEFAULT 'received'"],
+  ['documents', 'revision_note', "revision_note MEDIUMTEXT"],
+  ['documents', 'returned_at', "returned_at VARCHAR(200) COLLATE utf8mb4_bin"],
+  ['documents', 'returned_by', "returned_by INT DEFAULT NULL"],
   ['document_staff', 'doc_prefix', "doc_prefix VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT ''"],
   ['document_recipients', 'as_school', "as_school VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['time_records', 'clock_in_src', "clock_in_src VARCHAR(2000) COLLATE utf8mb4_bin"],

@@ -20,10 +20,24 @@ import AppModal from '../ui/AppModal.vue';
 const props = defineProps({
   /** record หนังสือจากตาราง */
   doc: { type: Object, default: null },
+  /**
+   * ผู้ใช้มีสิทธิ์ส่งกลับหนังสือให้โรงเรียนแก้ไขหรือไม่ (admin / สารบัญเขต)
+   *
+   * ต้องรับจากหน้าหลัก ไม่ใช่เดาจาก sender_type เอง
+   *   เพราะโรงเรียนที่เป็นเจ้าของหนังสือก็มี sender_type = 'school' เหมือนกัน
+   *   ถ้าเดาเอง โรงเรียนจะเห็นปุ่ม "ส่งกลับเพื่อแก้ไข" ในหนังสือของตัวเอง
+   */
+  canReturn: { type: Boolean, default: false },
 });
 
-/** 'read' = ทำเครื่องหมายว่าอ่านแล้วสำเร็จ (ส่ง id หนังสือ) ให้หน้าหลักอัปเดตแถวทันที */
-const emit = defineEmits(['close', 'read']);
+/** 'read' = ทำเครื่องหมายว่าอ่านแล้วสำเร็จ (ส่ง id หนังสือ) ให้หน้าหลักอัปเดตแถวทันที
+ *  'return-doc' = ขอส่งกลับหนังสือนี้เพื่อแก้ไข (ส่ง id หนังสือ) */
+const emit = defineEmits(['close', 'read', 'return-doc']);
+
+/** ปุ่มส่งกลับ: ต้องมีสิทธิ์ (admin / สารบัญเขต) และหนังสือต้องมาจากสถานศึกษา (หนังสือของ สพป. เองไม่ต้องส่งกลับตัวเอง) */
+const showReturn = computed(
+  () => props.canReturn && !!props.doc && String(props.doc.sender_type || '') === 'school',
+);
 
 /* ---------- ชื่อผู้ลงนามเกียรติบัตร ---------- */
 /**
@@ -241,10 +255,39 @@ const MSG_STYLE = {
         <label>ลงทะเบียนโดย</label>
         <div>{{ d.creator_name || '-' }}</div>
       </div>
+
+      <!-- สถานะ "รอให้โรงเรียนแก้ไข" — บอกให้ สพป. เห็นว่าหนังสือนี้ถูกส่งกลับไปแล้ว -->
+      <div
+        v-if="d.status === 'returned'"
+        class="form-group full"
+        style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 12px; color: #92400e; font-weight: 600"
+      >
+        ↩ ส่งกลับเพื่อแก้ไขแล้ว{{ d.returned_at ? ' · ' + UI.date(d.returned_at) : '' }}
+        <div style="font-weight: 400; margin-top: 6px; white-space: pre-wrap">{{ d.revision_note }}</div>
+        <!-- ข้อความต่างกันตามฝั่งที่เปิดอยู่ เพราะผู้ดูสองคนละคนกัน ทำงานคนละอย่าง -->
+        <div style="font-weight: 400; font-size: 12px; margin-top: 6px; color: #b45309">
+          <template v-if="canReturn">
+            รอโรงเรียนแก้ไขแล้วส่งกลับมา — ถ้ายังไม่ได้แก้ สามารถกดส่งกลับอีกครั้งได้
+          </template>
+          <template v-else>
+            กรุณาแก้ไขตามรายละเอียดข้างบน แล้วบันทึกส่งกลับมาที่ สพป. อีกครั้ง
+          </template>
+        </div>
+      </div>
     </div>
 
     <template #footer>
-      <button class="btn btn-outline" @click="emit('close')">ปิด</button>
+      <div style="display: flex; gap: 8px">
+        <button
+          v-if="showReturn"
+          class="btn btn-sendback"
+          title="ส่งหนังสือฉบับนี้กลับไปให้โรงเรียนแก้ไข"
+          @click="emit('return-doc', d.id)"
+        >
+          ↩ ส่งกลับเพื่อแก้ไข
+        </button>
+        <button class="btn btn-outline" @click="emit('close')">ปิด</button>
+      </div>
     </template>
   </AppModal>
 </template>

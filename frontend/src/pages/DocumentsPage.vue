@@ -42,6 +42,7 @@ import DocumentsSchoolPrefixModal from '../components/documents/DocumentsSchoolP
 import DocumentsFormModal from '../components/documents/DocumentsFormModal.vue';
 import DocumentsIncomingFormModal from '../components/documents/DocumentsIncomingFormModal.vue';
 import DocumentsOutgoingFormModal from '../components/documents/DocumentsOutgoingFormModal.vue';
+import DocumentsReturnModal from '../components/documents/DocumentsReturnModal.vue';
 
 /* ---------- ประเภททะเบียน ---------- */
 const TYPES = [
@@ -283,6 +284,14 @@ onMounted(async () => {
 /* ---------- ปุ่มด้านบน ---------- */
 const canEditRows = (r) => isAdmin.value || isOfficeDocStaff.value || r.created_by === Auth.user?.id;
 const canCert = (r) => isAdmin.value || isCertStaff.value;
+/**
+ * ส่งกลับหนังสือให้โรงเรียนแก้ไข ได้เฉพาะ admin หรือเจ้าหน้าที่สารบัญเขต
+ *
+ * ⚠️ ต้องเช็คฝั่งหน้าเว็บด้วย ไม่ใช่รอให้ backend ตอบ 403
+ *   ไม่งั้นโรงเรียนที่เป็นเจ้าของหนังสือจะเห็นปุ่มนี้ในรายการหนังสือส่งของตัวเอง
+ *   กดแล้วได้แค่ข้อความ "เฉพาะเจ้าหน้าที่สารบัญเขตเท่านั้น" (เสียเวลา 2 คลิก)
+ */
+const canReturnDocs = computed(() => isAdmin.value || isOfficeDocStaff.value);
 
 /* ---------- dialog ที่ย้ายเป็น Vue ---------- */
 /** หนังสือที่กำลังดูรายละเอียด */
@@ -316,6 +325,46 @@ function onDetailRead(id) {
   const row = docs.value.find((d) => String(d.id) === String(id));
   if (row && row.is_read !== undefined) row.is_read = 1;
 }
+
+/* ---------- ส่งกลับเพื่อแก้ไข (หนังสือจากสถานศึกษา) ---------- */
+/** หนังสือที่กำลังจะส่งกลับ — null = ปิด dialog */
+const returnDoc = ref(null);
+
+/** ขอส่งกลับหนังสือฉบับนี้ให้โรงเรียนแก้ไข */
+function openReturn(id) {
+  if (!canReturnDocs.value) return UI.toast('เฉพาะเจ้าหน้าที่สารบัญเขตเท่านั้นที่ส่งกลับหนังสือได้', 'error');
+  // หาในตารางก่อน — ได้ข้อมูลครบที่สุด (มี status/revision_note จริงจาก server)
+  // ไม่งั้น fallback ไปที่ฟอร์มที่เปิดอยู่ เผื่อหนังสือไม่อยู่ในรายการปัจจุบัน
+  returnDoc.value
+    = docs.value.find((d) => String(d.id) === String(id))
+    || (formDoc.value && String(formDoc.value.id) === String(id) ? formDoc.value : null)
+    || null;
+  if (!returnDoc.value) UI.toast('ไม่พบหนังสือฉบับนี้ในรายการ', 'error');
+}
+
+/**
+ * ส่งกลับสำเร็จ → อัปเดตเฉพาะแถวนี้
+ * ถ้าข้อมูลที่เปิดอยู่คือฉบับเดียวกัน ต้อง sync ให้ dialog รายละเอียดเห็นสถานะใหม่ด้วย
+ * (ไม่งั้นปิด dialog แล้วเปิดใหม่จะเห็นค่าเก่าที่ค้างใน object เดิม)
+ */
+function onReturned({ id, row }) {
+  returnDoc.value = null;
+  if (applyRow(docs.value, id, row, null)) {
+    if (detailDoc.value && String(detailDoc.value.id) === String(id) && row) {
+      detailDoc.value = Object.assign({}, detailDoc.value, row);
+    }
+    if (formDoc.value && String(formDoc.value.id) === String(id) && row) {
+      formDoc.value = Object.assign({}, formDoc.value, row);
+    }
+    return;
+  }
+  load();
+}
+
+/** หนังสือที่ถูกส่งกลับรอแก้ไข (ใช้แสดงป้ายใต้ตารางของฝั่งโรงเรียน) */
+const returnedRows = computed(() =>
+  docs.value.filter((d) => d.status === 'returned' && d.revision_note),
+);
 
 /** เปิดแบบฟอร์มหนังสือรับรอง A4 */
 function openCertA4(r) {
@@ -449,6 +498,13 @@ function openIncomingRegister(row) {
     workgroup: row.workgroup || '',
     file: row.file || '',
     file_names: row.file_names || '',
+    // ⚠️ ต้องส่งต่อ ไม่งั้นฟอร์มจะคิดว่าเป็นหนังสือทั่วไป
+    //   → ปุ่ม "ส่งกลับเพื่อแก้ไข" จะไม่โผล่ตอนลงทะเบียนหนังสือจากโรงเรียน (เจอจริงตอนรีวิว)
+    sender_type: row.sender_type || '',
+    school_code: row.school_code || '',
+    status: row.status || '',
+    revision_note: row.revision_note || '',
+    returned_at: row.returned_at || '',
   });
 }
 
@@ -589,16 +645,33 @@ const columns = computed(() => {
   }
 
   // สถานะอ่าน/ไม่อ่าน (หนังสือรับ)
+  //   ถ้าหนังสือถูกส่งกลับไปให้โรงเรียนแก้แล้ว ให้ความสำคัญกว่าอ่าน/ไม่อ่าน
+  //   เพราะฝั่ง สพป. ต้องรู้ว่าหนังสือนี้รออยู่ที่โรงเรียน ไม่ใช่รอให้ตัวเองดำเนินการ
   if (t === 'incoming') {
     cols.unshift({
       key: 'is_read',
       label: 'สถานะ',
       cell: (r) =>
-        r.is_read === undefined
-          ? { text: '-', color: '#94a3b8' }
-          : r.is_read
-            ? { text: '● อ่านแล้ว', color: '#10b981', bold: true }
-            : { text: '🆕 ใหม่', color: '#f59e0b', bold: true },
+        r.status === 'returned'
+          ? { text: '↩ ส่งกลับเพื่อแก้ไขแล้ว', color: '#b45309', bold: true }
+          : r.is_read === undefined
+            ? { text: '-', color: '#94a3b8' }
+            : r.is_read
+              ? { text: '● อ่านแล้ว', color: '#10b981', bold: true }
+              : { text: '🆕 ใหม่', color: '#f59e0b', bold: true },
+    });
+  }
+
+  // สถานะ "รอให้โรงเรียนแก้ไข" (หนังสือส่งของฝั่งสถานศึกษา)
+  //   คนละเรื่องกับ "สถานะอ่าน/ไม่อ่าน" ของฝั่ง สพป. จึงต้องแยกคอลัมน์กัน
+  if (t === 'outgoing') {
+    cols.unshift({
+      key: 'status',
+      label: 'สถานะ',
+      cell: (r) =>
+        r.status === 'returned'
+          ? { text: '↩ รอให้โรงเรียนแก้ไข', color: '#b45309', bold: true }
+          : { text: '● อยู่ระหว่างดำเนินการ', color: '#10b981', bold: true },
     });
   }
 
@@ -998,6 +1071,16 @@ function showAllYears() {
           </tr>
         </tbody>
       </table>
+
+      <!-- สิ่งที่ สพป. ให้แก้ไข — โรงเรียนต้องเห็นชัดว่าต้องแก้อะไร ไม่ใช่แค่เห็นสถานะ -->
+      <div
+        v-for="r in returnedRows"
+        :key="'rev' + r.id"
+        class="hint"
+        style="margin-top: 8px; color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 8px 10px; white-space: pre-wrap"
+      >
+        ↩ หนังสือ "{{ r.title }}"{{ r.reg_no || r.doc_no ? ' · ' + (r.reg_no || r.doc_no) : '' }} — สิ่งที่ให้แก้ไข: {{ r.revision_note }}
+      </div>
     </div>
   </div>
 
@@ -1048,7 +1131,14 @@ function showAllYears() {
   </AppModal>
 
   <!-- ---------- dialog ที่ย้ายมาเป็น Vue ---------- -->
-  <DocumentsDetailModal :doc="detailDoc" @close="detailDoc = null" @read="onDetailRead" />
+  <DocumentsDetailModal
+    :doc="detailDoc"
+    :can-return="canReturnDocs"
+    @close="detailDoc = null"
+    @read="onDetailRead"
+    @return-doc="openReturn"
+  />
+  <DocumentsReturnModal :doc="returnDoc" @close="returnDoc = null" @returned="onReturned" />
 
   <DocumentsCertA4Modal :doc="certA4Doc" @close="certA4Doc = null" />
 
@@ -1092,9 +1182,11 @@ function showAllYears() {
   <DocumentsIncomingFormModal
     v-if="formKind === 'incoming'"
     :doc="formDoc"
+    :can-return="canReturnDocs"
     @close="closeForm"
     @saved="onFormSaved"
     @open-postal="onIncomingSavedForPostal"
+    @return-doc="openReturn"
   />
 
   <DocumentsOutgoingFormModal v-if="formKind === 'outgoing'" :doc="formDoc" @close="closeForm" @saved="onFormSaved" />

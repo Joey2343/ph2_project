@@ -22,11 +22,22 @@ import AppModal from '../ui/AppModal.vue';
 const props = defineProps({
   /** record ที่กำลังลงทะเบียน/แก้ไข (null = สร้างใหม่) */
   doc: { type: Object, default: null },
+  /**
+   * ผู้ใช้มีสิทธิ์ส่งกลับหนังสือให้โรงเรียนแก้ไขหรือไม่ (admin / สารบัญเขต)
+   * ต้องรับจากหน้าหลัก — ดูรายละเอียดใน DocumentsDetailModal.vue
+   */
+  canReturn: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['close', 'saved', 'open-postal']);
+/** 'returned' = ส่งกลับหนังสือเสร็จแล้ว · 'return-doc' = ขอส่งกลับหนังสือนี้ (ส่ง id) */
+const emit = defineEmits(['close', 'saved', 'open-postal', 'return-doc']);
 
 const d = computed(() => props.doc || {});
+
+/** ปุ่มส่งกลับ: ต้องมีสิทธิ์ และหนังสือต้องมาจากสถานศึกษา */
+const showReturn = computed(
+  () => props.canReturn && !!props.doc && String(props.doc.sender_type || '') === 'school',
+);
 
 /* ---------- ค่าในฟอร์ม ---------- */
 const regNo = ref('');
@@ -513,6 +524,15 @@ async function save() {
 
     <template #footer>
       <div style="display: flex; gap: 8px">
+        <!-- ส่งกลับเพื่อแก้ไข — เฉพาะหนังสือที่ส่งมาจากสถานศึกษา -->
+        <button
+          v-if="showReturn"
+          class="btn btn-sendback"
+          title="ส่งหนังสือฉบับนี้กลับไปให้โรงเรียนแก้ไข (ยังไม่บันทึกฟอร์มนี้)"
+          @click="emit('return-doc', d.id)"
+        >
+          ↩ ส่งกลับเพื่อแก้ไข
+        </button>
         <button class="btn btn-outline" @click="emit('close')">ยกเลิก</button>
         <button class="btn btn-primary" :disabled="saving" @click="save">
           {{ saving ? 'กำลังบันทึก...' : '▽ บันทึก' }}

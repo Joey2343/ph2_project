@@ -442,16 +442,33 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
     ? (await db.prepare("SELECT COUNT(*) c FROM users WHERE status = 'pending'").get()).c
     : 0;
 
+  // ⚠️ count() เป็น async → ต้องรอให้เสร็จก่อนเสมอ
+  //   ถ้าไม่ await จะได้ Promise ซึ่ง JSON.stringify แปลงเป็น {} (ไม่ใช่ตัวเลข)
+  //   ผลคือหน้าแรกไม่ขึ้นการ์ดเลย เพราะเช็ค `count > 0` แล้ว {} > 0 เป็น false
+  const [vehicleNotices, vehicle, room, travel, leave] = await Promise.all([
+    count('SELECT COUNT(*) c FROM vehicle_notices WHERE user_id = ? AND `read` = 0'),
+    count("SELECT COUNT(*) c FROM vehicle_bookings WHERE user_id = ? AND status = 'pending'"),
+    count("SELECT COUNT(*) c FROM room_bookings WHERE user_id = ? AND status = 'pending'"),
+    count("SELECT COUNT(*) c FROM travel_requests WHERE user_id = ? AND status = 'pending'"),
+    count("SELECT COUNT(*) c FROM leave_requests WHERE user_id = ? AND status = 'pending'"),
+  ]);
+  const [memo, memoReturned, docReturned] = await Promise.all([
+    count("SELECT COUNT(*) c FROM memos WHERE user_id = ? AND status = 'submitted'"),
+    count("SELECT COUNT(*) c FROM memos WHERE user_id = ? AND status = 'returned'"),
+    // หนังสือของผู้ใช้ที่ สพป. ส่งกลับมาให้แก้ไข (เฉพาะหนังสือที่ตัวผู้ใช้เป็นผู้สร้าง)
+    count("SELECT COUNT(*) c FROM documents WHERE created_by = ? AND status = 'returned'"),
+  ]);
+
   res.json({
-    vehicleNotices: count("SELECT COUNT(*) c FROM vehicle_notices WHERE user_id = ? AND \`read\` = 0"),
-    vehicle: count("SELECT COUNT(*) c FROM vehicle_bookings WHERE user_id = ? AND status = 'pending'"),
-    room: count("SELECT COUNT(*) c FROM room_bookings WHERE user_id = ? AND status = 'pending'"),
-    travel: count("SELECT COUNT(*) c FROM travel_requests WHERE user_id = ? AND status = 'pending'"),
-    leave: count("SELECT COUNT(*) c FROM leave_requests WHERE user_id = ? AND status = 'pending'"),
-    // ประเภทคำขอลาของฉันที่รออยู่ เพื่อ deep-link ไปแทปที่ถูกต้อง
+    vehicleNotices,
+    vehicle,
+    room,
+    travel,
+    leave,
     leaveTypes: await leaveTypeCounts,
-    memo: count("SELECT COUNT(*) c FROM memos WHERE user_id = ? AND status = 'submitted'"),
-    memoReturned: count("SELECT COUNT(*) c FROM memos WHERE user_id = ? AND status = 'returned'"),
+    memo,
+    memoReturned,
+    docReturned,
     approve: approveData,
     documentsUnread,
     pendingUsers,

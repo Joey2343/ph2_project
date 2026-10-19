@@ -258,6 +258,90 @@ check(!/row: \{ id: docId, is_read: 1, read_at/.test(adminRoute),
   'ปุ่มอ่านหนังสือไม่คืน read_at ที่ประดัษฐานบันทึก (ฐานใช้ NOW() ของ MariaDB)',
   'read_at ที่ได้จาก auth.now() เป็นค่าที่ไม่ได้บันทึกจริง → ห้ามคืน');
 
+/*
+ * ⑧ ปุ่ม "ส่งกลับเพื่อแก้ไข" ต้องไม่หลุดสิทธิ์
+ *
+ * ⚠️ เคยพลาดตรงนี้จริง
+ *   ปุ่มถูกซ่อนด้วยเงื่อนไข `sender_type === 'school'` อย่างเดียว
+ *   แต่โรงเรียนที่เป็นเจ้าของหนังสือก็มี sender_type = 'school' เหมือนกัน
+ *   → โรงเรียนเห็นปุ่ม "ส่งกลับ" ในหนังสือของตัวเอง กดแล้วได้แค่ข้อความ 403
+ *
+ * ต้องมาจากหน้าหลัก (canReturnDocs = admin หรือสารบัญเขต) ส่งลงเป็น prop
+ *   ไม่ใช่เดาเองใน component
+ */
+console.log('');
+console.log('⑧ ปุ่มส่งกลับเพื่อแก้ไข — ต้องเช็คสิทธิ์ฝั่งหน้าเว็บ');
+const docPage = read('src/pages/DocumentsPage.vue');
+const detailModal = read('src/components/documents/DocumentsDetailModal.vue');
+const incomingModal = read('src/components/documents/DocumentsIncomingFormModal.vue');
+const retModal = read('src/components/documents/DocumentsReturnModal.vue');
+
+check(/const canReturnDocs = computed\(\(\) => isAdmin\.value \|\| isOfficeDocStaff\.value\)/.test(docPage),
+  'หน้าหลักมี canReturnDocs = admin หรือสารบัญเขต',
+  'ต้องคำนวณสิทธิ์รวมไว้ที่เดียว แล้วส่งลง modal เป็น prop');
+check(/:can-return="canReturnDocs"/.test(docPage),
+  'ส่ง :can-return="canReturnDocs" ให้ modal รายละเอียดและ modal ลงทะเบียน',
+  'ถ้าไม่ส่ง prop ปุ่มจะถูกซ่อนตลอด (คนที่ควรได้ใช้ก็กดไม่ได้)');
+for (const [name, src] of [['modal รายละเอียด', detailModal], ['modal ลงทะเบียน', incomingModal]]) {
+  check(/canReturn: \{ type: Boolean, default: false \}/.test(src),
+    `${name} รับ prop can-return เป็น boolean`);
+  check(/props\.canReturn\s*&&/.test(src),
+    `${name} เช็ค props.canReturn ก่อนแสดงปุ่ม`,
+    'ถ้าเช็คแค่ sender_type โรงเรียนจะเห็นปุ่มของตัวเอง');
+  check(!/const canReturn = computed\(\(\) => !!props\.doc/.test(src),
+    `${name} ไม่เดาสิทธิ์จาก doc เอง`);
+}
+check(/v-if="showReturn"/.test(detailModal) && /v-if="showReturn"/.test(incomingModal),
+  'ปุ่มส่งกลับใช้ v-if="showReturn" (รวมสิทธิ์และชนิดหนังสือแล้ว)');
+check(/@return-doc="openReturn"/.test(docPage),
+  'หน้าหลักรับ @return-doc จาก modal ทั้งสอง');
+check(/emit\('returned', \{ id: info\.value\.id, row: res\.row \|\| null \}\)/.test(retModal),
+  'dialog ส่งกลับ { id, row } ให้หน้าหลักอัปเดตเฉพาะแถวนั้น',
+  'ต้องส่ง row ที่ backend คืนมาจริง ไม่ใช่เดาค่าเองฝั่งหน้าเว็บ');
+check(/if \(!t\) return UI\.toast\('กรุณากรอกสาเหตุที่ส่งกลับเพื่อแก้ไข'/.test(retModal),
+  'dialog บังคับกรอกสาเหตุก่อนส่งกลับ',
+  'ไม่กรอก = โรงเรียนไม่รู้จะแก้อะไร');
+check(/sender_type: row\.sender_type \|\| ''/.test(docPage) && /revision_note: row\.revision_note \|\| ''/.test(docPage),
+  'openIncomingRegister ส่งต่อ sender_type / revision_note ไปฟอร์ม',
+  'ถ้าไม่ส่งต่อ ปุ่มส่งกลับจะไม่โผล่ตอนลงทะเบียนหนังสือจากโรงเรียน');
+
+console.log('');
+console.log('⑨ ตัวเลขบนหน้าแรกต้องเป็นตัวเลขจริง (ไม่ใช่ Promise ที่หลุด await)');
+/*
+ * ⚠️ เคยเป็นบั๊กจริงใน backend/routes/ops.js
+ *   `const count = async (sql) => ...` แล้วเอาไปใส่ใน res.json({...}) โดยไม่ await
+ *   → JSON.stringify(Promise) = {}
+ *   → หน้าแรกเช็ค `count > 0` ซึ่ง {} > 0 เป็น false → การ์ดหน้าแรกไม่ขึ้นเลยทั้งหน้า
+ *   เทสต์รันตรวจไม่ได้ (JSON ยัง "มีคีย์" แค่ค่าเป็น {}) จึงต้องนับในโค้ด
+ */
+const myPendingOps = readFileSync(path.join(ROOT, '..', 'backend', 'routes', 'ops.js'), 'utf8');
+/** โค้ดทั้ง handler /my-pending — นับวงเล็บปีกกา (ไม่ไล่หา "\n});") */
+const opsBody = (() => {
+  const i = myPendingOps.indexOf("router.get('/my-pending'");
+  if (i === -1) return '';
+  const start = myPendingOps.indexOf('{', myPendingOps.indexOf('=>', i));
+  let d = 0;
+  for (let k = start; k < myPendingOps.length; k += 1) {
+    if (myPendingOps[k] === '{') d += 1;
+    else if (myPendingOps[k] === '}') { d -= 1; if (d === 0) return myPendingOps.slice(i, k); }
+  }
+  return '';
+})();
+check(!!opsBody, 'หา handler /my-pending ใน backend/routes/ops.js เจอ');
+const CARD_FIELDS = ['vehicleNotices', 'vehicle', 'room', 'travel', 'leave', 'memo', 'memoReturned', 'docReturned'];
+for (const f of CARD_FIELDS) {
+  check(new RegExp('^\\s*' + f + ',?\\s*' + '$', 'm').test(opsBody),
+    `my-pending ส่ง ${f} จากตัวแปรที่รอผลแล้ว`,
+    'ถ้าเขียน `xxx: count(...)` โดยไม่ await จะได้ Promise → JSON เป็น {} → การ์ดไม่ขึ้น');
+}
+check(/await Promise\.all\(\[/.test(opsBody),
+  'my-pending รอผลนับทั้งชุดด้วย await Promise.all');
+check(!/docReturned: count\(/.test(opsBody),
+  'ไม่มีการส่ง Promise ที่ยังไม่ await ออกไปหน้าเว็บ');
+const homePage = read('src/pages/HomePage.vue');
+check(/docReturned \|\| 0/.test(homePage), 'หน้าแรกมีการ์ดหนังสือรอให้แก้ไข ใช้ docReturned');
+check(/mp\.docReturned/.test(homePage), 'ยอดรวมการ์ดหน้าแรกรวม docReturned ด้วย');
+
 console.log('');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -102,6 +102,14 @@ function detailLines(system, b) {
       `• ความเร่งด่วน: ${pad(b.urgency)}`,
       `• ผู้จัดทำ: ${pad(personName({ title: b.maker_title, first_name: b.first_name, last_name: b.last_name }))}`,
     ],
+    document: [
+      `• เลขที่หนังสือ: ${pad(b.reg_no || b.doc_no)}`,
+      `• เรื่อง: ${pad(b.title)}`,
+      `• จาก: ${pad(b.from_org)}`,
+      `• ไป: ${pad(b.to_org)}`,
+      `• วันที่: ${thaiDate(b.date)}`,
+      `• ผู้ส่ง: ${pad(personName({ title: b.maker_title, first_name: '', last_name: '', full_name: b.full_name }))}`,
+    ],
   };
   return lines[system] || [];
 }
@@ -350,6 +358,67 @@ async function notifyMemoForwarded(id, targetUserId, deciderName, decide, label)
     await sendTelegram({ token: u.telegram_token, chatId: u.telegram_chat_id, text: memoForwardedText(b, deciderName, decide, label) });
   } catch (e) {
     console.error('[telegram] notifyMemoForwarded error:', e.message);
+  }
+}
+
+/**
+ * ดึงข้อมูลหนังสือพร้อมผู้ส่ง/ค่า Telegram
+ *
+ * ⚠️ ต่างจาก fetchMemoRow ตรงที่หนังสือหนึ่งฉบับอาจมีผู้รับหลายคน
+ *   ต้องแจ้ง "ผู้สร้าง" (created_by) เพราะเป็นคนที่ต้องแก้และส่งกลับมา
+ *   ถ้าผู้สร้างไม่ได้ตั้ง Telegram → หาเจ้าหน้าที่ของโรงเรียนคนอื่นที่ตั้งไว้แทน
+ */
+async function fetchDocumentRow(id) {
+  const row = await db.prepare(`SELECT d.*, u.title AS maker_title, u.first_name, u.last_name, u.full_name,
+      u.telegram_token, u.telegram_chat_id
+    FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ?`).get(Number(id));
+  if (!row) return null;
+  if (row.telegram_token && row.telegram_chat_id) return row;
+  const schoolCode = String(row.school_code || '').trim();
+  if (!schoolCode) return row;
+  // ⚠️ คำสั่งนี้มีตารางเดียว → check-sql-schema จะตรวจทุกคำ
+  //   ถ้าใช้ alias (SELECT u.telegram_token ... FROM users u) ตัว u หน้า dot แรก
+  //   จะถูกมองว่าเป็นคอลัมน์ที่ไม่ระบุตาราง → ไม่ผ่าน
+  //   ทางแก้คือไม่ใช้ alias เลย (คำสั่งสั้น ไม่จำเป็นต้องอ่าน)
+  const alt = await db.prepare(`SELECT telegram_token, telegram_chat_id
+    FROM users
+    WHERE school_code = ? AND telegram_token IS NOT NULL AND telegram_chat_id <> ''
+    ORDER BY id LIMIT 1`).get(schoolCode);
+  return alt ? Object.assign({}, row, alt) : row;
+}
+
+/** ข้อความแจ้งโรงเรียนว่าหนังสือถูกส่งกลับเพื่อแก้ไข */
+function documentReturnedText(b, deciderName, note) {
+  return [
+    '📣 P2-SMART สพป.แพร่ 2',
+    '',
+    '↩ หนังสือของท่านถูกส่งกลับเพื่อให้แก้ไข',
+    '',
+    '📋 รายละเอียด:',
+    ...detailLines('document', b),
+    `• ผู้ส่งกลับ: ${deciderName || '-'}`,
+    '',
+    '❗ สาเหตุที่ส่งกลับเพื่อแก้ไข:',
+    note || '-',
+    '',
+    'กรุณาแก้ไขตามที่ระบุ แล้วบันทึกส่งกลับมาที่ สพป. อีกครั้ง',
+  ].join('\n');
+}
+
+/** แจ้งผู้ส่งหนังสือ (เจ้าหน้าที่โรงเรียน) ว่าหนังสือถูกส่งกลับเพื่อแก้ไข */
+async function notifyDocumentReturned(id, deciderName, note) {
+  try {
+    const b = await fetchDocumentRow(id);
+    if (!b) return;
+    if (b.telegram_token && b.telegram_chat_id) {
+      await sendTelegram({
+        token: b.telegram_token,
+        chatId: b.telegram_chat_id,
+        text: documentReturnedText(b, deciderName, note),
+      });
+    }
+  } catch (e) {
+    console.error('[telegram] notifyDocumentReturned error:', e.message);
   }
 }
 
@@ -973,6 +1042,7 @@ module.exports = {
   notifyVehicleEdited, notifyVehicleCancelled,
   memoSubmittedText, memoNextLevelText, memoForwardedText, memoResubmittedText,
   notifyMemoSubmitted, notifyMemoNextLevel, notifyMemoForwarded, notifyMemoResubmitted, notifyMemoReturned,
+  notifyDocumentReturned,
   fetchLeaveRow, leaveSubmittedText, leaveDelegateText, leaveNextLevelText,
   notifyLeaveSubmitted, notifyLeaveNextLevel,
   notifyLeaveCancelRequested, notifyLeaveCancelled,

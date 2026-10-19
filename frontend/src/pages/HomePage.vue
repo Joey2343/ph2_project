@@ -253,6 +253,13 @@ const myCards = computed(() => {
       href: '#/memos',
     },
     {
+      icon: '↩',
+      label: 'หนังสือรอให้แก้ไข',
+      count: mp.docReturned || 0,
+      color: 'var(--warning-light)',
+      href: '#/documents',
+    },
+    {
       icon: '▣',
       label: 'แจ้งเตือนการจองยานพาหนะ',
       count: mp.vehicleNotices || 0,
@@ -266,7 +273,7 @@ const myCards = computed(() => {
 const myTotal = computed(() => {
   const mp = myPending.value;
   if (!mp) return 0;
-  return mp.vehicle + mp.room + mp.travel + mp.leave + mp.memo + (mp.memoReturned || 0) + (mp.vehicleNotices || 0);
+  return mp.vehicle + mp.room + mp.travel + mp.leave + mp.memo + (mp.memoReturned || 0) + (mp.docReturned || 0) + (mp.vehicleNotices || 0);
 });
 
 /*
