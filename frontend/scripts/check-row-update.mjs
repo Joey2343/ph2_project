@@ -365,8 +365,12 @@ check(/v-if="m\.key === 'documents' && fixBadgeOf\(\)"/.test(homePage),
 check(/function fixBadgeOf\(\)/.test(homePage) && /Number\(p\.docReturned\) \|\| 0/.test(homePage),
   'fixBadgeOf() อ่าน docReturned (หนังสือที่ถูกส่งกลับ) ไม่ใช่ documentsUnread',
   'สองตัวนี้คนละเรื่องกัน ถ้าใช้ผิดจะโผล่ผิดเวลา');
-check(/\.menu-count-fix\s*\{[\s\S]*?left:\s*12px/.test(homePage),
-  'ป้ายใหม่อยู่มุมซ้ายบน (ป้ายเดิมอยู่ขวาบน) ไม่ทับกัน');
+check(/\.menu-count-fix\s*\{[\s\S]*?top:\s*41px/.test(homePage),
+  'ป้ายใหม่อยู่ต่อกันลงล่างป้ายเดิมในมุมเดียวกัน (ขวาบน)',
+  'ผู้ใช้สั่งให้อยู่ใกล้กับป้ายเตือนหนังสือเดิม ไม่ใช่คนละมุม\n'
+  + '      ตำแหน่ง: 12 (ขอบบนตาม .menu-count) + 22 (ความสูงป้ายเดิม) + 7 (ช่องว่าง) = 41');
+check(!/\.menu-count-fix\s*\{[\s\S]*?left:\s*12px/.test(homePage),
+  'ป้ายใหม่ไม่ถูกย้ายไปมุมซ้ายบน (ห่างจากป้ายเดิมเกินไป)');
 check(/\.menu-count-fix\s*\{[\s\S]*?animation:\s*ph2-fix-pulse/.test(homePage),
   'ป้ายใหม่กระพริบด้วย animation');
 check(/@keyframes ph2-fix-pulse/.test(homePage),
