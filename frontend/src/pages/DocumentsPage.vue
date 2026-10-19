@@ -1138,7 +1138,6 @@ function showAllYears() {
     @read="onDetailRead"
     @return-doc="openReturn"
   />
-  <DocumentsReturnModal :doc="returnDoc" @close="returnDoc = null" @returned="onReturned" />
 
   <DocumentsCertA4Modal :doc="certA4Doc" @close="certA4Doc = null" />
 
@@ -1190,6 +1189,22 @@ function showAllYears() {
   />
 
   <DocumentsOutgoingFormModal v-if="formKind === 'outgoing'" :doc="formDoc" @close="closeForm" @saved="onFormSaved" />
+
+  <!--
+    dialog ส่งกลับเพื่อแก้ไข ต้องอยู่ "ท้ายสุด" ของ template เสมอ
+    ─────────────────────────────────────────────────────────────
+    ทั้ง AppModal ใช้ .modal-backdrop ที่ position:fixed + z-index:200 ตัวเดียวกัน
+    การซ้อนกันจึงไม่ได้มาจาก z-index แต่มาจาก "ลำดับใน DOM"
+    → modal ที่อยู่ทีหลังใน template จะทับ modal ที่อยู่ก่อนหน้า
+
+    ตอนนี้เปิดได้จาก 2 ที่:
+      · หน้ารายละเอียดหนังสือ   (DocumentsDetailModal — อยู่ก่อนหน้า → ไม่มีปัญหา)
+      · ฟอร์มลงทะเบียนรับหนังสือ  (DocumentsIncomingFormModal — อยู่ทีหลัง → ทับทั้งขนาด)
+    ถ้าวางไว้ตรงนี้ ฟอร์มที่เปิดอยู่จะอยู่ข้างหลัง dialog เสมอ
+
+    ⚠️ ถ้าจะเพิ่ม modal ใหม่ในหน้านี้ ต้องวาง "ก่อน" บล็อกนี้
+  -->
+  <DocumentsReturnModal :doc="returnDoc" @close="returnDoc = null" @returned="onReturned" />
 </template>
 
 <style scoped>

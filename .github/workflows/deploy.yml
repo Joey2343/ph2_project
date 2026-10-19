@@ -88,6 +88,10 @@ jobs:
         run: npm run verify:tabpersist
         working-directory: frontend
 
+      - name: ตรวจลำดับซ้อนของ modal
+        run: npm run verify:modalorder
+        working-directory: frontend
+
       - name: Build Frontend
         run: npm run build
         working-directory: frontend
