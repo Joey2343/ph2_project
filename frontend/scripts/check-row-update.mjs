@@ -339,8 +339,41 @@ check(/await Promise\.all\(\[/.test(opsBody),
 check(!/docReturned: count\(/.test(opsBody),
   'ไม่มีการส่ง Promise ที่ยังไม่ await ออกไปหน้าเว็บ');
 const homePage = read('src/pages/HomePage.vue');
-check(/docReturned \|\| 0/.test(homePage), 'หน้าแรกมีการ์ดหนังสือรอให้แก้ไข ใช้ docReturned');
-check(/mp\.docReturned/.test(homePage), 'ยอดรวมการ์ดหน้าแรกรวม docReturned ด้วย');
+// ต้องเช็คเฉพาะส่วนที่แสดงผลจริง ไม่ใช่คอมเมนต์ที่อธิบายว่าเคยมี
+//   (คอมเมนต์บรรทัดนี้เองก็พูดถึงหัวข้อนั้นอยู่แล้ว)
+check(!/section-title[^>]*>[^<]*งานที่ค้าง \/ รออนุมัติของฉัน/.test(homePage),
+  'หน้าแรกไม่มีหัวข้อ งานที่ค้าง / รออนุมัติของฉัน อีกแล้ว',
+  'ผู้ใช้สั่งเอาออกเพราะซ้ำกับป้ายแจ้งเตือนบนการ์ดเมนู และยอดรวมบนหัวข้อมักไม่ตรงกับที่เห็นจริง');
+check(!/const myCards = computed/.test(homePage) && !/const myTotal = computed/.test(homePage),
+  'ลบ myCards / myTotal ทิ้งแล้ว (ไม่มีใครใช้แล้ว)');
+check(!/cardStyle\(/.test(homePage),
+  'ลบฟังก์ชัน cardStyle ที่ไม่มีใครเรียกแล้วทิ้ง');
+check(/myPending\.value = await api\.get\('\/my-pending'\)/.test(homePage),
+  'ยังโหลด /my-pending ไว้ เพราะป้ายบนการ์ดเมนูอ่านจากที่นี่');
+
+/*
+ * ป้ายแจ้งเตือนบนการ์ดหนังสือราชการ
+ *
+ * ผู้ใช้สั่ง: หนังสือที่ต้องแก้ ต้องแสดงเป็นวงกลมสีแดงอีกอันหนึ่งบนการ์ดหนังสือราชการ
+ *           (คนละอันกับป้ายหนังสือเข้าที่ยังไม่ได้อ่าน) และวงนั้นต้องกระพริบ
+ */
+check(/class="menu-count menu-count-fix"/.test(homePage),
+  'ป้ายวงกลมที่สองบนการ์ดใช้คลาส menu-count-fix');
+check(/v-if="m\.key === 'documents' && fixBadgeOf\(\)"/.test(homePage),
+  'ป้ายใหม่แสดงเฉพาะการ์ดหนังสือราชการ และเฉพาะเมื่อมีหนังสือรอแก้จริง',
+  'ถ้าใช้เงื่อนไขเดียวกับป้ายเดิม จะกลืนกันจนมองไม่เห็น');
+check(/function fixBadgeOf\(\)/.test(homePage) && /Number\(p\.docReturned\) \|\| 0/.test(homePage),
+  'fixBadgeOf() อ่าน docReturned (หนังสือที่ถูกส่งกลับ) ไม่ใช่ documentsUnread',
+  'สองตัวนี้คนละเรื่องกัน ถ้าใช้ผิดจะโผล่ผิดเวลา');
+check(/\.menu-count-fix\s*\{[\s\S]*?left:\s*12px/.test(homePage),
+  'ป้ายใหม่อยู่มุมซ้ายบน (ป้ายเดิมอยู่ขวาบน) ไม่ทับกัน');
+check(/\.menu-count-fix\s*\{[\s\S]*?animation:\s*ph2-fix-pulse/.test(homePage),
+  'ป้ายใหม่กระพริบด้วย animation');
+check(/@keyframes ph2-fix-pulse/.test(homePage),
+  'มี keyframes ของการกระพริบ');
+check(/prefers-reduced-motion: reduce/.test(homePage),
+  'เคารพการตั้งค่าลดการเคลื่อนไหวของระบบ (หยุดกระพริบ)',
+  'ผู้ใช้ที่เครื่องตั้งค่าลดการเคลื่อนไหวจะเห็นวงกระพริบตลอด = อาการลอกเลิง');
 
 console.log('');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);

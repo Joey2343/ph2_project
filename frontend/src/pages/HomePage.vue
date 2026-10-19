@@ -202,79 +202,20 @@ function openList(card) {
   listOpen.value = true;
 }
 
-/* ---------- งานที่ค้าง / รออนุมัติของฉัน ---------- */
+/* ---------- ข้อมูลสรุปของฉัน (ใช้ทำป้ายแจ้งเตือนบนการ์ดเมนูหลัก) ---------- */
 const myPending = ref(null);
 const isSchool = computed(() => Auth.user && Auth.user.user_group === 'school');
 
-const myCards = computed(() => {
-  const mp = myPending.value;
-  if (!mp) return [];
-  const cards = [
-    { icon: '▣', label: 'จองยานพาหนะรออนุมัติ', count: mp.vehicle, color: 'var(--info-light)', href: '#/vehicles' },
-    { icon: '⬡', label: 'จองห้องประชุมรออนุมัติ', count: mp.room, color: 'var(--success-light)', href: '#/rooms' },
-    {
-      icon: '✈',
-      label: 'ไปราชการรออนุมัติ',
-      count: mp.travel,
-      color: 'var(--warning-light)',
-      href: isSchool.value ? '#/travel-school' : '#/travel',
-    },
-    ...(mp.leaveTypes && mp.leaveTypes.vacation > 0
-      ? [
-          {
-            icon: '❋',
-            label: 'ขอลาพักผ่อนรออนุมัติ',
-            count: mp.leaveTypes.vacation,
-            color: 'var(--danger-light)',
-            href: isSchool.value ? '#/leave?tab=vacation-school' : '#/leave?tab=vacation',
-          },
-        ]
-      : []),
-    ...(mp.leaveTypes && mp.leaveTypes.general > 0
-      ? [
-          {
-            icon: '❋',
-            label: 'ขอลา (ป่วย/กิจ/คลอด)รออนุมัติ',
-            count: mp.leaveTypes.general,
-            color: 'var(--danger-light)',
-            href: isSchool.value ? '#/leave?tab=general-school' : '#/leave?tab=general',
-          },
-        ]
-      : []),
-    ...(mp.leaveTypes && mp.leaveTypes.general + mp.leaveTypes.vacation === 0 && mp.leave > 0
-      ? [{ icon: '❋', label: 'ขอลารออนุมัติ', count: mp.leave, color: 'var(--danger-light)', href: '#/leave' }]
-      : []),
-    { icon: '✎', label: 'บันทึกข้อความรออนุมัติ', count: mp.memo, color: 'var(--accent-light)', href: '#/memos' },
-    {
-      icon: '↻',
-      label: 'บันทึกข้อความส่งกลับเพื่อแก้ไข',
-      count: mp.memoReturned || 0,
-      color: 'var(--warning-light)',
-      href: '#/memos',
-    },
-    {
-      icon: '↩',
-      label: 'หนังสือรอให้แก้ไข',
-      count: mp.docReturned || 0,
-      color: 'var(--warning-light)',
-      href: '#/documents',
-    },
-    {
-      icon: '▣',
-      label: 'แจ้งเตือนการจองยานพาหนะ',
-      count: mp.vehicleNotices || 0,
-      color: 'var(--warning-light)',
-      href: '#/vehicles',
-    },
-  ];
-  return cards.filter((c) => c.count > 0);
-});
-
-const myTotal = computed(() => {
-  const mp = myPending.value;
-  if (!mp) return 0;
-  return mp.vehicle + mp.room + mp.travel + mp.leave + mp.memo + (mp.memoReturned || 0) + (mp.docReturned || 0) + (mp.vehicleNotices || 0);
-});
+/*
+ * เคยมีส่วน "▭ งานที่ค้าง / รออนุมัติของฉัน" เป็นหัวข้อแยกต่างหาก
+ * เอาออกแล้วเพราะผู้ใช้ไม่ต้องการเห็น
+ *   · ซ้ำกับป้ายแจ้งเตือนบนการ์ดเมนูหลัก (การ์ดแต่ละใบมีป้ายแดงมุมขวาบนอยู่แล้ว)
+ *   · ยอดรวมตรงบนหัวข้อมักยังไม่ตรงกับสิ่งที่เห็นในการ์ด ทำให้สับสน
+ * ตอนนี้ผู้ใช้ดูงานที่ค้างจากป้ายแดงบนการ์ดเมนูได้จุดเดียว
+ *
+ * ข้อมูลใน /my-pending ยังต้องใช้ เพราะป้ายบนการ์ดอ่านจากที่นี่
+ * (myCards / myTotal ถูกลบออกจากไฟล์นี้แล้ว)
+ */
 
 /*
  * เคยมีส่วน "◷ งานรอการอนุมัติจากฉัน" อยู่ตรงนี้
@@ -302,7 +243,7 @@ function sumApprove(obj) {
  * ป้ายแจ้งเตือนมุมขวาบนของการ์ดเมนูหลัก
  *
  * นับเฉพาะ "รอฉันทำ" — คือรายการที่รอให้ผู้ใช้คนนี้อนุมัติ/ตรวจสอบ
- * ไม่รวมคำขอของผู้ใช้เองที่ยังรอผล (ดูได้จากการ์ด "งานที่ค้างของฉัน" ด้านบนแล้ว)
+ * ไม่รวมคำขอของผู้ใช้เองที่ยังรอผล (ดูได้จากป้ายบนการ์ดเมนูของแต่ละเมนู)
  *
  * เมนูไหนไม่มีงานรอ ไม่ต้องแสดงป้าย (0 = ไม่แสดง)
  */
@@ -330,6 +271,20 @@ function badgeOf(key) {
 /** เกิน 99 แสดงเป็น 99+ */
 function badgeText(n) {
   return n > 99 ? '99+' : String(n);
+}
+
+/**
+ * จำนวนหนังสือของฉันที่ สพป. ส่งกลับมาให้แก้ไข
+ *
+ * ⚠️ แยกจาก badgeOf('documents') เพราะคนละเรื่องกัน
+ *   · documents = หนังสือเข้าที่ยังไม่ได้อ่าน (นับจาก document_recipients)
+ *   · ตัวนี้ = หนังสือที่ฉันเป็นผู้ส่ง แล้วถูกส่งกลับมาให้แก้ (documents.status = 'returned')
+ * ผู้ใช้ขอให้แสดงเป็น "อีกวงกลมสีแดงอันหนึ่ง" ที่กระพริบ
+ *   → วางมุมซ้ายบน (ป้ายเดิมอยู่มุมขวาบน) ไม่ทับกัน
+ */
+function fixBadgeOf() {
+  const p = myPending.value;
+  return p ? Number(p.docReturned) || 0 : 0;
 }
 
 /**
@@ -418,14 +373,6 @@ const greeting = computed(() => {
     desc: `ยินดีต้อนรับสู่ระบบบริหารจัดการภายในสำนักงาน — สิทธิ์ของคุณ: ${Auth.user.role_label || 'เจ้าหน้าที่'}`,
   };
 });
-
-/** การ์ดติดกันแบบแถวเดียว: ขอบหวังแยกระหว่างกัน */
-function cardStyle(i, total) {
-  return {
-    flex: '0 0 auto',
-    ...(i < total - 1 ? { borderRight: '1px solid #e5e7eb' } : {}),
-  };
-}
 </script>
 
 <template>
@@ -500,28 +447,7 @@ function cardStyle(i, total) {
     </div>
   </div>
 
-  <!-- ---------- งานที่ค้าง / รออนุมัติของฉัน ---------- -->
-  <template v-if="myCards.length">
-    <div class="section-title">▭ งานที่ค้าง / รออนุมัติของฉัน ({{ myTotal }} รายการ)</div>
-    <div style="display: flex; flex-wrap: wrap; gap: 0; margin-bottom: 22px">
-      <a
-        v-for="(c, i) in myCards"
-        :key="c.label"
-        class="stat-card clickable"
-        :href="c.href"
-        title="ดูรายการของฉัน"
-        :style="cardStyle(i, myCards.length)"
-      >
-        <div class="stat-icon" :style="{ background: c.color }">{{ c.icon }}</div>
-        <div>
-          <div class="stat-value">{{ c.count }}</div>
-          <div class="stat-label">{{ c.label }}</div>
-        </div>
-      </a>
-    </div>
-  </template>
-
-  <!--
+    <!--
     เคยมีส่วน "◷ งานรอการอนุมัติจากฉัน" ตรงนี้
     เอาออกแล้ว เพราะซ้ำกับป้ายแจ้งเตือนบนการ์ดเมนูหลักด้านล่าง
   -->
@@ -542,6 +468,16 @@ function cardStyle(i, total) {
         class="menu-count"
         :title="'มี ' + badgeOf(m.key) + ' รายการที่รอคุณอนุมัติ/ตรวจสอบ'"
       >{{ badgeText(badgeOf(m.key)) }}</span>
+
+      <!-- ป้ายที่สองบนการ์ดหนังสือราชการ: หนังสือที่ สพป. ส่งกลับมาให้แก้
+           ผู้ใช้ขอให้เป็น "อีกวงกลมสีแดงอันหนึ่งที่กระพริบ"
+           วางมุมซ้ายบนเพื่อไม่ทับป้ายเดิมที่อยู่มุมขวาบน
+           CSS อยู่ใน <style scoped> ท้ายไฟล์ (theme.css แก้ไม่ได้) -->
+      <span
+        v-if="m.key === 'documents' && fixBadgeOf()"
+        class="menu-count menu-count-fix"
+        :title="'มี ' + fixBadgeOf() + ' ฉบับที่ สพป. ส่งกลับมาให้แก้ไข'"
+      >{{ badgeText(fixBadgeOf()) }}</span>
       <div
         class="menu-icon"
         :style="{ background: m.grad, boxShadow: '0 4px 10px rgba(0,0,0,.15)' }"
@@ -582,4 +518,38 @@ function cardStyle(i, total) {
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของเดิมทั้งหมด */
+
+/*
+ * ป้ายวงกลมสีแดงอันที่สองบนการ์ดหนังสือราชการ
+ * = จำนวนหนังสือที่ สพป. ส่งกลับมาให้ผู้ใช้แก้ไข
+ *
+ * ต่างจาก .menu-count ของ theme.css สองจุด (จึงต้อง override ใน scoped):
+ *   1. ย้ายไปมุมซ้ายบน ไม่ใช่ขวาบน เพราะป้ายเดิมอยู่ขวาบนแล้ว
+ *   2. มีวงแหวนกระพริบ ให้สะดุดสายตามากกว่าป้ายปกติ
+ *
+ * ⚠️ theme.css ห้ามแก้ (verify:build เทียบ SHA256 กับ docs/legacy/source-v1/css/style.css)
+ *   การเปลี่ยนแปลงทั้งหมดจึงอยู่ที่นี่
+ *   ยืมรูปทรงจาก .menu-count ของเดิม (position/radius/size) เพื่อให้หน้าตาเหมือนกัน
+ */
+.menu-count-fix {
+  top: 12px;
+  right: auto;
+  left: 12px;
+  background: var(--danger);
+  animation: ph2-fix-pulse 1.4s ease-in-out infinite;
+}
+
+/* วงแหวนที่ขยายออกแล้วจาง — ทำให้ "ต้องแก้" เด่นกว่าป้ายตัวเลขธรรมดา */
+@keyframes ph2-fix-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.65); }
+  50%      { box-shadow: 0 0 0 9px rgba(220, 38, 38, 0); }
+}
+
+/* ผู้ใช้ที่ตั้งค่าลดการเคลื่อนไหวของระบบไว้ → หยุดกระพริบ แสดงเป็นวงแหวนนิ่งแทน */
+@media (prefers-reduced-motion: reduce) {
+  .menu-count-fix {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
+  }
+}
 </style>
