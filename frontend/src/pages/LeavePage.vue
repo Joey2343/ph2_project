@@ -24,6 +24,7 @@
  *   LeaveStats.vue        — แท็บสถิติ 3 แบบ
  */
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
@@ -89,6 +90,9 @@ const STATS_TABS = ['leave-stats', 'vac-stats', 'my-stats'];
  */
 const current = ref('general');
 
+/** route ปัจจุบัน ใช้ดู ?tab= ตอนผู้ใช้คลิกการ์ดบนหน้าแรก (deep-link) */
+const route = useRoute();
+
 /** รอบพิจารณาความชอบ: ปีงบประมาศเริ่มที่ ต.ค. */
 function currentFY() {
   const d = new Date();
@@ -113,13 +117,25 @@ const roundOptions = computed(() => {
 
 /** ตั้งแท็บจาก URL/localStorage แล้วกรันตัวที่ผู้ใช้เข้าไม่ได้ออก */
 function pickInitialTab() {
-  const q = new URLSearchParams(location.hash.split('?')[1] || '').get('tab');
+  const q = route.query.tab || '';
   let t = q || localStorage.getItem('leave_tab') || 'general';
-  // เจ้าหน้าที่การลา/ผู้ตรวจสอบที่ไม่ใช่ admin ยังเข้าแท็บสถิติ/ตั้งค่าไม่ได้
+  /*
+   * ⚠️ ตรวจกับ groups เท่านั้น อย่าตรวจกับ LEAVE_GROUPS
+   *
+   *   LEAVE_GROUPS มีแค่ 3 แท็บ (general / vacation / general-school)
+   *   ส่วน "วันลาพักผ่อนสะสม" "สถิติ" "ตั้งค่าเจ้าหน้าที่" อยู่ใน ADMIN_GROUPS
+   *   ถ้าตรวจกับ LEAVE_GROUPS แท็บพวกนั้นจะถูกปฏิเสธทุกครั้งที่เปิดหน้า
+   *   → กดรีเฟรชแล้วเด้งกลับแท็บแรกเสมอ (จุดที่ผู้ใช้แจ้ง)
+   *   groups คือรายการแท็บที่ผู้ใช้คนนี้เข้าถึงได้จริง ครอบคลุมทั้งสองชุดแล้ว
+   */
   if (!groups.value.some((g) => g.key === t)) t = 'general';
-  if (!LEAVE_GROUPS.some((g) => g.key === t)) t = 'general';
   current.value = t;
-  if (q) localStorage.setItem('leave_tab', t);
+  /*
+   * บันทึกเสมอ ไม่ใช่เฉพาะตอนมี ?tab=
+   *   ถ้าแท็บที่บันทึกไว้เข้าไม่ได้ (เช่นเปลี่ยนจาก admin ไปบัญชีอื่น)
+   *   ต้องเขียนทับด้วยค่าที่ใช้ได้จริง ไม่งั้นค่าเก่าจะค้างแล้วลองเดิมทุกครั้งที่เปิดหน้า
+   */
+  localStorage.setItem('leave_tab', t);
 }
 
 function setTab(k) {
@@ -160,6 +176,16 @@ onMounted(async () => {
 
 // แท็บอาจยังเลือกไม่ได้ตอน mount (สิทธิ์โหลดช้า) → ตรวจซ้ำเมื่อสิทธิ์เปลี่ยน
 watch(groups, () => pickInitialTab());
+
+/*
+ * ผู้ใช้คลิกการ์ดบนหน้าแรกที่ลิงก์มาที่ #/leave?tab=xxx
+ *
+ * ⚠️ เดิมใช้ location.hash อ่านตรง ๆ ทำได้เฉพาะตอนเปิดหน้าใหม่
+ *   ถ้าผู้ใช้อยู่ที่หน้าลาอยู่แล้ว router จะไม่ remount component (เป็น route เดิม)
+ *   → onMounted ไม่ทำงาน → กดการ์ดแล้วไม่เปลี่ยนแท็บ (ของเดิมเป็นบั๊กนี้อยู่ก่อนแล้ว)
+ *   การดู route.query ผ่าน useRoute() จะทำให้ reactive และจับการเปลี่ยนค่าได้
+ */
+watch(() => route.query.tab, () => pickInitialTab());
 
 /* ---------- ตารางรายการคำขอลา ---------- */
 const rows = ref([]);
