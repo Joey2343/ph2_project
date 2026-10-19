@@ -33,6 +33,14 @@ function check(ok, name, detail = '') {
 
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
 
+/**
+ * ตัดคอมเมนต์ออกจากโค้ดก่อนตรวจด้วย regex
+ *
+ * จำเป็นมาก ๆ เพราะคอมเมนต์ในไฟล์นี้เขียนตัวอย่างโค้ดไว้ข้างใน
+ * ถ้าไม่ตัด บรรทัดที่ "อธิบายบั๊ก" จะถูกนับเป็นการเรียกจริง (เคยเจอ)
+ */
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
 console.log('');
 console.log('① ตัวช่วยอัปเดตแถว (lib/row-update.js) ต้องมีอยู่และถูกต้อง');
 const lib = read('src/lib/row-update.js');
@@ -131,7 +139,48 @@ for (const [file, label] of [
 }
 
 console.log('');
-console.log('⑥ backend ต้องคืน row จาก endpoint เปลี่ยนสถานะ');
+console.log('');
+console.log('');
+console.log('⑥ รูปแบบการส่งแถวเข้า applyRow ต้องถูก — ส่งผิดแล้วเงียบทั้งหน้า');
+/*
+ * ⚠️ เคยเป็นบั๊กจริง (DocumentsPage.onReturned)
+ *
+ *   applyRow(list, id, res, reload) รอ "คำตอบของ backend" แล้วเอา res.row ออกมาใช้เอง
+ *   ถ้าส่ง row เข้าไปตรง ๆ → rowOf() หา res.row ไม่เจอ → ได้ null
+ *   → patchRow ทำงานด้วย {} → ทับแถวด้วยค่าเดิมทั้งก้อน = ไม่มีอะไรเปลี่ยน
+ *   → และเพราะ patchRow คืน true หน้าเว็บจะไม่ reload ด้วย
+ *   ผลคือคอลัมน์ "สถานะ" ยังเป็นค่าเก่าจนกว่าผู้ใช้กดรีเฟรช
+ *   และไม่มี error ไม่มีเตือนอะไรเลย (เจอจริงตอนทดสอบด้วยเบราว์เซอร์)
+ *
+ * กฎ
+ *   · ตัวแปรที่เป็น "แถว"          (row / payload.row) → ต้องห่อเป็น { row }
+ *   · ตัวแปรที่เป็น "คำตอบจาก api" (res)             → ส่งตรง ๆ ได้
+ */
+const PAGES_APPLYROW = [
+  'DocumentsPage.vue', 'LeavePage.vue', 'MemosPage.vue',
+  'TravelPage.vue', 'VehiclesPage.vue', 'RoomsPage.vue',
+];
+for (const file of PAGES_APPLYROW) {
+  // ตัดคอมเมนต์ทิ้งก่อน ไม่งั้นตัวอย่างในคอมเมนต์จะถูกนับเป็นโค้ดจริง
+  const src = stripComments(read(`src/pages/${file}`));
+  // ไม่ยึดว่าต้องลงท้ายด้วย ";" เพราะมีทั้งแบบ if (...) return; และแบบประกอบเงื่อนไข
+  const calls = [...src.matchAll(/applyRow\s*\(([^()]*)\)/g)].map((m) => m[1]);
+  check(calls.length > 0, `${file}: มีการเรียก applyRow`);
+  for (const call of calls) {
+    const third = (call.split(',')[2] || '').trim();
+    check(third !== 'row' && third !== 'payload.row',
+      `${file}: ไม่ส่งแถวเข้า applyRow ตรง ๆ`,
+      `พบอาร์กิวเมนต์ที่ 3 เป็น "${third}" — ต้องห่อเป็น { ${third} }`
+      + '\n      ไม่งั้น rowOf() จะหา .row ไม่เจอ แล้วอัปเดตแถวด้วย {}'
+      + ' (ไม่มีอะไรเปลี่ยน และไม่แจ้ง error)');
+    check(third !== 'null',
+      `${file}: reload ต้องเป็นฟังก์ชัน ไม่ใช่ null`,
+      'ถ้าหาแถวไม่เจอและไม่มี reload → รายการค้างค่าเก่าถาวรโดยไม่บอกอะไร');
+  }
+}
+
+console.log('');
+console.log('⑦ backend ต้องคืน row จาก endpoint เปลี่ยนสถานะ');
 // ⚠️ ช่วง [\s\S]{0,N} ต้องกว้างพอ ไม่งั้นจะได้ false negative
 //   ต้นฉบับใช้ 2600 / 900 แต่โค้ดจริงห่างกัน 3677 / 1089 ตัวอักษร
 //   → เทสต์ fail ทั้งที่โค้ดถูกแล้ว (เจอแล้วระหว่างเขียนรอบนี้)
@@ -183,7 +232,6 @@ console.log('⑦ จุดที่เทสต์รันตรวจไม่
 //     และถ้าไล่หาช้าเกิน จะไปนับ auth.now() ของ handler ถัดไปมาด้วย
 //   ⚠️ ต้อง (2) ตัดคอมเมนต์ทิ้งก่อน ไม่งั้นบรรทัดที่อธิบายเรื่องนี้พอดี
 //     จะถูกนับเป็นการเรียกจริง (เคยเจอ: คอมเมนต์ที่เขียนว่า "ถ้าเรียก auth.now() สองครั้ง")
-const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const nowInHandler = (rawSrc, anchor) => {
   const src = stripComments(rawSrc);

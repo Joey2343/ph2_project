@@ -349,7 +349,18 @@ function openReturn(id) {
  */
 function onReturned({ id, row }) {
   returnDoc.value = null;
-  if (applyRow(docs.value, id, row, null)) {
+  /*
+   * ⚠️ ต้องห่อด้วย { row } ก่อนส่งให้ applyRow
+   *
+   *   applyRow(list, id, res, reload) รอ "คำตอบของ backend" แล้วเอา res.row ออกมาใช้เอง
+   *   ถ้าส่ง row เข้าไปตรง ๆ → rowOf() หา res.row ไม่เจอ → ได้ null
+   *   → patchRow ทำงานด้วย {} → ทับแถวด้วยค่าเดิมทั้งก้อน = ไม่มีอะไรเปลี่ยน
+   *   → และเพราะ patchRow คืน true หน้าเว็บจะไม่ reload ด้วย
+   *   ผลคือคอลัมน์ "สถานะ" ยังเป็นค่าเก่าจนกว่าผู้ใช้กดรีเฟรช (เจอจริงตอนทดสอบ)
+   *
+   *   หน้าอื่นที่รับ payload { id, row } เขียนถูกแล้ว: LeavePage.vue · MemosPage.vue
+   */
+  if (applyRow(docs.value, id, { row }, load)) {
     if (detailDoc.value && String(detailDoc.value.id) === String(id) && row) {
       detailDoc.value = Object.assign({}, detailDoc.value, row);
     }
