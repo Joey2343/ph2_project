@@ -398,6 +398,11 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
     if (err) return err;
   }
 
+  // decidedAt ค่าเดียว ใช้ทั้ง approval_data และคอลัมน์ decided_at ต้องตรงกัน
+  //   ถ้าเรียก auth.now() สองครั้ง อาจต่างกัน 1 วินาที → หน้าเว็บกับฐานไม่ตรงกัน
+  const decidedAt = auth.now();
+  const cleanNote = (note || '').trim();
+
   approvals.push({
     level: nextLevel,
     by: user.id,
@@ -407,15 +412,11 @@ async function approveRequest({ table, system, id, user, note, onFinal, canAppro
     workplace: user.workplace || '',
     signature: user.signature || '',
     role: user.role,
-    at: auth.now(),
-    note: (note || '').trim(),
+    at: decidedAt,
+    note: cleanNote,
   });
 
   const done = isFinal;
-  const decidedAt = auth.now(); // ค่าเดียว ใช้ทั้ง approval_data และคอลัมน์ decided_at ต้องตรงกัน
-  approvals[approvals.length - 1].at = decidedAt;
-  const cleanNote = (note || '').trim();
-  approvals[approvals.length - 1].note = cleanNote;
   await db.prepare(`UPDATE ${table} SET approval_level = ?, approval_data = ?, status = ?, note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
     .run(nextLevel, JSON.stringify(approvals), done ? 'approved' : 'pending',
       cleanNote, user.id, decidedAt, id);
@@ -471,7 +472,9 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
   const cleanNote = (note || '').trim();
   await db.prepare(`UPDATE ${table} SET status = 'rejected', note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
     .run(cleanNote, user.id, decidedAt, id);
-  // row = สถานะจริงหลังบันทึก ให้หน้าเว็บอัปเดตเฉพาะแถวนี้ได้เลย (ดูหมายเหตุใน approveRequest)
+  // approvals = ขั้นที่อนุมัติมาแล้วก่อนหน้านี้ (ไม่ทิ้ง ป้าย "อนุมัติแล้ว x/y ขั้น" ต้องได้ถูก)
+  //   ⚠️ อย่าอ้าง row.approvals — แถวที่ SELECT มาจากฐานไม่มีคอลัมน์นี้
+  //     มีแต่ตอน API เติมให้หน้าเว็บเท่านั้น
   return {
     ok: true,
     row: {
@@ -480,7 +483,7 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
       decided_by: user.id,
       decided_at: decidedAt,
       approval_level: row.approval_level,
-      approvals: row.approval_data ? parseApprovals(row.approval_data) : (row.approvals || []),
+      approvals: parseApprovals(row.approval_data),
     },
     message: 'ไม่อนุมัติรายการนี้แล้ว',
   };

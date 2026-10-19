@@ -406,11 +406,14 @@ router.put('/memos/:id/approve', auth.requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'กรุณาเลือกอย่างน้อย 1 รายการในส่วน บันทึกสั่งการ' });
     }
   }
+  // decidedAt ค่าเดียว ใช้ทั้ง approval_data และคอลัมน์ decided_at ต้องตรงกัน
+  //   ถ้าเรียก auth.now() สองครั้ง อาจต่างกัน 1 วินาที → หน้าเว็บกับฐานไม่ตรงกัน
+  const decidedAt = auth.now();
   approvalsArr.push({
     level: nextLevel, by: req.user.id, name: req.user.full_name,
     title: req.user.title, first_name: req.user.first_name, last_name: req.user.last_name,
     position: req.user.position, signature: req.user.signature || null, decide: decide || null,
-    role: req.user.role, at: auth.now(), note,
+    role: req.user.role, at: decidedAt, note,
     mode: mode || undefined, comment: comment || undefined,
     act_choices: actChoices.length ? actChoices : undefined,
     next_approver_id: nextApproverId, next_approver_name: nextApproverName,
@@ -421,7 +424,7 @@ router.put('/memos/:id/approve', auth.requireAuth, async (req, res) => {
   // next_approver_id: เก็บเฉพาะตอนขั้นที่ 1 (เรียนเสนอ) และขั้นที่ 2 (ผ่านเรื่อง/เสนอต่อ) ส่งต่อ (ขั้นที่ 3 ใช้ chain ตามปกติ → ล้างค่า)
   await db.prepare(`UPDATE memos SET approval_level = ?, approval_data = ?, status = ?, note = ?, decided_by = ?, decided_at = ?, next_approver_id = ? WHERE id = ?`)
     .run(nextLevel, JSON.stringify(approvalsArr), done ? 'approved' : 'submitted',
-      note, req.user.id, auth.now(), storeNext, id);
+      note, req.user.id, decidedAt, storeNext, id);
   if (done) {
     // อนุมัติครบขั้น → แจ้งเตือน Telegram (สีเขียว 🟢) ไปยังผู้จัดทำ พร้อมรายละเอียดบันทึกสั่งการ/ปฏิบัติราชการฯ + ความเห็น
     const extra = [];
@@ -465,7 +468,7 @@ router.put('/memos/:id/approve', auth.requireAuth, async (req, res) => {
       required_levels: required,
       note: note || '',
       decided_by: req.user.id,
-      decided_at: auth.now(),
+      decided_at: decidedAt,
       next_approver_id: storeNext,
       next_approver_name: storeNext ? nextApproverName : null,
     },
@@ -485,13 +488,16 @@ router.put('/memos/:id/reject', auth.requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'คุณไม่มีสิทธิ์พิจารณาบันทึกข้อความนี้' });
   }
   const note = ((req.body || {}).note || '').trim();
+  const decidedAt = auth.now();
   await db.prepare(`UPDATE memos SET status = 'rejected', note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
-    .run(note, req.user.id, auth.now(), id);
+    .run(note, req.user.id, decidedAt, id);
   // แจ้งเตือน Telegram (สีแดง 🔴) ไปยังผู้จัดทำทันที
   await telegram.notifyRequest({ system: 'memo', id, approved: false, deciderName: req.user.full_name, note });
   res.json({
     ok: true,
-    row: { status: 'rejected', note, decided_by: req.user.id, decided_at: auth.now(), approvals: approvalsArr, approval_level: nextLevel - 1 },
+    // approval_level = จำนวนขั้นที่อนุมัติมาแล้ว (ไม่ใช่ขั้นที่เพิ่งจะอนุมัติ)
+    //   เพราะการปฏิเสธไม่ได้นับเป็นขั้นที่ผ่าน
+    row: { status: 'rejected', note, decided_by: req.user.id, decided_at: decidedAt, approvals: approvalsArr, approval_level: nextLevel - 1 },
     message: 'ไม่อนุมัติบันทึกข้อความนี้แล้ว',
   });
 });
@@ -509,13 +515,14 @@ router.put('/memos/:id/return', auth.requireAuth, async (req, res) => {
   }
   const note = ((req.body || {}).note || '').trim();
   if (!note) return res.status(400).json({ error: 'กรุณากรอกสิ่งที่ให้แก้ไขก่อนส่งกลับ' });
+  const decidedAt = auth.now();
   await db.prepare(`UPDATE memos SET status = 'returned', revision_note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
-    .run(note, req.user.id, auth.now(), id);
+    .run(note, req.user.id, decidedAt, id);
   // แจ้งเตือนผู้จัดทำ (การ์ดหน้าแรก + Telegram)
   await telegram.notifyMemoReturned(id, req.user.full_name, note);
   res.json({
     ok: true,
-    row: { status: 'returned', note: '', revision_note: note, decided_by: req.user.id, decided_at: auth.now(), approvals: approvalsArr, approval_level: nextLevel - 1 },
+    row: { status: 'returned', note: '', revision_note: note, decided_by: req.user.id, decided_at: decidedAt, approvals: approvalsArr, approval_level: nextLevel - 1 },
     message: 'ส่งกลับเพื่อให้แก้ไขแล้ว — ผู้จัดทำจะได้รับแจ้งเตือน',
   });
 });
@@ -967,9 +974,11 @@ router.put('/leaves/:id/review', auth.requireAuth, async (req, res) => {
   // บันทึกว่าตรวจสอบแล้ว + เพิ่ม level 1 ใน approval_data + บันทึกสถิติที่แก้ไข
   const reviewedStats = req.body.reviewed_stats || null;
   const existingApprovals = approvals.parseApprovals(row.approval_data);
-  existingApprovals.push({ level: 1, by: req.user.id, name: req.user.full_name, role: req.user.role, at: auth.now(), note: 'ตรวจสอบแล้ว' });
+  // decidedAt ค่าเดียว ใช้ทั้ง approvals[].at และคอลัมน์ decided_at ต้องตรงกัน
+  //   ถ้าเรียก auth.now() แยกสองที่ อาจต่างกัน 1 วินาที → หน้าเว็บกับฐานไม่ตรงกัน
+  const decidedAt = auth.now();
+  existingApprovals.push({ level: 1, by: req.user.id, name: req.user.full_name, role: req.user.role, at: decidedAt, note: 'ตรวจสอบแล้ว' });
   if (reviewOnly) {
-    const decidedAt = auth.now();
     await db.prepare('UPDATE leave_requests SET reviewed = 1, approval_level = 1, reviewed_stats = ?, approval_data = ?, status = ?, decided_by = ?, decided_at = ? WHERE id = ?')
       .run(reviewedStats ? JSON.stringify(reviewedStats) : null, JSON.stringify(existingApprovals), 'approved', req.user.id, decidedAt, id);
     await telegram.notifyRequest({ system: 'leave', id, approved: true, deciderName: req.user.full_name, note: 'ตรวจสอบแล้ว (ไม่มีขั้นอนุมัติถัดไป)' });

@@ -214,8 +214,8 @@ function checkRowShape(row, wantStatus, label) {
     check(rA.row && rA.row.approvals && rA.row.approvals[0]
       && rA.row.approvals[0].at === rA.row.decided_at,
       'at ใน approvals ตรงกับ decided_at (ใช้ค่าเดียวกัน)',
-      `approvals[0].at=${rA.row && rA.row.approvals && rA.row.approvals[0] && rA.row.approvals[0].at} `
-      + `decided_at=${rA.row && rA.row.decided_at}`);
+      '⚠️ เช็กนี้ผ่านได้แม้โค้ดพลาด ถ้า auth.now() 2 ครั้งอยู่ในวินาทีเดียวกัน'
+      + '\n      → กันบั๊กนี้จริง ๆ ด้วย check-row-update.mjs ข้อ ⑦ ที่นับจำนวนการเรียกในโค้ด');
     // ยืนยันกับฐานจริงว่าสถานะตรงกัน
     const dbA = await db.prepare('SELECT status, approval_level, approval_data FROM vehicle_bookings WHERE id = ?').get(idA);
     check(dbA && dbA.status === 'approved', 'ฐานข้อมูลเป็น approved จริง', `ได้ ${dbA && dbA.status}`);

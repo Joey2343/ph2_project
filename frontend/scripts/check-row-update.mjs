@@ -165,5 +165,99 @@ check(new RegExp('leaves/:id/cancel-request' + WIN + "cancel_status:\\s*'cancel_
   'ขอยกเลิกวันลา คืน cancel_status');
 
 console.log('');
+console.log('⑦ จุดที่เทสต์รันตรวจไม่ได้ — ต้องนับในโค้ด');
+/*
+ * ⚠️ เรื่องนี้เคยหลอกเราไปแล้ว
+ *
+ * คิดจะเช็กว่า `approvals[last].at === row.decided_at` ด้วยการรันจริง
+ *   → ผ่านทุกครั้ง แม้ตอนเรียก auth.now() สองครั้งแยกจุดจริง ๆ
+ *   เพราะสองครั้งมักอยู่ในวินาทีเดียวกัน → ค่าเท่ากัน → มองไม่เห็นบั๊ก
+ *   = เทสต์ที่ผ่านเพราะบั๊กมองไม่เห็น ซึ่งแย่กว่าไม่มีเทสต์
+ *
+ * วิธีที่ใช้ได้จริง: นับจำนวนการเรียก auth.now() ในแต่ละ handler
+ *   ต้องมีค่าเดียว แล้วเอาไปใช้ทั้ง approval_data และ decided_at
+ */
+// นับการเรียก auth.now() ใน handler เดียว
+//   ⚠️ ต้อง (1) หาขอบเขตด้วยการนับวงเล็บ ไม่ใช่ไล่หา "\n});"
+//     เพราะ route จบด้วย "});" แต่ฟังก์ชันช่วยจบด้วย "}"
+//     และถ้าไล่หาช้าเกิน จะไปนับ auth.now() ของ handler ถัดไปมาด้วย
+//   ⚠️ ต้อง (2) ตัดคอมเมนต์ทิ้งก่อน ไม่งั้นบรรทัดที่อธิบายเรื่องนี้พอดี
+//     จะถูกนับเป็นการเรียกจริง (เคยเจอ: คอมเมนต์ที่เขียนว่า "ถ้าเรียก auth.now() สองครั้ง")
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+const nowInHandler = (rawSrc, anchor) => {
+  const src = stripComments(rawSrc);
+  const i = src.indexOf(anchor);
+  if (i === -1) return -1;
+
+  /*
+   * ⚠️ หาเปิด body ยากกว่าที่คิด เพราะ anchor มี 2 รูปแบบ
+   *
+   *   A) async function approveRequest({ table, system, ... }) {
+   *        ตัวแรกคือ { ของ destructuring parameter → ต้องข้ามไป
+   *
+   *   B) router.put('/path', mw, async (req, res) => {
+   *        ตัวแรกคือ { ของ body จริง แต่ "router.put(" ยังไม่ปิดวงเล็บ
+   *        (Express ปิดท้างสุดหลัง handler) → parenDepth ยังเป็น 1
+   *        ถ้าใช้เงื่อนไข parenDepth===0 จะหาไม่เจอเลย (เคยเจอตอนรีวิว)
+   *
+   * วิธีแยก: ดูตัวอักษรก่อน { — ถ้าลงท้ายด้วย ( หรือ , แปลว่าเป็น parameter → ข้าม
+   */
+  let k = i;
+  while (k < src.length && k - i < 4000) {
+    const ch = src[k];
+    if (ch !== '{') { k += 1; continue; }
+    // ดูตัวอักษรที่ไม่ใช่ช่องว่าง ก่อน { ตัวนี้
+    let p = k - 1;
+    while (p >= i && /\s/.test(src[p])) p -= 1;
+    const before = src[p];
+    if (before === '(' || before === ',') {
+      // เป็น destructuring parameter → ข้ามไปหลัง } ที่ปิดมัน
+      let d = 0;
+      for (; k < src.length; k += 1) {
+        if (src[k] === '{') d += 1;
+        else if (src[k] === '}') { d -= 1; if (d === 0) { k += 1; break; } }
+      }
+      continue;
+    }
+    // เจอเปิด body จริง → นับวงเล็บให้สมดุลเพื่อหาปิดท้าย
+    let depth = 0;
+    for (let j = k; j < src.length; j += 1) {
+      if (src[j] === '{') depth += 1;
+      else if (src[j] === '}') {
+        depth -= 1;
+        if (depth === 0) return (src.slice(k, j).match(/auth\.now\(\)/g) || []).length;
+      }
+    }
+    return -1;
+  }
+  return -1;
+};
+
+const HANDLERS = [
+  [approve, 'approveRequest', 'async function approveRequest({'],
+  [approve, 'rejectRequest', 'async function rejectRequest({'],
+  [reqRoute, 'อนุมัติบันทึกข้อความ', "router.put('/memos/:id/approve'"],
+  [reqRoute, 'ไม่อนุมัติบันทึกข้อความ', "router.put('/memos/:id/reject'"],
+  [reqRoute, 'ส่งกลับให้แก้ไข (บันทึกข้อความ)', "router.put('/memos/:id/return'"],
+  [reqRoute, 'ตรวจสอบคำขอลา', "router.put('/leaves/:id/review'"],
+];
+for (const [src, label, anchor] of HANDLERS) {
+  const n = nowInHandler(src, anchor);
+  check(n === 1, `${label}: เรียก auth.now() พอ 1 ครั้งใน handler (ได้ ${n})`,
+    n === -1 ? `ไม่พบ handler "${anchor}" ในไฟล์`
+      : 'ถ้าเรียกมากกว่า 1 ครั้ง ค่าจะต่างกันได้ข้ามวินาที\n'
+        + '      → approvals[].at กับ decided_at ในฐานจะไม่ตรงกัน');
+}
+check(/approvals\.push\(\{[\s\S]{0,400}?at: decidedAt/.test(approve),
+  'approveRequest ใส่ decidedAt เดียวลง approvals[].at ตั้งแต่ตอน push',
+  'ต้องใช้ค่าเดียวตั้งแต่แรก ไม่ใช่ push แล้วค่อยทับทีหลัง');
+check(/existingApprovals\.push\(\{[^}]*at: decidedAt/.test(reqRoute),
+  'ตรวจสอบคำขอลา ใช้ decidedAt เดียวกับทั้ง approvals[].at และ decided_at');
+check(!/row: \{ id: docId, is_read: 1, read_at/.test(adminRoute),
+  'ปุ่มอ่านหนังสือไม่คืน read_at ที่ประดัษฐานบันทึก (ฐานใช้ NOW() ของ MariaDB)',
+  'read_at ที่ได้จาก auth.now() เป็นค่าที่ไม่ได้บันทึกจริง → ห้ามคืน');
+
+console.log('');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

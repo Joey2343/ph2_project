@@ -1208,10 +1208,10 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
   // row = สถานะจริงหลังทำเครื่องหมายว่าอ่านแล้ว
   //   หน้าเว็บใช้อัปเดตแถวนี้ทันที ไม่ต้องรอผู้ใช้รีเฟรชเอง
   //   (เคยต้องรีเฟรชเพราะ response เดิมคืนแค่ { ok: true } ไม่มีข้อมูลให้อัปเดต)
-  res.json({
-    ok: true,
-    row: { id: docId, is_read: 1, read_at: auth.now() },
-  });
+  //   ⚠️ ไม่คืน read_at — ฐานเขียนด้วย NOW() ของ MariaDB
+  //     ถ้าเอา auth.now() มาใส่จะเป็นค่าที่ไม่ได้บันทึกจริง (ต่างกันได้)
+  //     และหน้าเว็บก็ไม่ได้ใช้ค่านี้อยู่แล้ว
+  res.json({ ok: true, row: { id: docId, is_read: 1 } });
 });
 
 // GET /my-incoming-registered - get documents registered as incoming by current user
