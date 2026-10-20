@@ -186,6 +186,10 @@ async function touchSession(token) {
  */
 async function purgeExpiredSessions() {
   const r = await db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now());
+  // การปลดล็อกหนังสือลับผูกกับ session — session หายแล้วต้องกรอกรหัสใหม่
+  try {
+    await db.prepare('DELETE FROM document_unlocks WHERE session_token NOT IN (SELECT token FROM sessions)').run();
+  } catch (_e) { /* ตารางยังไม่ถูกสร้าง (เรียกก่อน migrate) — ข้ามได้ */ }
   return r.changes || 0;
 }
 

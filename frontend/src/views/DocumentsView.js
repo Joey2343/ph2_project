@@ -18,6 +18,24 @@ import { Auth } from '../stores/auth.js';
 import { CONSTANTS } from '../constants/index.js';
 import * as PDFLib from 'pdf-lib';
 
+/**
+ * สไตล์ของปุ่ม "ลับ" (กระพริบ) ในฟอร์มส่งหนังสือ
+ * ใส่ <style> ครั้งเดียวต่อหน้า — ไม่แตะ theme.css (ไฟล์นั้นห้ามแก้)
+ */
+function ensureSecretStyle() {
+  if (document.getElementById('p2-secret-style')) return;
+  const st = document.createElement('style');
+  st.id = 'p2-secret-style';
+  st.textContent = [
+    '@keyframes p2SecretBlink {',
+    '  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }',
+    '  50% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); }',
+    '}',
+    '.p2-secret-btn.p2-blink { animation: p2SecretBlink 1.1s ease-out infinite; }',
+  ].join('\n');
+  document.head.appendChild(st);
+}
+
 export const DocumentsView = {
   async openSendForm(senderType) {
     const isSchool = senderType === 'school' || senderType === 'school_to_school';
@@ -45,9 +63,48 @@ export const DocumentsView = {
 
     // === ระดับความสำคัญ ===
     const priorityColors = { normal: '#10b981', urgent: '#f59e0b', very_urgent: '#f97316', most_urgent: '#ef4444' };
+
+    // --- หนังสือลับ: ปุ่มกระพริบ + กำหนดรหัสเปิดหนังสือ ---
+    // ผู้รับ (ปลายทาง) ต้องกรอกรหัสนี้ก่อนจึงจะเปิดหนังสือได้
+    ensureSecretStyle();
+    let secretOn = false;
+    const secretPanel = UI.h('div', {
+      id: 'send-secret-panel',
+      style: { display: 'none', marginTop: '8px', padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px' },
+    },
+      UI.h('div', { style: { fontSize: '13px', fontWeight: '600', color: '#b91c1c', marginBottom: '6px' } }, '🔒 หนังสือลับ — ผู้รับต้องกรอกรหัสนี้ก่อนเปิดหนังสือ'),
+      UI.h('div', { style: { display: 'flex', gap: '10px', flexWrap: 'wrap' } },
+        UI.h('div', { style: { flex: '1 1 180px' } },
+          UI.h('label', { style: { fontSize: '13px', color: '#334155' } }, 'รหัสเปิดหนังสือ', UI.h('span', { className: 'req' }, ' *')),
+          UI.h('input', { id: 'send-secret-code', type: 'password', autocomplete: 'new-password', placeholder: 'อย่างน้อย 4 ตัวอักษร', style: { width: '100%', boxSizing: 'border-box' } })),
+        UI.h('div', { style: { flex: '1 1 180px' } },
+          UI.h('label', { style: { fontSize: '13px', color: '#334155' } }, 'ยืนยันรหัส', UI.h('span', { className: 'req' }, ' *')),
+          UI.h('input', { id: 'send-secret-code2', type: 'password', autocomplete: 'new-password', placeholder: 'พิมพ์รหัสอีกครั้ง', style: { width: '100%', boxSizing: 'border-box' } }))),
+      UI.h('div', { style: { fontSize: '12.5px', color: '#991b1b', marginTop: '6px' } }, 'ต้องจำรหัสนี้ไว้ — ผู้รับจะเปิดได้เฉพาะเมื่อกรอกรหัสถูกต้อง'));
+
+    const secretBtn = UI.h('button', {
+      type: 'button',
+      id: 'send-secret-btn',
+      className: 'p2-secret-btn p2-blink',
+      style: { padding: '6px 16px', borderRadius: '6px', border: '2px dashed #dc2626', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: '13px', fontWeight: '700' },
+      onclick: function () {
+        secretOn = !secretOn;
+        secretPanel.style.display = secretOn ? 'block' : 'none';
+        secretBtn.textContent = secretOn ? '🔒 ลับ (กำหนดรหัสแล้ว)' : '🔒 ลับ';
+        secretBtn.className = secretOn ? 'p2-secret-btn' : 'p2-secret-btn p2-blink';
+        secretBtn.style.background = secretOn ? '#dc2626' : '#fff';
+        secretBtn.style.color = secretOn ? '#fff' : '#dc2626';
+        secretBtn.style.borderStyle = secretOn ? 'solid' : 'dashed';
+        if (secretOn) {
+          const el = document.getElementById('send-secret-code');
+          if (el) el.focus();
+        }
+      },
+    }, '🔒 ลับ');
+
     const priorityRow = UI.h('div', { style: { marginBottom: '10px' } },
       UI.h('label', { style: { fontSize: '13.5px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' } }, 'ระดับความสำคัญ'),
-      UI.h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+      UI.h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
         [{ value: 'normal', label: 'ปกติ' }, { value: 'urgent', label: 'ด่วน' }, { value: 'very_urgent', label: 'ด่วนมาก' }, { value: 'most_urgent', label: 'ด่วนที่สุด' }].map(function(p) {
           var isSelected = p.value === 'normal';
           var bg = isSelected ? priorityColors[p.value] : '#f1f5f9';
@@ -69,7 +126,9 @@ export const DocumentsView = {
             }
           }, p.label);
           return btn;
-        }))
+        }),
+        secretBtn),
+      secretPanel
     );
 
     // === เลขที่ / วันที่ ===
@@ -362,6 +421,15 @@ export const DocumentsView = {
       var priorityBtn = document.querySelector('.send-priority-btn[style*="rgb"]');
       if (!priorityBtn) priorityBtn = document.querySelector('.send-priority-btn');
       fd.append('priority', priorityBtn ? priorityBtn.getAttribute('data-value') : 'normal');
+      // หนังสือลับ: ส่งรหัสที่ผู้ส่งกำหนด (backend เก็บเป็น hash) — ผู้รับต้องกรอกก่อนเปิด
+      if (secretOn) {
+        const c1 = (document.getElementById('send-secret-code').value || '').trim();
+        const c2 = (document.getElementById('send-secret-code2').value || '').trim();
+        if (c1.length < 4) return UI.toast('รหัสเปิดหนังสือต้องมีอย่างน้อย 4 ตัวอักษร', 'error');
+        if (c1 !== c2) return UI.toast('รหัสเปิดหนังสือทั้งสองช่องไม่ตรงกัน', 'error');
+        fd.append('is_secret', '1');
+        fd.append('secret_code', c1);
+      }
       try {
         const res = await api.postForm('/documents', fd);
         UI.toast(res.message);

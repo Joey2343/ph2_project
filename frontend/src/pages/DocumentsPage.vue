@@ -282,7 +282,7 @@ onMounted(async () => {
 });
 
 /* ---------- ปุ่มด้านบน ---------- */
-const canEditRows = (r) => isAdmin.value || isOfficeDocStaff.value || r.created_by === Auth.user?.id;
+const canEditRows = (r) => !r.locked && (isAdmin.value || isOfficeDocStaff.value || r.created_by === Auth.user?.id);
 const canCert = (r) => isAdmin.value || isCertStaff.value;
 /**
  * ส่งกลับหนังสือให้โรงเรียนแก้ไข ได้เฉพาะ admin หรือเจ้าหน้าที่สารบัญเขต
@@ -310,7 +310,60 @@ const schoolDocPrefix = ref('');
 
 /** เปิดรายละเอียดหนังสือ */
 function openDetail(r) {
+  // หนังสือลับที่ยังไม่ปลดล็อก → ต้องกรอกรหัสจากผู้ส่งก่อน ถึงจะเปิดได้
+  if (r && r.locked) {
+    openUnlock(r);
+    return;
+  }
   detailDoc.value = r;
+}
+
+/* ---------- หนังสือลับ: ปลดล็อกด้วยรหัสจากผู้ส่ง ---------- */
+/** หนังสือที่กำลังจะปลดล็อก — null = ปิด dialog */
+const unlockDoc = ref(null);
+const unlockCode = ref('');
+const unlockError = ref('');
+const unlockBusy = ref(false);
+
+function openUnlock(r) {
+  unlockDoc.value = r;
+  unlockCode.value = '';
+  unlockError.value = '';
+  unlockBusy.value = false;
+}
+
+/**
+ * ส่งรหัสไปตรวจที่ backend
+ * สำเร็จ → backend คืน row ข้อมูลเต็ม (ปลดล็อกผูกกับ session นี้แล้ว)
+ * แล้วอัปเดตเฉพาะแถวนั้น + เปิดรายละเอียดให้ทันที
+ */
+async function submitUnlock() {
+  const r = unlockDoc.value;
+  if (!r) return;
+  const code = String(unlockCode.value || '').trim();
+  if (!code) {
+    unlockError.value = 'กรุณากรอกรหัสเปิดหนังสือ';
+    return;
+  }
+  unlockBusy.value = true;
+  unlockError.value = '';
+  try {
+    const res = await api.post('/documents/' + r.id + '/unlock', { code });
+    const row = res && res.row;
+    if (row) {
+      // คงสถานะอ่าน/ไม่อ่านของแถวเดิมไว้ (endpoint ปลดล็อกไม่ได้แตะตารางผู้รับ)
+      if (r.is_read !== undefined) row.is_read = r.is_read;
+      applyRow(docs.value, r.id, { row }, load);
+    }
+    unlockDoc.value = null;
+    UI.toast(res.message || 'ปลดล็อกหนังสือแล้ว');
+    const opened = docs.value.find((d) => String(d.id) === String(r.id)) || row;
+    if (opened) detailDoc.value = opened;
+  } catch (e) {
+    unlockError.value = e.message || 'รหัสไม่ถูกต้อง';
+  } finally {
+    unlockBusy.value = false;
+  }
 }
 
 /**
@@ -1018,7 +1071,16 @@ function showAllYears() {
             <!-- ---------- ปุ่มจัดการ ---------- -->
             <td>
               <div class="status-btns">
-                <button class="btn btn-xs btn-outline" @click="openDetail(r)">👁️</button>
+                <!-- หนังสือลับที่ยังไม่ปลดล็อก → ต้องกรอกรหัสจากผู้ส่งก่อนเปิด -->
+                <button
+                  v-if="r.locked"
+                  class="btn btn-xs btn-outline secret-open-btn"
+                  title="หนังสือลับ — กรอกรหัสเพื่อเปิด"
+                  @click="openUnlock(r)"
+                >
+                  🔓 เปิดด้วยรหัส
+                </button>
+                <button v-else class="btn btn-xs btn-outline" @click="openDetail(r)">👁️</button>
 
                 <!-- หนังสือรับรอง: ทำเครื่องหมายว่าเสร็จ -->
                 <button
@@ -1031,9 +1093,9 @@ function showAllYears() {
                   ✓
                 </button>
 
-                <!-- หนังสือรับ: ลงทะเบียนรับ -->
+                <!-- หนังสือรับ: ลงทะเบียนรับ (หนังสือลับต้องปลดล็อกก่อน) -->
                 <button
-                  v-if="currentType === 'incoming' && (isAdmin || isOfficeDocStaff)"
+                  v-if="currentType === 'incoming' && (isAdmin || isOfficeDocStaff) && !r.locked"
                   class="btn btn-xs btn-outline"
                   @click="openIncomingRegister(r)"
                 >
@@ -1215,9 +1277,40 @@ function showAllYears() {
 
     ⚠️ ถ้าจะเพิ่ม modal ใหม่ในหน้านี้ ต้องวาง "ก่อน" บล็อกนี้
   -->
+  <!-- ปลดล็อกหนังสือลับ: กรอกรหัสที่ผู้ส่งกำหนด -->
+  <AppModal v-if="unlockDoc" title="🔒 หนังสือลับ" footer @close="unlockDoc = null">
+    <p class="hint" style="margin-bottom: 10px">
+      หนังสือฉบับนี้เป็นหนังสือลับ — กรอกรหัสที่ผู้ส่งกำหนดไว้เพื่อเปิดอ่าน
+    </p>
+    <div class="form-group full">
+      <label>รหัสเปิดหนังสือ <span class="req"> *</span></label>
+      <input
+        v-model="unlockCode"
+        type="password"
+        autocomplete="off"
+        placeholder="กรอกรหัสจากผู้ส่ง"
+        @keyup.enter="submitUnlock"
+      />
+    </div>
+    <p v-if="unlockError" class="hint" style="color: #dc2626; margin-top: 6px">{{ unlockError }}</p>
+    <template #footer>
+      <button class="btn btn-outline" @click="unlockDoc = null">ยกเลิก</button>
+      <button class="btn btn-primary" :disabled="unlockBusy" @click="submitUnlock">
+        {{ unlockBusy ? 'กำลังตรวจสอบ...' : '🔓 เปิดหนังสือ' }}
+      </button>
+    </template>
+  </AppModal>
+
   <DocumentsReturnModal :doc="returnDoc" @close="returnDoc = null" @returned="onReturned" />
 </template>
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของเดิมทั้งหมด */
+
+/* ปุ่มเปิดหนังสือลับ (ผู้รับยังไม่ได้กรอกรหัส) */
+.secret-open-btn {
+  border-color: #dc2626;
+  color: #dc2626;
+  font-weight: 600;
+}
 </style>

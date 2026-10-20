@@ -259,6 +259,56 @@ router.get('/cert-staff/me', auth.requireAuth, async (req, res) => {
   res.json({ isCertStaff: await isCertStaffUser(req.user.id) });
 });
 
+/* ---------- หนังสือลับ (ผู้รับต้องใช้รหัสจากผู้ส่งก่อนเปิด) ---------- */
+
+/** เรื่องที่แสดงแทนหนังสือลับที่ยังไม่ปลดล็อก */
+const SECRET_TITLE = '🔒 หนังสือลับ — ต้องใช้รหัสจากผู้ส่งเพื่อเปิด';
+/** รหัสสั้นที่สุดที่ยอมรับ */
+const SECRET_MIN_LEN = 4;
+
+/**
+ * เตรียมแถวหนังสือก่อนส่งให้หน้าเว็บ
+ *
+ * ⚠️ secret_code_hash ห้ามหลุดออก API เด็ดขาด → ตัดทิ้งทุกครั้ง
+ * ⚠️ หนังสือลับที่ยังไม่ปลดล็อก → ปิดบังเรื่อง/ข้อความ/หมายเหตุ/ไฟล์ แล้วตั้ง locked = true
+ *    หน้าเว็บใช้ locked ตัดสินใจว่าจะเปิดรายละเอียดหรือถามรหัสก่อน
+ */
+async function prepareDocRows(rows, req) {
+  const list = Array.isArray(rows) ? rows : (rows ? [rows] : []);
+  const secretIds = list.filter((r) => r && Number(r.is_secret)).map((r) => Number(r.id));
+  let unlocked = new Set();
+  if (secretIds.length && req.sessionToken) {
+    const ph = secretIds.map(() => '?').join(',');
+    const got = await db
+      .prepare(`SELECT document_id FROM document_unlocks WHERE session_token = ? AND document_id IN (${ph})`)
+      .all(req.sessionToken, ...secretIds);
+    unlocked = new Set(got.map((r) => Number(r.document_id)));
+  }
+  const isAdmin = !!(req.user && req.user.role === 'admin');
+  const uid = req.user ? Number(req.user.id) : 0;
+  const out = list.map((r) => {
+    if (!r) return r;
+    const row = Object.assign({}, r);
+    delete row.secret_code_hash;
+    if (!Number(row.is_secret)) {
+      row.locked = false;
+      return row;
+    }
+    // ผู้ส่ง (เจ้าของหนังสือ) และ admin เปิดได้เลย — คนอื่นต้องปลดล็อกด้วยรหัสในเซสชันนี้
+    row.locked = !(isAdmin || Number(row.created_by) === uid || unlocked.has(Number(row.id)));
+    if (row.locked) {
+      row.title = SECRET_TITLE;
+      row.body_text = '';
+      row.note = '';
+      row.file = null;
+      row.file_names = '';
+      row.honor_saved_file = '';
+    }
+    return row;
+  });
+  return Array.isArray(rows) ? out : out[0];
+}
+
 router.get('/documents', auth.requireAuth, async (req, res) => {
   const { doc_type, q, year } = req.query;
   let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d
@@ -283,8 +333,43 @@ router.get('/documents', auth.requireAuth, async (req, res) => {
   const wg0 = (req.query.workgroup || '').trim(); if (wg0) { sql += ' AND d.workgroup = ?'; args.push(wg0); }
   const yc0 = docYearClause(year); if (yc0) { sql += yc0.clause; args.push(yc0.arg); }
   sql += ' ORDER BY d.id DESC';
-  res.json({ documents: await db.prepare(sql).all(...args) });
+  res.json({ documents: await prepareDocRows(await db.prepare(sql).all(...args), req) });
 });
+
+/**
+ * POST /documents/:id/unlock — ปลดล็อกหนังสือลับด้วยรหัสที่ผู้ส่งกำหนด
+ *
+ * ปลดล็อกผูกกับ session (คุกกี้ sid) → เปิดใหม่ในเบราว์เซอร์อื่นต้องกรอกรหัสอีกครั้ง
+ * คืน row ข้อมูลเต็มเพื่อให้หน้าเว็บอัปเดตแถวนั้นได้ทันที (ไม่ต้องโหลดตารางใหม่)
+ */
+router.post('/documents/:id/unlock', auth.requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'รหัสหนังสือไม่ถูกต้อง' });
+  const row = await db.prepare('SELECT id, is_secret, secret_code_hash FROM documents WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'ไม่พบหนังสือฉบับนี้' });
+  if (!Number(row.is_secret) || !row.secret_code_hash) {
+    return res.json({ ok: true, message: 'หนังสือนี้ไม่ได้ตั้งรหัสไว้', row: await getDocRow(id, req) });
+  }
+  const code = String((req.body && req.body.code) || '').trim();
+  if (!code) return res.status(400).json({ error: 'กรุณากรอกรหัสเปิดหนังสือ' });
+  const ok = await auth.verifyPassword(code, row.secret_code_hash);
+  if (!ok) return res.status(403).json({ error: 'รหัสไม่ถูกต้อง กรุณาตรวจสอบรหัสจากผู้ส่งหนังสือ' });
+  if (req.sessionToken) {
+    await db
+      .prepare('INSERT IGNORE INTO document_unlocks (session_token, document_id) VALUES (?, ?)')
+      .run(req.sessionToken, id);
+  }
+  res.json({ ok: true, message: 'ปลดล็อกหนังสือแล้ว', row: await getDocRow(id, req) });
+});
+
+/** อ่านหนังสือหนึ่งฉบับแบบเต็ม (ใช้ตอบหลังปลดล็อก) — ตัด hash และปิดบังตามสิทธิ์เหมือนรายการ */
+async function getDocRow(id, req) {
+  const row = await db
+    .prepare('SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ?')
+    .get(id);
+  if (!row) return null;
+  return await prepareDocRows(row, req);
+}
 
 const DOC_TYPES = ['incoming', 'outgoing', 'order', 'certificate', 'honor'];
 
@@ -428,13 +513,21 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   }
   const docSchoolCode = (req.user.school_code || '').trim();
   const isRegisteredVal = Number(b.is_registered) ? 1 : 0;
-  const info = await db.prepare(`INSERT INTO documents (doc_type, doc_no, reg_no, title, from_org, to_org, date, letter_date, category, file, file_names, note, created_by, body_text, priority, workgroup, sender_type, school_code, person_name, person_school, honor_signer, honor_template, honor_saved_file, is_registered, requester, cert_position, officer, owner_group, order_registrar)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(b.doc_type, (b.doc_no || '').trim(), autoRegNo, String(b.title).trim(),
+  // หนังสือลับ: ต้องมีรหัสอย่างน้อย 4 ตัวอักษร — เก็บเฉพาะ hash (bcrypt) ไม่เก็บรหัสจริง
+  const isSecretVal = Number(b.is_secret) ? 1 : 0;
+  const secretCode = String(b.secret_code || '').trim();
+  if (isSecretVal && secretCode.length < SECRET_MIN_LEN) {
+    return res.status(400).json({ error: 'รหัสเปิดหนังสือต้องมีอย่างน้อย ' + SECRET_MIN_LEN + ' ตัวอักษร' });
+  }
+  const secretHash = isSecretVal ? await auth.hashPassword(secretCode) : null;
+  const info = await db.prepare(`INSERT INTO documents (doc_type, doc_no, reg_no, title, from_org, to_org, date, letter_date, category, file, file_names, note, created_by, body_text, priority, workgroup, sender_type, school_code, person_name, person_school, honor_signer, honor_template, honor_saved_file, is_registered, requester, cert_position, officer, owner_group, order_registrar, is_secret, secret_code_hash)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(b.doc_type, (b.doc_no || '').trim(), autoRegNo, String(b.title).trim(),
     (b.from_org || '').trim(), (b.to_org || '').trim(), (b.date || simdate.todayISO()), (b.letter_date || '').trim(),
     (b.category || '').trim(), file, (b.file_names || '').trim(), (b.note || '').trim(), req.user.id,
     (b.body_text || '').trim(), (b.priority || 'normal').trim(), (b.workgroup || '').trim(), (b.sender_type || 'office').trim(), docSchoolCode,
     (b.person_name || '').trim(), (b.person_school || '').trim(), (b.honor_signer || '').trim(), (b.honor_template || '').trim(), (b.honor_saved_file || '').trim(), isRegisteredVal,
-    (b.requester || '').trim(), (b.cert_position || '').trim(), (b.officer || '').trim(), (b.owner_group || '').trim(), (b.order_registrar || '').trim());
+    (b.requester || '').trim(), (b.cert_position || '').trim(), (b.officer || '').trim(), (b.owner_group || '').trim(), (b.order_registrar || '').trim(),
+    isSecretVal, secretHash);
   const docId = info.lastInsertRowid;
   // Add recipients based on to_org
   const toOrg = (b.to_org || '').trim();
@@ -1327,7 +1420,7 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
   }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
-  res.json({ documents: docs });
+  res.json({ documents: await prepareDocRows(docs, req) });
 });
 
 // PUT /document-recipients/:docId/read - mark document as read
@@ -1383,7 +1476,7 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
-  res.json({ documents: docs });
+  res.json({ documents: await prepareDocRows(docs, req) });
 });
 
 // GET /my-outgoing-registered - get all outgoing registered documents
@@ -1406,7 +1499,7 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
   if (q) { sql += ' AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)'; const like = '%' + q + '%'; params.push(like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
-  res.json({ documents: docs });
+  res.json({ documents: await prepareDocRows(docs, req) });
 });
 // GET /my-orders - get order documents (คำสั่ง)
 router.get('/my-orders', auth.requireAuth, async (req, res) => {
@@ -1418,7 +1511,7 @@ router.get('/my-orders', auth.requireAuth, async (req, res) => {
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ? OR d.owner_group LIKE ? OR d.order_registrar LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
-  res.json({ documents: docs });
+  res.json({ documents: await prepareDocRows(docs, req) });
 });
 // GET /my-certificates - get certificate documents (หนังสือรับรอง)
 router.get('/my-certificates', auth.requireAuth, async (req, res) => {
@@ -1430,7 +1523,7 @@ router.get('/my-certificates', auth.requireAuth, async (req, res) => {
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
-  res.json({ documents: docs });
+  res.json({ documents: await prepareDocRows(docs, req) });
 });
 // GET /my-honors - get honor documents (เกียรติบัตร) — แนบชื่อผู้ลงนามมาด้วย
 router.get('/my-honors', auth.requireAuth, async (req, res) => {
@@ -1444,7 +1537,7 @@ router.get('/my-honors', auth.requireAuth, async (req, res) => {
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.person_name LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
-  res.json({ documents: docs });
+  res.json({ documents: await prepareDocRows(docs, req) });
 });
 
 router.get('/workplace-groups', auth.requireAuth, async (req, res) => {

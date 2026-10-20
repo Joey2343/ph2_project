@@ -114,7 +114,19 @@ CREATE TABLE IF NOT EXISTS \`documents\` (
   \`revision_note\` mediumtext DEFAULT NULL,
   \`returned_at\` varchar(30) DEFAULT NULL,
   \`returned_by\` int(11) DEFAULT NULL,
+  \`is_secret\` int(11) NOT NULL DEFAULT 0,
+  \`secret_code_hash\` varchar(255) DEFAULT NULL,
   PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS \`document_unlocks\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`session_token\` varchar(191) NOT NULL,
+  \`document_id\` int(11) NOT NULL,
+  \`created_at\` varchar(30) NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (\`id\`),
+  UNIQUE KEY \`session_doc\` (\`session_token\`,\`document_id\`),
+  KEY \`document_id\` (\`document_id\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS \`document_reads\` (
@@ -506,6 +518,10 @@ const COLUMN_MIGRATIONS = [
   ['documents', 'revision_note', "revision_note MEDIUMTEXT COLLATE utf8mb4_bin"],
   ['documents', 'returned_at', "returned_at VARCHAR(200) COLLATE utf8mb4_bin"],
   ['documents', 'returned_by', "returned_by INT DEFAULT NULL"],
+  // หนังสือลับ: is_secret = 1 → ผู้รับต้องกรอกรหัสที่ผู้ส่งกำหนดก่อนเปิดหนังสือ
+  // เก็บเฉพาะ hash (bcrypt) ของรหัส ไม่เก็บรหัสจริง
+  ['documents', 'is_secret', "is_secret INT NOT NULL DEFAULT 0"],
+  ['documents', 'secret_code_hash', "secret_code_hash VARCHAR(255) COLLATE utf8mb4_bin DEFAULT NULL"],
   ['document_staff', 'doc_prefix', "doc_prefix VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT ''"],
   ['document_recipients', 'as_school', "as_school VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT \"\""],
   ['time_records', 'clock_in_src', "clock_in_src VARCHAR(2000) COLLATE utf8mb4_bin"],

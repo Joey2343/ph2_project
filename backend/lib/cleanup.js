@@ -93,12 +93,13 @@ async function purgeUser(userId) {
   await removeUserFromSettings(id);
 }
 
-/** ลบข้อมูลลูกของหนังสือราชการ (ผู้รับ + สถานะการอ่าน) — เรียกก่อน DELETE FROM documents */
+/** ลบข้อมูลลูกของหนังสือราชการ (ผู้รับ · สถานะการอ่าน · การปลดล็อกหนังสือลับ) — เรียกก่อน DELETE FROM documents */
 async function purgeDocumentChildren(docId) {
   const id = Number(docId);
   if (!id) return;
   await db.prepare('DELETE FROM document_recipients WHERE document_id = ?').run(id);
   await db.prepare('DELETE FROM document_reads WHERE doc_id = ?').run(id);
+  await db.prepare('DELETE FROM document_unlocks WHERE document_id = ?').run(id);
 }
 
 /** ลบการจองที่ผูกกับยานพาหนะ (พร้อมข้อความแจ้งเตือนของการจองนั้น) — เรียกก่อน DELETE FROM vehicles */
