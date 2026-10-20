@@ -46,7 +46,7 @@ const VUE_PAGES = {
     mustHave: ['content-block', 'page-head'],
   },
   academic: {
-    title: 'บริหารงานวิชาการ',
+    title: 'โครงการ',
     mustHave: ['page-head'],
     hasRows: true,
   },

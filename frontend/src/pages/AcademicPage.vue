@@ -146,7 +146,7 @@ onMounted(load);
 <template>
   <div class="page-head">
     <div>
-      <div class="page-title"><span class="pi">📚</span>บริหารงานวิชาการ</div>
+      <div class="page-title"><span class="pi">📚</span>โครงการ</div>
       <div class="page-desc">โครงการและกิจกรรมทางวิชาการของหน่วยงาน</div>
     </div>
     <button v-if="Auth.isAdmin()" class="btn btn-primary" @click="openCreate">+ เพิ่มโครงการ/กิจกรรม</button>
