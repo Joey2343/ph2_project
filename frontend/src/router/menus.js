@@ -18,7 +18,7 @@ export const MENUS = [
   { key: 'travel-school', icon: '✈', title: 'ขออนุญาตไปราชการ (สถานศึกษา)', desc: 'ยื่นคำขอเดินทางไปราชการ (เจ้าหน้าที่สถานศึกษา)', grad: 'linear-gradient(135deg,#9f1239,#fb7185)', member: true },
   { key: 'leave', icon: '☀', title: 'ขออนุญาตลา', desc: 'ยื่นคำขอลาประเภทต่าง ๆ', grad: 'linear-gradient(135deg,#ea580c,#fb923c)', member: true },
   { key: 'budgets', icon: '฿', title: 'บริหารงบประมาณ', desc: 'แผนงบประมาณและการใช้จ่าย', grad: 'linear-gradient(135deg,#047857,#10b981)', member: true },
-  { key: 'academic', icon: '📖', title: 'โครงการ', desc: 'โครงการและกิจกรรมทางวิชาการ', grad: 'linear-gradient(135deg,#4338ca,#6366f1)', member: true },
+  { key: 'academic', icon: '📖', title: 'โครงการ', desc: 'โครงการและกิจกรรม', grad: 'linear-gradient(135deg,#4338ca,#6366f1)', member: true },
   { key: 'staff', icon: '☺', title: 'เจ้าหน้าที่ในสำนักงาน', desc: 'จัดการสมาชิกและอนุมัติการสมัคร', grad: 'linear-gradient(135deg,#0891b2,#06b6d4)', member: true, adminOnly: true },
 ];
 
