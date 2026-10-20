@@ -557,9 +557,14 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
 
 router.get('/time/mine', auth.requireAuth, async (req, res) => {
   const month = req.query.month || simdate.todayISO().slice(0, 7);
-  const rows = await db.prepare(`SELECT * FROM time_records WHERE user_id = ? AND date LIKE ?
+  const date = req.query.date || '';
+  // ส่ง date มา = ดูเฉพาะวันนั้น (หน้าเว็บใช้แบบนี้) · ไม่ส่ง = ทั้งเดือน
+  const rows = date
+    ? await db.prepare(`SELECT * FROM time_records WHERE user_id = ? AND date = ?
+    ORDER BY date DESC`).all(req.user.id, date)
+    : await db.prepare(`SELECT * FROM time_records WHERE user_id = ? AND date LIKE ?
     ORDER BY date DESC`).all(req.user.id, month + '%');
-  res.json({ records: rows, month, can_edit: await isTimeEditor(req.user) });
+  res.json({ records: rows, month, date: date || null, can_edit: await isTimeEditor(req.user) });
 });
 
 // ดูบันทึกเวลาทั้งหมด — admin และผู้ที่ได้รับสิทธิ์ (เห็นเหมือน admin)

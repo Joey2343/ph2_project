@@ -10,7 +10,7 @@
  *   - ตรวจตำแหน่ง: มือถือ/แท็บเล็ต → GPS · คอมพิวเตอร์/แล็ปท็อป → IP
  *     พร้อมข้อความแจ้งเตือนแยกตามสาเหตุที่ระบุตำแหน่งไม่ได้
  *   - สิทธิ์ดูทั้งหมด: admin หรือผู้ได้รับสิทธิ์ (is_time_editor)
- *   - ภาพรวมวันนี้ 3 ช่อง · ตัวกรองเดือน (พ.ศ.) · แก้ไข/ลบบันทึก
+ *   - ภาพรวมวันนี้ 3 ช่อง · ตัวกรองวันที่ (ปฏิทิน พ.ศ.) แสดงทีละวัน · แก้ไข/ลบบันทึก
  *   - รายงาน cascade ปี→เดือน→สัปดาห์→วัน + ดาวน์โหลด .xlsx + พิมพ์
  *   - admin: ตั้งค่าตำแหน่ง (GPS/IP) + เลือกผู้มีสิทธิ์แก้ไขเวลา
  */
@@ -19,6 +19,7 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import AppModal from '../components/ui/AppModal.vue';
+import ThaiDateField from '../components/ui/ThaiDateField.vue';
 
 /* ---------- สิทธิ์ ---------- */
 const canViewAll = computed(() => Auth.isAdmin() || !!(Auth.user && Auth.user.is_time_editor));
@@ -118,17 +119,25 @@ async function doCheck(type) {
 /* ---------- ภาพรวมวันนี้ ---------- */
 const stats = ref(null);
 
-/* ---------- ตารางบันทึกเวลา ---------- */
+/* ---------- ตารางบันทึกเวลา (แสดงวันเดียว) ---------- */
 const tableLoading = ref(true);
 const tableError = ref('');
 const records = ref([]);
 const canEditMine = ref(false);
-/** เดือนที่เลือก (YYYY-MM ค.ศ.) */
-const month = ref(new Date().toISOString().slice(0, 7));
+
+/** วันนี้ตามเวลาท้องถิ่น (YYYY-MM-DD) — UI.today() คิดจาก UTC จึงใช้ไม่ได้ช่วงเช้ามืด */
+function localTodayISO() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** วันที่เลือกจากปฏิทิน (YYYY-MM-DD ค.ศ.) — ค่าเริ่มต้นคือวันนี้ */
+const day = ref(localTodayISO());
+const dayLabel = computed(() => UI.thaiDate(day.value));
 /** 'all' = ทั้งหน่วยงาน · 'mine' = ของฉัน */
 const scope = ref(canViewAll.value ? 'all' : 'mine');
-
-const monthBE = computed(() => UI.isoToBEMonth(month.value));
 
 /*
  * เรียงจากใหม่ → เก่า
@@ -150,17 +159,23 @@ function sortNewestFirst(rows) {
   });
 }
 
+/** เลือกวันจากปฏิทิน → โหลดรายการของวันนั้น */
+function onDayChange(iso) {
+  day.value = iso || localTodayISO();
+  loadRecords();
+}
+
 async function loadRecords() {
   tableLoading.value = true;
   tableError.value = '';
-  const m = UI.beMonthToISO(monthBE.value) || month.value;
+  const d = day.value || localTodayISO();
   try {
     if (scope.value === 'all') {
-      const data = await api.get('/time/all?month=' + encodeURIComponent(m));
+      const data = await api.get('/time/all?date=' + encodeURIComponent(d));
       records.value = sortNewestFirst(data.records || []);
       canEditMine.value = true;
     } else {
-      const data = await api.get('/time/mine?month=' + encodeURIComponent(m));
+      const data = await api.get('/time/mine?date=' + encodeURIComponent(d));
       records.value = sortNewestFirst(data.records || []);
       canEditMine.value = !!data.can_edit;
     }
@@ -445,6 +460,8 @@ async function saveEditors() {
 
 onMounted(async () => {
   await loadToday();
+  // ใช้ "วันนี้" ของเซิร์ฟเวอร์ (รองรับโหมดจำลองวันที่) เป็นค่าเริ่มต้นของตาราง
+  if (today.value && today.value !== day.value) day.value = today.value;
   await loadRecords();
 
   // นาฬิกาเดินทุกวินาที
@@ -554,17 +571,11 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <!-- ---------- ตัวกรอง ---------- -->
+  <!-- ---------- ตัวกรอง (ปฏิทินไทย เลือกได้ทีละวัน) ---------- -->
   <div class="filter-row">
-    <input
-      id="clock-month"
-      :value="monthBE"
-      type="text"
-      inputmode="numeric"
-      placeholder="ดด/ปปปป (พ.ศ.)"
-      style="min-width: 130px"
-      @change="month = UI.beMonthToISO($event.target.value) || month; loadRecords()"
-    />
+    <div class="clock-day-picker">
+      <ThaiDateField id="clock-day" :model-value="day" @update:model-value="onDayChange" />
+    </div>
     <button class="btn btn-outline btn-sm" @click="loadRecords">⊕ แสดงข้อมูล</button>
     <button v-if="canViewAll" class="btn btn-info btn-sm" @click="reportOpen = true">📊 รายงาน</button>
     <div v-if="Auth.isAdmin()" style="display: flex; gap: 8px">
@@ -574,17 +585,17 @@ onBeforeUnmount(() => {
     <span v-else-if="canViewAll" class="hint" style="margin-left: auto">คุณมีสิทธิ์แก้ไข/ดูบันทึกเวลาทั้งหมด</span>
   </div>
 
-  <!-- ---------- ตารางบันทึกเวลา ---------- -->
+  <!-- ---------- ตารางบันทึกเวลา (เฉพาะวันที่เลือก) ---------- -->
   <div class="card">
     <div v-if="tableLoading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>
     <div v-else-if="tableError" class="empty-state"><span class="em">⚠️</span>{{ tableError }}</div>
     <div v-else-if="records.length === 0" class="empty-state">
-      <span class="em">🗓️</span>ยังไม่มีข้อมูลการลงเวลาในเดือนนี้
+      <span class="em">🗓️</span>ยังไม่มีข้อมูลการลงเวลาในวันที่เลือก
     </div>
 
     <template v-else>
       <div class="card-title">
-        ▭ {{ scope === 'all' ? 'บันทึกเวลาทำงานของเจ้าหน้าที่' : 'บันทึกเวลาของฉัน (' + monthBE + ')' }}
+        ▭ {{ scope === 'all' ? 'บันทึกเวลาทำงานของเจ้าหน้าที่ (' + dayLabel + ')' : 'บันทึกเวลาของฉัน (' + dayLabel + ')' }}
       </div>
       <div class="table-wrap">
         <table class="tbl">
@@ -805,4 +816,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของระบบเดิมทั้งหมด */
+
+/* ช่องปฏิทินในแถบตัวกรอง — ให้กว้างเท่าช่องเดิม และซ่อนข้อความวันที่ที่ซ้ำกับในช่อง */
+.clock-day-picker :deep(input) {
+  min-width: 130px;
+}
+.clock-day-picker :deep(.hint) {
+  display: none;
+}
 </style>
