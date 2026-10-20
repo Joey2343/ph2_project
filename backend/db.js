@@ -549,6 +549,24 @@ async function migrate() {
     await ensureColumn(table, col, ddl);
   }
 
+  /*
+   * แก้ไข charset ของคอลัมน์ revision_note ที่สร้างไว้ก่อนหน้านี้
+   * (บน production ที่ติดตั้งก่อนการแก้ไขนี้ collation อาจไม่ใช่ utf8mb4_bin)
+   * ทำเฉพาะเมื่อคอลัมน์มีอยู่แล้วและ collation ไม่ตรง → ปลอดภัย รันซ้ำได้
+   */
+  async function fixRevisionNoteCharset() {
+    const col = await db.prepare(`
+      SELECT COLLATION_NAME
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents' AND COLUMN_NAME = 'revision_note'
+    `).get();
+    if (col && col.COLLATION_NAME !== 'utf8mb4_bin') {
+      await db.exec("ALTER TABLE \`documents\` MODIFY COLUMN \`revision_note\` MEDIUMTEXT COLLATE utf8mb4_bin");
+      console.log('[migrate] แก้ไข documents.revision_note COLLATE → utf8mb4_bin');
+    }
+  }
+  await fixRevisionNoteCharset();
+
   // ผู้ใช้เดิม role 'member' → เปลี่ยนเป็น 'staff' (เจ้าหน้าที่ในสำนักงาน)
   await db.prepare("UPDATE users SET role = 'staff' WHERE role = 'member'").run();
 
