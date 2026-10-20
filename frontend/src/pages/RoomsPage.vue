@@ -115,6 +115,11 @@ const conflictBusy = ref(false);
 
 const availableRooms = computed(() => rooms.value.filter((r) => r.status === 'available'));
 
+/** ห้องที่เลือกในฟอร์มจอง — ใช้แสดงอุปกรณ์และสถานะใต้ช่องเลือกห้อง */
+const selectedRoom = computed(
+  () => rooms.value.find((r) => Number(r.id) === Number(bk.value.room_id)) || null,
+);
+
 function openBookingForm() {
   bk.value = { room_id: '', date: UI.today(), start_time: '', end_time: '', topic: '', attendees: 10 };
   conflict.value = [];
@@ -586,6 +591,13 @@ function openExportDialog() {
             {{ r.name }} (รองรับ {{ r.capacity }} คน)
           </option>
         </select>
+        <!-- คำอธิบายห้องที่เลือก: อุปกรณ์ (จากคอลัมน์ equipment) และสถานะ (จากคอลัมน์ status) -->
+        <div v-if="selectedRoom" class="room-info">
+          <div>อุปกรณ์: {{ selectedRoom.equipment || 'ไม่ระบุ' }}</div>
+          <div>
+            สถานะ: <StatusBadge :status="selectedRoom.status" />
+          </div>
+        </div>
       </div>
       <div class="form-group">
         <label>วันที่ใช้ <span class="req"> *</span></label>
@@ -759,4 +771,12 @@ function openExportDialog() {
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของระบบเดิมทั้งหมด */
+
+/* คำอธิบายห้องที่เลือก (อุปกรณ์ / สถานะ) ใต้ช่องเลือกห้องประชุม */
+.room-info {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
 </style>
