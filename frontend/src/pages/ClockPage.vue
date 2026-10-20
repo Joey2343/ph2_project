@@ -130,6 +130,26 @@ const scope = ref(canViewAll.value ? 'all' : 'mine');
 
 const monthBE = computed(() => UI.isoToBEMonth(month.value));
 
+/*
+ * เรียงจากใหม่ → เก่า
+ *   · วันล่าสุดขึ้นก่อน (date เป็น string 'YYYY-MM-DD' เพราะ connection ตั้ง dateStrings: true)
+ *   · วันเดียวกัน เรียงตามเวลาเข้าล่าสุดก่อน (คนที่ลงเวลาล่าสุดอยู่บนสุด)
+ *   · แถวที่ยังไม่มีเวลาเข้า (clock_in ว่าง) ไปท้ายสุด
+ */
+function sortNewestFirst(rows) {
+  return rows.slice().sort((a, b) => {
+    const d1 = String(a.date || '');
+    const d2 = String(b.date || '');
+    if (d1 !== d2) return d2.localeCompare(d1);
+    const t1 = String(a.clock_in || '');
+    const t2 = String(b.clock_in || '');
+    if (!t1 && !t2) return 0;
+    if (!t1) return 1;
+    if (!t2) return -1;
+    return t2.localeCompare(t1);
+  });
+}
+
 async function loadRecords() {
   tableLoading.value = true;
   tableError.value = '';
@@ -137,11 +157,11 @@ async function loadRecords() {
   try {
     if (scope.value === 'all') {
       const data = await api.get('/time/all?month=' + encodeURIComponent(m));
-      records.value = data.records || [];
+      records.value = sortNewestFirst(data.records || []);
       canEditMine.value = true;
     } else {
       const data = await api.get('/time/mine?month=' + encodeURIComponent(m));
-      records.value = data.records || [];
+      records.value = sortNewestFirst(data.records || []);
       canEditMine.value = !!data.can_edit;
     }
   } catch (e) {

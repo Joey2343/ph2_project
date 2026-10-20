@@ -324,7 +324,23 @@ onMounted(async () => {
   // การ์ดสถานะวันนี้ — ทุกคนฝั่งสำนักงาน
   if (!isSchoolUser.value) {
     try {
-      todaySummary.value = await api.get('/today-summary');
+      const summary = await api.get('/today-summary');
+      /*
+       * การ์ด "มาทำงานวันนี้" ให้คนที่ลงเวลาเข้าล่าสุดอยู่บนสุด
+       * (backend เรียงตามชื่อ — เรียงใหม่ที่นี่ที่เดียว ไม่ต้องแตะ API)
+       * clock_in เป็น string 'HH:MM:SS' เพราะ connection ตั้ง dateStrings: true
+       */
+      if (summary && Array.isArray(summary.worked)) {
+        summary.worked = summary.worked.slice().sort((a, b) => {
+          const t1 = String(a.clock_in || '');
+          const t2 = String(b.clock_in || '');
+          if (!t1 && !t2) return 0;
+          if (!t1) return 1;
+          if (!t2) return -1;
+          return t2.localeCompare(t1);
+        });
+      }
+      todaySummary.value = summary;
     } catch {
       /* ไม่แสดง */
     }
