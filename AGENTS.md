@@ -293,6 +293,19 @@ cd backend  && npm start       # Express เสิร์ฟเองที่ ht
 
 ถ้ายังไม่ได้ build ระบบจะขึ้นข้อความแนะนำให้ใช้ dev server แทน
 
+**บนเซิร์ฟเวอร์จริง ไฟล์ static ไม่ได้เสิร์ฟโดย Express แต่โดย Apache จาก `public_html`**
+(ดู `.github/workflows/deploy.yml` ขั้น 8) ดังนั้น:
+
+- `Cache-Control` ที่ `server.js` ตั้งไว้ (บรรทัด `setHeaders` / SPA fallback)
+  **ไม่มีผลกับ production** — ต้องตั้งใน `.htaccess` ที่ `public_html`
+- deploy จะจัดการบล็อก `# >>> P2-SMART cache headers >>>` ใน `.htaccess` ให้เอง
+  (ลบของเก่าแล้วใส่ใหม่ → ไม่ซ้ำ และไม่ทับ directive อื่นของ DirectAdmin)
+  - `index.html` → `no-cache` (ชื่อไฟล์คงที่แต่เนื้อหาเปลี่ยนทุก deploy)
+  - ไฟล์ที่มี hash ในชื่อ (`*-AbCd1234.js`) → `max-age=31536000, immutable`
+- ถ้า Apache ตั้ง `AllowOverride` ไม่ให้ใช้ `Header` ทั้งเว็บจะเป็น 500
+  → ขั้น 8.2 ตรวจและ **คืน `.htaccess` เดิมให้อัตโนมัติ** พร้อมทำให้ deploy แดง
+  (ถ้าเจอกรณีนี้ ต้องขอผู้ดูแลเซิร์ฟเวอร์เปิด `AllowOverride FileInfo`)
+
 ### 3.8 ตัวแปรแวดล้อม
 
 ไฟล์ `backend/.env` รองรับ:

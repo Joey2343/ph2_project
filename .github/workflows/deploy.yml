@@ -184,6 +184,79 @@ jobs:
               echo "    ล้างไฟล์เก่า $STALE ไฟล์"
             fi
 
+            echo ">>> 8.1 ตั้งค่า Cache-Control ที่ web root (.htaccess)"
+            # ⚠️ production เสิร์ฟไฟล์ด้วย Apache (public_html) ไม่ใช่ Express
+            #    ค่าที่ server.js ตั้งไว้จึงไม่มีผลกับไฟล์ที่ Apache ส่งเอง
+            #
+            #    ปัญหาที่เคยเจอ: index.html ไม่มี Cache-Control → เบราว์เซอร์เดาเอง
+            #    (heuristic caching) แล้วใช้ index เก่าหลัง deploy ผู้ใช้เห็นหน้าเดิม
+            #    จนกว่าจะกด Ctrl+F5
+            #
+            #    วิธีแก้: จัดการบล็อกของเราเองใน .htaccess แบบ "ลบของเก่าแล้วใส่ใหม่"
+            #      - ไม่แตะ directive อื่นของ DirectAdmin (ลบเฉพาะระหว่าง marker)
+            #      - ทำซ้ำได้ (idempotent) ไม่ต่อซ้ำทุกครั้งที่ deploy
+            #      - ถ้าจะเลิกใช้ ให้ลบบล็อกในไฟล์นี้ แล้ว deploy อีกครั้ง = ถูกถอดออก
+            #
+            #    ห่อด้วย IfModule mod_headers.c — ถ้าเซิร์ฟเวอร์ไม่ได้เปิดโมดูลนี้
+            #    Apache จะข้ามไป ไม่ทำให้ทั้งเว็บเป็น 500
+            HTC="$WEB_DIR/.htaccess"
+            HTC_TMP="$WEB_DIR/.htaccess.p2tmp"
+            HTC_BAK="$WEB_DIR/.htaccess.p2bak"
+            # เก็บของเดิมไว้ เผื่อ directive ที่เพิ่มไปทำให้ Apache ตอบ 500
+            if [ -f "$HTC" ]; then
+              cp -p "$HTC" "$HTC_BAK" || cp "$HTC" "$HTC_BAK" || true
+            fi
+            if [ -f "$HTC" ] \
+               && grep -q '^# >>> P2-SMART cache headers >>>$' "$HTC" \
+               && grep -q '^# <<< P2-SMART cache headers <<<$' "$HTC"; then
+              # มีบล็อกเดิมครบทั้งหัวและท้าย → ตัดออกก่อน แล้วค่อยใส่ใหม่
+              awk '/^# >>> P2-SMART cache headers >>>$/{skip=1}
+                   !skip{print}
+                   /^# <<< P2-SMART cache headers <<<$/{skip=0}' "$HTC" > "$HTC_TMP"
+            elif [ -f "$HTC" ]; then
+              # ไม่มีบล็อกของเรา (หรือ marker ไม่ครบ) → คัดลอกไว้ทั้งไฟล์ ห้ามตัดทิ้ง
+              cat "$HTC" > "$HTC_TMP"
+            else
+              : > "$HTC_TMP"
+            fi
+            cat >> "$HTC_TMP" <<'HTACCESS'
+
+            # >>> P2-SMART cache headers >>>
+            # index.html ต้องตรวจสอบกับเซิร์ฟเวอร์ทุกครั้ง (ชื่อไฟล์คงที่ แต่เนื้อหาเปลี่ยนทุก deploy)
+            # ไฟล์ใน /assets/ มี hash ในชื่อแล้ว จึงแคชได้ยาวและไม่ต้องตรวจซ้ำ
+            <IfModule mod_headers.c>
+              <FilesMatch "^index\.html$">
+                Header set Cache-Control "no-cache, no-store, must-revalidate"
+              </FilesMatch>
+              <FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css|woff2?|png|jpe?g|gif|svg|webp|ico)$">
+                Header set Cache-Control "public, max-age=31536000, immutable"
+              </FilesMatch>
+            </IfModule>
+            # <<< P2-SMART cache headers <<<
+            HTACCESS
+            # เขียนทับเนื้อหาเดิมในไฟล์เดิม (คงเจ้าของ/สิทธิ์ของ .htaccess ไว้)
+            cat "$HTC_TMP" > "$HTC"
+            rm -f "$HTC_TMP"
+            echo "    อัปเดต Cache-Control ใน .htaccess แล้ว"
+
+            echo ">>> 8.2 ตรวจว่าเว็บยังเปิดได้หลังแก้ .htaccess"
+            # ⚠️ ถ้า Apache ตั้ง AllowOverride ไม่ให้ใช้ Header ใน .htaccess
+            #    ทั้งเว็บจะกลายเป็น 500 — ต้องคืนไฟล์เดิมทันที ไม่ปล่อยให้เว็บล่ม
+            SITE_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+              -H "Host: p2-smart.phrae2.go.th" http://127.0.0.1/ || echo 000)
+            if [ "$SITE_CODE" = "500" ]; then
+              echo "!! Apache ตอบ 500 หลังแก้ .htaccess → คืนไฟล์เดิม"
+              if [ -f "$HTC_BAK" ]; then
+                cp -p "$HTC_BAK" "$HTC" || cp "$HTC_BAK" "$HTC"
+              else
+                rm -f "$HTC"
+              fi
+              echo "   คืน .htaccess เดิมแล้ว (เว็บใช้งานได้ตามเดิม แต่ยังไม่มี Cache-Control)"
+              exit 1
+            fi
+            echo "    Apache ตอบ HTTP $SITE_CODE"
+            rm -f "$HTC_BAK"
+
             echo ">>> 9. ตรวจว่าเซิร์ฟเวอร์ตอบกลับ"
             # ⚠️ เดิมเช็คแค่ /api/office ซึ่งเป็น endpoint สาธารณะ ไม่แตะตาราง sessions
             #    ถ้า deploy ทำให้ "ล็อกอิน" พัง แต่ /api/office ยังตอบได้
