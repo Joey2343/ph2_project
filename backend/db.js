@@ -503,7 +503,7 @@ const COLUMN_MIGRATIONS = [
   //   ตาราง documents มีคอลัมน์กว้าง ๆ อยู่แล้วหลายตัว
   //   VARCHAR(8000) utf8mb4 = 32,000 ไบต์ → รวมแล้วเกินลิมิตแถว 65,535 (ER_TOO_BIG_ROWSIZE)
   ['documents', 'status', "status VARCHAR(255) COLLATE utf8mb4_bin NOT NULL DEFAULT 'received'"],
-  ['documents', 'revision_note', "revision_note MEDIUMTEXT"],
+  ['documents', 'revision_note', "revision_note MEDIUMTEXT COLLATE utf8mb4_bin"],
   ['documents', 'returned_at', "returned_at VARCHAR(200) COLLATE utf8mb4_bin"],
   ['documents', 'returned_by', "returned_by INT DEFAULT NULL"],
   ['document_staff', 'doc_prefix', "doc_prefix VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT ''"],

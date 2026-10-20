@@ -147,17 +147,71 @@ router.put('/documents/:id/return', auth.requireAuth, async (req, res) => {
   const note = ((req.body || {}).note || '').trim();
   if (!note) return res.status(400).json({ error: 'กรุณากรอกสาเหตุที่ส่งกลับเพื่อแก้ไข' });
 
+  /*
+   * กันข้อความที่เสียรูปแบบ — เคยเจอจริงในระบบจริง (ซ้ำ 2 ครั้ง)
+   *
+   * อาการ: ผู้ใช้พิมพ์/วางสาเหตุภาษาไทย → บันทึกเป็น "????????" (1 ตัวต่อ 1 อักษร)
+   *   ทั้งช่อง "เรื่อง" "หมายเหตุ" ของหนังสือเดียวกันกลับมาสมบูรณ์
+   *   ทดสอบที่เครื่องผมผ่าน → ไม่ใช่ปัญหา browser หรือ JSON body
+   *   วัดแล้วว่า server ได้รับค่าเป็น ? อยู่แล้ว → ต้นเหตุอยู่ที่ชั้นใดชั้นหนึ่ง
+   *   ระหว่าง server → ฐานข้อมูล (เช่น คอลัมน์มี charset ต่างจาก utf8mb4)
+   *
+   *   ⚠️ เดิมไม่มีการตรวจ → บันทึกของเสียลงฐานเงียบ ๆ
+   *      โรงเรียนเห็นแต่เครื่องหมายคำถาม และไม่มีใครรู้ว่าต้นเหตุอยู่ที่ไหน
+   *      เจอซ้ำ 2 ครั้งจนต้องย้อนกลับไปตรวจทีละชั้น
+   *
+   * เงื่อนไขปฏิเสธ: ข้อความ "ไม่มีอักษรไทย/ตัวเลข/อักษรอังกฤษเลย" และมี ? ตั้งแต่ 3 ตัวขึ้นไป
+   *   ไม่กวนกับการใช้งานจริง เช่น "ขอแก้เลขที่ 2" หรือหมายเหตุเป็นภาษาอังกฤษ
+   */
+  const hasRealContent = /[\u0E00-\u0E7F0-9A-Za-z]/.test(note);
+  const qRun = (note.match(/\?{3,}/g) || []).length;
+  if (!hasRealContent && qRun > 0) {
+    console.warn('[documents/return] ข้อความส่งกลับเป็น ? ทั้งหมด — ข้อความที่ server ได้รับคือ:', JSON.stringify(note));
+    return res.status(400).json({
+      // เขียนตามที่วัดได้จริง: server ได้รับข้อความนี้มาแล้ว และมันไม่มีอักษรจริงเลย
+      error: 'ข้อความที่ส่งมามีแต่เครื่องหมาย (?) ไม่มีตัวอักษรจริงเลย\n'
+        + 'ระบบจึงยังไม่บันทึก เพื่อไม่ให้โรงเรียนเห็นแต่เครื่องหมายคำถาม\n\n'
+        + 'ลองวิธีใดวิธีหนึ่ง:\n'
+        + '· คัดลอกข้อความภาษาไทยจากที่อื่นมาวาง (Ctrl+V) แทนการพิมพ์\n'
+        + '· ถ้ายังเป็น ? เช่นเดิม แจ้งผู้ดูแลระบบให้ตรวจการตั้งค่า charset ของฐานข้อมูล',
+      debug_note: note,
+    });
+  }
+
   const returnedAt = auth.now();
   await db.prepare(`UPDATE documents SET status = 'returned', revision_note = ?, returned_at = ?, returned_by = ? WHERE id = ?`)
     .run(note, returnedAt, req.user.id, id);
 
+  /*
+   * Read-back verification — อ่านค่าที่บันทึกจริงกลับมาเทียบกับที่ส่งไป
+   * ถ้าไม่ตรงกัน = ฐานข้อมูลแปลงค่าเสีย (เช่น charset ของคอลัมน์ไม่รองรับไทย)
+   * คืน error พร้อมค่าที่อ่านกลับมาได้ เพื่อวินิจฉัยได้ทันที ไม่ต้องเดา
+   */
+  const verify = await db.prepare('SELECT revision_note FROM documents WHERE id = ?').get(id);
+  if (verify && String(verify.revision_note || '') !== note) {
+    console.error('[documents/return] revision_note อ่านกลับไม่ตรงกับที่เขียน — '
+      + 'เขียน=' + JSON.stringify(note) + ' อ่านกลับ=' + JSON.stringify(verify.revision_note));
+    return res.status(500).json({
+      error: 'ระบบบันทึกข้อความแล้วแต่อ่านกลับไม่ตรงกับที่ส่ง — '
+        + 'ฐานข้อมูลอาจแปลงอักขระภาษาไทยเป็นเครื่องหมาย (?) กรุณาแจ้งผู้ดูแลระบบ',
+      debug_sent: note,
+      debug_readback: verify.revision_note,
+    });
+  }
+
   // แจ้งผู้ส่ง (เจ้าหน้าที่โรงเรียน) ทาง Telegram ให้รู้ว่าต้องแก้อะไร
   await telegram.notifyDocumentReturned(id, req.user.full_name, note);
 
-  // row = สถานะจริงหลังบันทึก → หน้าเว็บอัปเดตเฉพาะแถวนี้ ไม่ต้องโหลดทั้งตาราง
+  // row = สถานะจริงหลังบันทึก (อ่านจากฐานข้อมูลจริง ไม่ใช่ค่าที่ส่งไป) → หน้าเว็บอัปเดตเฉพาะแถวนี้
   res.json({
     ok: true,
-    row: { id, status: 'returned', revision_note: note, returned_at: returnedAt, returned_by: req.user.id },
+    row: {
+      id,
+      status: 'returned',
+      revision_note: verify ? verify.revision_note : note,
+      returned_at: returnedAt,
+      returned_by: req.user.id,
+    },
     message: 'ส่งกลับเพื่อแก้ไขแล้ว — โรงเรียนจะได้รับแจ้งเตือน',
   });
 });

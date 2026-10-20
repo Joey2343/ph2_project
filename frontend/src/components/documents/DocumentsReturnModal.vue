@@ -39,6 +39,14 @@ async function sendBack() {
   saving.value = true;
   try {
     const res = await api.put(`/documents/${info.value.id}/return`, { note: t });
+    /*
+     * กันข้อความที่ส่งไปเป็นเครื่องหมาย (?) ทั้งหมด
+     * backend ปฏิเสธอยู่แล้ว แต่เช็คซ้ำฝั่งหน้าเว็บเพื่อจับกรณีที่ backend รุ่นเก่ายังไม่มี
+     */
+    if (/^[\s?]+$/.test(t)) {
+      UI.toast('ข้อความที่ส่งไปมีแต่เครื่องหมาย (?) ลองคัดลอกข้อความภาษาไทยมาวางแทนการพิมพ์', 'error');
+      return;
+    }
     UI.toast(res.message);
     emit('returned', { id: info.value.id, row: res.row || null });
     emit('close');
