@@ -607,8 +607,12 @@ async function saveVehicle() {
   fd.append('capacity', parseInt(vf.value.capacity, 10) || 0);
   fd.append('status', vf.value.status);
   fd.append('notes', vf.value.notes.trim());
+  // ⚠️ ต้องเป็น vRemovePhoto.value — ถ้าเขียน vRemovePhoto เฉย ๆ จะได้ตัว ref
+  //    ซึ่งเป็น object จึงเป็นจริงเสมอ → ส่ง photo='' ทุกครั้งที่บันทึก
+  //    → backend เข้าใจว่า "ให้ลบรูป" แล้วตั้ง photo = NULL + ลบไฟล์ทิ้ง
+  //    (บั๊กจริง: แก้ไขยานพาหนะโดยไม่เปลี่ยนอะไร รูปหายไปทุกครั้ง)
   if (vPhoto.value) fd.append('photo', vPhoto.value);
-  else if (vRemovePhoto) fd.append('photo', '');
+  else if (vRemovePhoto.value) fd.append('photo', '');
   vSaving.value = true;
   try {
     const res = vf.value.id ? await api.putForm('/vehicles/' + vf.value.id, fd) : await api.postForm('/vehicles', fd);

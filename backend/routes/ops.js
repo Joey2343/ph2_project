@@ -713,14 +713,16 @@ router.put('/vehicles/:id', auth.requireAdmin, uploadVehicles.single('photo'), u
   const b = req.body || {};
   // รูปใหม่: ไฟล์ที่อัปโหลด / ส่งค่า '' เพื่อลบรูปเดิม / ไม่ส่ง = คงรูปเดิม
   let newPhoto = cur.photo;
-  if (b.photo !== undefined && String(b.photo) === '') newPhoto = null;
-  if (req.file) {
-    newPhoto = 'vehicles/' + req.file.filename;
-    if (cur.photo) deleteUploadedFile(cur.photo);
-  }
+  const clearPhoto = b.photo !== undefined && String(b.photo) === '';
+  if (clearPhoto) newPhoto = null;
+  if (req.file) newPhoto = 'vehicles/' + req.file.filename;
   await db.prepare('UPDATE vehicles SET name=?, plate=?, type=?, capacity=?, status=?, notes=?, photo=? WHERE id=?')
     .run(String(b.name || '').trim(), (b.plate || '').trim(), (b.type || '').trim(),
       Number(b.capacity) || 0, b.status || 'available', (b.notes || '').trim(), newPhoto, id);
+  // ลบไฟล์เดิม "หลัง" อัปเดตฐานข้อมูลสำเร็จแล้วเท่านั้น
+  // (เดิมลบก่อนอัปเดต → ถ้า UPDATE ล้มเหลว ไฟล์หายแต่ฐานยังชี้ไฟล์เดิม)
+  // และต้องลบเมื่อผู้ใช้สั่งลบรูปด้วย ไม่ใช่เฉพาะตอนอัปโหลดรูปใหม่
+  if ((req.file || clearPhoto) && cur.photo) deleteUploadedFile(cur.photo);
   res.json({ ok: true, message: 'แก้ไขยานพาหนะเรียบร้อย' });
 });
 
