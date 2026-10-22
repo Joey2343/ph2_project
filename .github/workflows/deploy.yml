@@ -294,4 +294,35 @@ jobs:
               exit 1
             fi
 
+            echo ">>> 9.2 เก็บข้อมูลวินิจฉัยชั่วคราว (uploads)"
+            DIAG="$WEB_DIR/p2diag.txt"
+            {
+              echo "== date =="; date
+              echo "== paths =="
+              ls -ld "$APP_DIR" "$APP_DIR/backend" "$APP_DIR/backend/public" "$APP_DIR/backend/public/uploads" 2>&1
+              echo "== readlink =="
+              readlink -f "$APP_DIR/backend/public/uploads" 2>&1
+              echo "== namei =="
+              namei -l "$APP_DIR/backend/public/uploads" 2>&1
+              echo "== ls uploads =="
+              ls -la "$APP_DIR/backend/public/uploads" 2>&1 | head -30
+              echo "== ls staff =="
+              ls -la "$APP_DIR/backend/public/uploads/staff" 2>&1 | head -15
+              echo "== dist =="
+              ls -l "$APP_DIR/frontend/dist/index.html" 2>&1
+              echo "== pm2 describe =="
+              pm2 describe ph2-api 2>&1 | head -30
+              echo "== curl node direct =="
+              for u in /api/office /uploads /uploads/ /uploads/staff /uploads/staff/x.jpg /some-spa-route; do
+                echo -n "$u => "
+                curl -s -o /dev/null -w '%{http_code} %{content_type}\n' --max-time 10 "http://127.0.0.1:3000$u" 2>&1 || echo "(curl failed)"
+              done
+              echo "== pm2 error log (tail 100) =="
+              tail -n 100 "$HOME/.pm2/logs/ph2-api-error.log" 2>&1
+              echo "== pm2 out log (tail 30) =="
+              tail -n 30 "$HOME/.pm2/logs/ph2-api-out.log" 2>&1
+            } > "$DIAG" 2>&1 || true
+            chmod 644 "$DIAG" 2>/dev/null || true
+            echo "    เขียนข้อมูลวินิจฉัยที่ $DIAG"
+
             echo ">>> Deploy สำเร็จ!"
