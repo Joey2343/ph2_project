@@ -126,6 +126,21 @@ jobs:
             exec >> "$DEPLOY_LOG" 2>&1 || true
             echo "===== deploy start $(date) ====="
 
+            # ⚠️ ชั่วคราว: หาที่อยู่จริงของโปรเจกต์บนเซิร์ฟเวอร์
+            #    (deploy ล้มเหลวเพราะ $APP_DIR ไม่มีอยู่แล้ว — โฟลเดอร์ถูกย้าย)
+            DISCOVER="$WEB_DIR/p2discover.txt"
+            {
+              echo "== HOME =="; echo "$HOME"
+              echo "== ls HOME =="; ls -la "$HOME" 2>&1
+              echo "== ls domains =="; ls -la "$HOME/domains" 2>&1
+              echo "== ls domain dir =="; ls -la "$HOME/domains/p2-smart.phrae2.go.th" 2>&1
+              echo "== find backend/server.js =="
+              find "$HOME" -maxdepth 6 -type f -name server.js -path '*/backend/server.js' -not -path '*/node_modules/*' 2>/dev/null | head -10
+              echo "== pm2 describe =="; pm2 describe ph2-api 2>&1 | head -40
+            } > "$DISCOVER" 2>&1 || true
+            chmod 644 "$DISCOVER" 2>/dev/null || true
+            echo "    เขียนข้อมูลค้นหาที่ $DISCOVER"
+
             echo ">>> 1. ดึงโค้ดล่าสุด"
             cd $APP_DIR
             git reset --hard HEAD
