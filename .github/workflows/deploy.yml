@@ -107,13 +107,32 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
+      # ── เตรียมค่า DATABASE_URL ของ production (ถ้าผู้ดูแลตั้ง Secret ไว้) ──────
+      # ส่งผ่าน base64 เพื่อไม่ให้รหัสผ่านถูกตีความโดย shell ของเซิร์ฟเวอร์
+      # (อักขระอย่าง $ ` " ในรหัสผ่านจะทำให้คำสั่งเพี้ยนถ้าส่งตรง ๆ)
+      - name: เตรียมค่า DATABASE_URL สำหรับกู้ backend/.env
+        id: dbenv
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -n "$PROD_DATABASE_URL" ]; then
+            echo "b64=$(printf '%s' "$PROD_DATABASE_URL" | base64 -w0)" >> "$GITHUB_OUTPUT"
+            echo "พบ Secret PROD_DATABASE_URL — จะใช้สร้าง backend/.env บนเซิร์ฟเวอร์"
+          else
+            echo "b64=" >> "$GITHUB_OUTPUT"
+            echo "ไม่พบ Secret PROD_DATABASE_URL"
+          fi
+
       - name: SSH Remote Deployment
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_URL_B64: ${{ steps.dbenv.outputs.b64 }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
+          envs: DB_URL_B64
           script: |
             set -e
             APP_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/app"
@@ -158,6 +177,14 @@ jobs:
 
             echo ">>> 2.5 ตรวจ backend/.env (ไม่อยู่ใน git — หายไปพร้อมโฟลเดอร์)"
             ENV_FILE="$PWD/.env"
+            if [ ! -f "$ENV_FILE" ] && [ -n "$DB_URL_B64" ]; then
+              DB_URL_DEC=$(printf '%s' "$DB_URL_B64" | base64 -d)
+              printf 'PORT=3000\nDATABASE_URL=%s\nDB_CONNECTION_LIMIT=10\n' "$DB_URL_DEC" > "$ENV_FILE"
+              chmod 600 "$ENV_FILE"
+              unset DB_URL_DEC
+              echo "    ✅ สร้าง .env จาก GitHub Secret PROD_DATABASE_URL"
+              echo "backend/.env: สร้างจาก GitHub Secret PROD_DATABASE_URL" >> "$REPORT"
+            fi
             if [ ! -f "$ENV_FILE" ]; then
               echo "    ไม่พบ .env — ค้นหารหัสผ่านฐานข้อมูลจากหลักฐานในเครื่อง"
               CANDS="$HOME/.p2-cands"
