@@ -58,7 +58,7 @@ router.post('/schools', auth.requireAdmin, uploadSchoolsDyn.single('disaster_ima
   if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: 'กรุณากรอกชื่อโรงเรียน' });
   const disasterImage = req.file ? getSchoolPrefix(req) + 'schools/' + req.file.filename : null;
   const info = await db.prepare(`INSERT INTO schools (code, name, group_name, district, address, principal, phone, level, lat, lng, image, notes, disaster, disaster_image)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     (b.code || '').trim(), String(b.name).trim(), (b.group_name || '').trim(), (b.district || '').trim(), (b.address || '').trim(),
     (b.principal || '').trim(), (b.phone || '').trim(), (b.level || '').trim(),
     b.lat == null ? null : Number(b.lat), b.lng == null ? null : Number(b.lng),
@@ -73,19 +73,21 @@ router.put('/schools/:id', auth.requireAdmin, uploadSchoolsDyn.single('disaster_
   if (!existing) return res.status(404).json({ error: 'ไม่พบโรงเรียน' });
   const b = req.body || {};
   if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: 'กรุณากรอกชื่อโรงเรียน' });
-  // รูปภาพความเสียหาย: ถ้าแนบไฟล์ใหม่ ลบไฟล์เดิมแล้วใช้ไฟล์ใหม่; ถ้าไม่แนบ คงค่าเดิม (หรือล้างถ้าส่ง disaster_image_clear=1)
-  let disasterImage = existing.disaster_image || null;
+  // รูปภาพความเสียหาย: ถ้าแนบไฟล์ใหม่ ใช้ไฟล์ใหม่; ถ้าไม่แนบ คงค่าเดิม (หรือล้างถ้าส่ง disaster_image_clear=1)
+  // ⚠️ ลบไฟล์เดิม "หลัง" UPDATE สำเร็จเท่านั้น — เดิมลบก่อน ถ้า UPDATE ล้มเหลว
+  //    ไฟล์หายแต่ฐานยังชี้ชื่อไฟล์เดิม → รูปเสียถาวร
+  const oldImage = existing.disaster_image || null;
+  let disasterImage = oldImage;
   if (req.file) {
-    if (disasterImage) deleteUploadedFile(disasterImage);
     disasterImage = getSchoolPrefix(req) + 'schools/' + req.file.filename;
   } else if (b.disaster_image_clear === '1') {
-    if (disasterImage) deleteUploadedFile(disasterImage);
     disasterImage = null;
   }
   await db.prepare(`UPDATE schools SET code=?, name=?, group_name=?, district=?, address=?, principal=?, phone=?, level=?, lat=?, lng=?, image=?, notes=?, disaster=?, disaster_image=? WHERE id=?`)
     .run((b.code || '').trim(), String(b.name).trim(), (b.group_name || '').trim(), (b.district || '').trim(), (b.address || '').trim(),
       (b.principal || '').trim(), (b.phone || '').trim(), (b.level || '').trim(), b.lat == null ? null : Number(b.lat), b.lng == null ? null : Number(b.lng), (b.image || '').trim(), (b.notes || '').trim(),
       (b.disaster || '').trim(), disasterImage, id);
+  if (oldImage && oldImage !== disasterImage) deleteUploadedFile(oldImage);
   res.json({ ok: true, message: 'แก้ไขโรงเรียนเรียบร้อย' });
 });
 
