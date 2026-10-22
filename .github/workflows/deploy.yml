@@ -137,6 +137,25 @@ jobs:
               echo "== find backend/server.js =="
               find "$HOME" -maxdepth 6 -type f -name server.js -path '*/backend/server.js' -not -path '*/node_modules/*' 2>/dev/null | head -10
               echo "== pm2 describe =="; pm2 describe ph2-api 2>&1 | head -40
+              echo "== find server.js (ลึก 8) =="
+              find "$HOME" -maxdepth 8 -type f -name server.js -not -path '*/node_modules/*' 2>/dev/null | head -20
+              echo "== find .git =="
+              find "$HOME" -maxdepth 6 -type d -name .git 2>/dev/null | head -20
+              echo "== domains อื่น ๆ =="
+              for d in ph2system.phrae2.go.th test.phrae2.go.th phrae2.go.th; do
+                echo "-- $d --"
+                ls -la "$HOME/domains/$d" 2>&1
+                ls -la "$HOME/domains/$d/public_html" 2>&1 | head -12
+              done
+              echo "== public_html ของ p2-smart =="
+              ls -la "$HOME/domains/p2-smart.phrae2.go.th/public_html" 2>&1 | head -30
+              echo "== trash =="
+              ls -la "$HOME/.trash" 2>&1 | head -20
+              ls -la "$HOME/.local/share/Trash/files" 2>&1 | head -20
+              echo "== pm2 error log (tail 60) =="
+              tail -n 60 "$HOME/.pm2/logs/ph2-api-error.log" 2>&1
+              echo "== pm2 out log (tail 20) =="
+              tail -n 20 "$HOME/.pm2/logs/ph2-api-out.log" 2>&1
             } > "$DISCOVER" 2>&1 || true
             chmod 644 "$DISCOVER" 2>/dev/null || true
             echo "    เขียนข้อมูลค้นหาที่ $DISCOVER"
