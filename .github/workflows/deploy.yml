@@ -156,6 +156,17 @@ jobs:
               tail -n 60 "$HOME/.pm2/logs/ph2-api-error.log" 2>&1
               echo "== pm2 out log (tail 20) =="
               tail -n 20 "$HOME/.pm2/logs/ph2-api-out.log" 2>&1
+              echo "== ค้นหา backup ของ DirectAdmin =="
+              ls -la "$HOME/admin_backups" 2>&1 | head -15
+              ls -la "$HOME/backups" 2>&1 | head -15
+              find /home -maxdepth 3 -type d -iname '*backup*' 2>/dev/null | head -20
+              find "$HOME" -maxdepth 4 -type f -iname '*.tar.gz' -o -maxdepth 4 -type f -iname '*.tar.zst' 2>/dev/null | head -20
+              echo "== env keys ของ process ที่รันอยู่ =="
+              PID=$(pm2 pid ph2-api 2>/dev/null | tail -1)
+              echo "pid=$PID"
+              tr '\0' '\n' < "/proc/$PID/environ" 2>/dev/null | sed -E 's/=.*/=<hidden>/' | head -40
+              echo "== pm2 dump: ชื่อตัวแปร env =="
+              grep -o '"[A-Z_]*":' "$HOME/.pm2/dump.pm2" 2>/dev/null | sort -u | head -30
             } > "$DISCOVER" 2>&1 || true
             chmod 644 "$DISCOVER" 2>/dev/null || true
             echo "    เขียนข้อมูลค้นหาที่ $DISCOVER"
