@@ -6,11 +6,10 @@ REPORT="$WEB_DIR/p2deploy-report.txt"
 : > "$REPORT" 2>/dev/null || true
 say() { echo "$*"; echo "$*" >> "$REPORT" 2>/dev/null || true; }
 
-# ⚠️ ชั่วคราว: เก็บ log ทั้งหมดของสคริปต์นี้ลงไฟล์ที่อ่านได้จากเว็บ
-#    (ใช้ติดตามการกู้ระบบ — จะถอดออกเมื่อระบบกลับมาปกติ)
-DEPLOY_LOG="$WEB_DIR/p2deploy-log.txt"
-: > "$DEPLOY_LOG" 2>/dev/null || true
-exec >> "$DEPLOY_LOG" 2>&1 || true
+# ⚠️ ไม่เก็บ log ทั้งหมดของสคริปต์นี้ลง public_html แล้ว (เดิมเก็บไว้ชั่วคราว
+#    ตอนกู้ระบบ 21–22 ต.ค. เพราะอ่าน log ของ GitHub Actions ไม่ได้)
+#    เหตุผลที่ถอด: ไฟล์ใน public_html เปิดอ่านได้จากอินเทอร์เน็ต
+#    ตอนนี้เหลือแค่สรุปสั้น ๆ ที่ $REPORT ซึ่งไม่มีรหัสผ่าน
 echo "===== deploy start $(date) ====="
 
 echo ">>> 2. ติดตั้ง Backend"
@@ -333,7 +332,19 @@ else
   exit 1
 fi
 
-echo ">>> 9.2 สรุปสถานะหลัง deploy"
+echo ">>> 9.2 ลบไฟล์วินิจฉัยชั่วคราวที่หลงเหลือใน web root"
+# ไฟล์เหล่านี้ถูกสร้างตอนกู้ระบบ (21–22 ต.ค.) เพื่ออ่านสถานะเซิร์ฟเวอร์ทางเว็บ
+# ⚠️ เปิดอ่านได้จากอินเทอร์เน็ต — p2discover.txt มีรายการไฟล์/สิทธิ์ในโฮม,
+#    p2deploy-log.txt มีพาธและชื่อฐานข้อมูล จึงต้องลบทิ้งเมื่อกู้เสร็จ
+for f in p2diag.txt p2discover.txt p2deploy-log.txt; do
+  if [ -f "$WEB_DIR/$f" ]; then
+    rm -f "$WEB_DIR/$f" && echo "    ลบ $f แล้ว"
+  fi
+done
+# ไฟล์ผู้สมัครรหัสผ่านฐานข้อมูลที่สคริปต์เคยสร้างไว้ (ไม่เกี่ยวกับเว็บ แต่ไม่ควรค้าง)
+rm -f "$HOME/.p2-cands"
+
+echo ">>> 9.3 สรุปสถานะหลัง deploy"
 {
   echo "date: $(date)"
   echo "app_dir: $APP_DIR"
