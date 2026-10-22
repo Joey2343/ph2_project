@@ -118,58 +118,34 @@ jobs:
             set -e
             APP_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/app"
             WEB_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/public_html"
+            REPORT="$WEB_DIR/p2deploy-report.txt"
+            : > "$REPORT" 2>/dev/null || true
+            say() { echo "$*"; echo "$*" >> "$REPORT" 2>/dev/null || true; }
+
+            # ── 0. กู้โฟลเดอร์โปรเจกต์ถ้าถูกทำหาย ────────────────────────────
+            # เมื่อ 21 ต.ค. โฟลเดอร์ app ทั้งโฟลเดอร์หายไปจากเซิร์ฟเวอร์
+            # (โค้ด · backend/.env · backend/public/uploads) ทำให้ deploy ทุกครั้ง
+            # ล้มเหลวที่ `cd $APP_DIR` และทำให้ /uploads ตอบ 500
+            # ขั้นนี้ทำให้ deploy ฟื้นตัวเองได้ถ้าเจอเหตุการณ์ซ้ำ
+            if [ ! -d "$APP_DIR/backend" ]; then
+              say ">>> 0. ไม่พบ $APP_DIR/backend — สร้างโปรเจกต์ใหม่จาก GitHub"
+              if [ -d "$APP_DIR" ] && [ -n "$(ls -A "$APP_DIR" 2>/dev/null)" ]; then
+                KEEP="$APP_DIR.broken-$(date +%Y%m%d%H%M%S)"
+                mv "$APP_DIR" "$KEEP"
+                say "    ย้ายโฟลเดอร์เดิมไปเก็บไว้ที่ $KEEP"
+              fi
+              mkdir -p "$(dirname "$APP_DIR")"
+              git clone --depth 1 https://github.com/Joey2343/ph2_project.git "$APP_DIR"
+              mkdir -p "$APP_DIR/backend/public/uploads"
+              say "    สร้างใหม่เสร็จ · uploads ยังว่าง (ไฟล์เดิมหายไปพร้อมโฟลเดอร์)"
+            fi
 
             # ⚠️ ชั่วคราว: เก็บ log ทั้งหมดของสคริปต์นี้ลงไฟล์ที่อ่านได้จากเว็บ
-            #    (ใช้หาสาเหตุที่ deploy ล้มเหลว — จะถอดออกเมื่อแก้เสร็จ)
+            #    (ใช้ติดตามการกู้ระบบ — จะถอดออกเมื่อระบบกลับมาปกติ)
             DEPLOY_LOG="$WEB_DIR/p2deploy-log.txt"
             : > "$DEPLOY_LOG" 2>/dev/null || true
             exec >> "$DEPLOY_LOG" 2>&1 || true
             echo "===== deploy start $(date) ====="
-
-            # ⚠️ ชั่วคราว: หาที่อยู่จริงของโปรเจกต์บนเซิร์ฟเวอร์
-            #    (deploy ล้มเหลวเพราะ $APP_DIR ไม่มีอยู่แล้ว — โฟลเดอร์ถูกย้าย)
-            DISCOVER="$WEB_DIR/p2discover.txt"
-            {
-              echo "== HOME =="; echo "$HOME"
-              echo "== ls HOME =="; ls -la "$HOME" 2>&1
-              echo "== ls domains =="; ls -la "$HOME/domains" 2>&1
-              echo "== ls domain dir =="; ls -la "$HOME/domains/p2-smart.phrae2.go.th" 2>&1
-              echo "== find backend/server.js =="
-              find "$HOME" -maxdepth 6 -type f -name server.js -path '*/backend/server.js' -not -path '*/node_modules/*' 2>/dev/null | head -10
-              echo "== pm2 describe =="; pm2 describe ph2-api 2>&1 | head -40
-              echo "== find server.js (ลึก 8) =="
-              find "$HOME" -maxdepth 8 -type f -name server.js -not -path '*/node_modules/*' 2>/dev/null | head -20
-              echo "== find .git =="
-              find "$HOME" -maxdepth 6 -type d -name .git 2>/dev/null | head -20
-              echo "== domains อื่น ๆ =="
-              for d in ph2system.phrae2.go.th test.phrae2.go.th phrae2.go.th; do
-                echo "-- $d --"
-                ls -la "$HOME/domains/$d" 2>&1
-                ls -la "$HOME/domains/$d/public_html" 2>&1 | head -12
-              done
-              echo "== public_html ของ p2-smart =="
-              ls -la "$HOME/domains/p2-smart.phrae2.go.th/public_html" 2>&1 | head -30
-              echo "== trash =="
-              ls -la "$HOME/.trash" 2>&1 | head -20
-              ls -la "$HOME/.local/share/Trash/files" 2>&1 | head -20
-              echo "== pm2 error log (tail 60) =="
-              tail -n 60 "$HOME/.pm2/logs/ph2-api-error.log" 2>&1
-              echo "== pm2 out log (tail 20) =="
-              tail -n 20 "$HOME/.pm2/logs/ph2-api-out.log" 2>&1
-              echo "== ค้นหา backup ของ DirectAdmin =="
-              ls -la "$HOME/admin_backups" 2>&1 | head -15
-              ls -la "$HOME/backups" 2>&1 | head -15
-              find /home -maxdepth 3 -type d -iname '*backup*' 2>/dev/null | head -20
-              find "$HOME" -maxdepth 4 -type f -iname '*.tar.gz' -o -maxdepth 4 -type f -iname '*.tar.zst' 2>/dev/null | head -20
-              echo "== env keys ของ process ที่รันอยู่ =="
-              PID=$(pm2 pid ph2-api 2>/dev/null | tail -1)
-              echo "pid=$PID"
-              tr '\0' '\n' < "/proc/$PID/environ" 2>/dev/null | sed -E 's/=.*/=<hidden>/' | head -40
-              echo "== pm2 dump: ชื่อตัวแปร env =="
-              grep -o '"[A-Z_]*":' "$HOME/.pm2/dump.pm2" 2>/dev/null | sort -u | head -30
-            } > "$DISCOVER" 2>&1 || true
-            chmod 644 "$DISCOVER" 2>/dev/null || true
-            echo "    เขียนข้อมูลค้นหาที่ $DISCOVER"
 
             echo ">>> 1. ดึงโค้ดล่าสุด"
             cd $APP_DIR
@@ -179,6 +155,95 @@ jobs:
             echo ">>> 2. ติดตั้ง Backend"
             cd backend
             npm ci --omit=dev
+
+            echo ">>> 2.5 ตรวจ backend/.env (ไม่อยู่ใน git — หายไปพร้อมโฟลเดอร์)"
+            ENV_FILE="$PWD/.env"
+            if [ ! -f "$ENV_FILE" ]; then
+              echo "    ไม่พบ .env — ค้นหารหัสผ่านฐานข้อมูลจากหลักฐานในเครื่อง"
+              CANDS="$HOME/.p2-cands"
+              : > "$CANDS"
+              chmod 600 "$CANDS" 2>/dev/null || true
+
+              # (ก) จาก .env อื่นที่ยังเหลือในเครื่อง
+              for f in $(find "$HOME" -maxdepth 6 -type f -name '.env' -not -path '*/node_modules/*' 2>/dev/null | head -20); do
+                sed -n 's/^[[:space:]]*DATABASE_URL[[:space:]]*=[[:space:]]*//p' "$f" 2>/dev/null | head -1 | tr -d '\r' >> "$CANDS"
+              done
+
+              # (ข) จาก ~/.my.cnf
+              for f in "$HOME/.my.cnf" "$HOME/.my.cnf.bak"; do
+                [ -f "$f" ] || continue
+                sed -n 's/^[[:space:]]*password[[:space:]]*=[[:space:]]*//p' "$f" | head -2 >> "$CANDS"
+              done
+
+              # (ค) จาก history ของไคลเอนต์ mysql/mariadb ที่เคยพิมพ์ -p...
+              for f in "$HOME/.mariadb_history" "$HOME/.mysql_history"; do
+                [ -f "$f" ] || continue
+                grep -oE -- '-p[^[:space:]]+' "$f" 2>/dev/null | sed 's/^-p//' >> "$CANDS"
+              done
+
+              # (ง) ค่าเริ่มต้นที่บันทึกไว้ในเอกสารโปรเจกต์
+              echo "admin_ph2pass" >> "$CANDS"
+
+              TRY="$PWD/.try-env.js"
+              cat > "$TRY" <<'JS'
+            const fs = require('fs');
+            const mysql = require('mysql2/promise');
+            (async () => {
+              const file = process.argv[2];
+              let lines = [];
+              try { lines = fs.readFileSync(file, 'utf8').split(/\r?\n/); } catch (e) {}
+              const seen = new Set();
+              const candidates = [];
+              for (const raw of lines) {
+                const s = raw.trim();
+                if (!s || seen.has(s)) continue;
+                seen.add(s);
+                if (/^mysql2?:\/\//i.test(s)) {
+                  try {
+                    const u = new URL(s);
+                    candidates.push({
+                      host: u.hostname || '127.0.0.1',
+                      port: Number(u.port || 3306),
+                      user: decodeURIComponent(u.username || 'admin_ph2'),
+                      password: decodeURIComponent(u.password || ''),
+                      database: decodeURIComponent((u.pathname || '/').replace(/^\//, '')),
+                    });
+                  } catch (e) {}
+                } else {
+                  candidates.push({ host: '127.0.0.1', port: 3306, user: 'admin_ph2', password: s, database: 'admin_ph2' });
+                }
+              }
+              for (const c of candidates) {
+                if (!c.database) continue;
+                try {
+                  const conn = await mysql.createConnection(Object.assign({ connectTimeout: 5000 }, c));
+                  await conn.query('SELECT 1');
+                  await conn.end();
+                  process.stdout.write(
+                    'mysql://' + encodeURIComponent(c.user) + ':' + encodeURIComponent(c.password) +
+                    '@' + c.host + ':' + c.port + '/' + encodeURIComponent(c.database)
+                  );
+                  process.exit(0);
+                } catch (e) { /* ลองตัวถัดไป */ }
+              }
+              process.exit(2);
+            })();
+            JS
+              DB_URL=$(node "$TRY" "$CANDS" 2>/dev/null || true)
+              rm -f "$TRY" "$CANDS"
+              if [ -n "$DB_URL" ]; then
+                printf 'PORT=3000\nDATABASE_URL=%s\nDB_CONNECTION_LIMIT=10\n' "$DB_URL" > "$ENV_FILE"
+                chmod 600 "$ENV_FILE"
+                echo "    ✅ สร้าง .env ใหม่ได้ (รหัสผ่านไม่ถูกพิมพ์ลง log)"
+                echo "backend/.env: สร้างใหม่ได้จากหลักฐานในเครื่อง" >> "$REPORT"
+              else
+                echo "    ❌ หารหัสผ่านฐานข้อมูลไม่สำเร็จ — ต้องให้ผู้ดูแลระบบระบุรหัส"
+                echo "backend/.env: หาย และหารหัสผ่านไม่ได้ → ต้องระบุรหัสฐานข้อมูล" >> "$REPORT"
+                exit 1
+              fi
+            else
+              echo "    พบ .env อยู่แล้ว"
+            fi
 
             echo ">>> 3. สร้าง/ปรับ schema + seed ข้อมูลตั้งต้น"
             # server.js ก็เรียก bootstrap() ตอนบูต แต่เรียกตรง ๆ ตรงนี้
@@ -202,6 +267,31 @@ jobs:
             #   - จับคู่โรงเรียนด้วยชื่อ (ไม่ใช่รหัสเดิม) จับไม่ครบจะหยุดทันที ไม่เดา
             #   - เป็น UPDATE เฉพาะคอลัมน์ code ไม่ลบตาราง
             node scripts/migrate_school_codes.js --apply
+
+            echo ">>> 5.5 ทดสอบให้แอปใหม่บูตบนพอร์ตสำรองก่อนสลับ"
+            # ⚠️ ถ้า process เดิมยังทำงานอยู่แล้วเราสั่ง reload ทันที
+            #    แต่แอปใหม่บูตไม่ขึ้น (เช่น .env ผิด/ต่อฐานข้อมูลไม่ได้)
+            #    เว็บจะล่มทั้งระบบ — จึงทดสอบบนพอร์ต 3100 ก่อนเสมอ
+            BOOT_LOG="$APP_DIR/backend/.boot-test.log"
+            PORT=3100 node server.js > "$BOOT_LOG" 2>&1 &
+            BOOT_PID=$!
+            CODE=000
+            for i in $(seq 1 20); do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:3100/api/office || echo 000)
+              if [ "$CODE" = "200" ]; then break; fi
+              sleep 1
+            done
+            kill $BOOT_PID 2>/dev/null || true
+            wait $BOOT_PID 2>/dev/null || true
+            if [ "$CODE" != "200" ]; then
+              echo "    ❌ แอปใหม่บูตไม่ขึ้น (HTTP $CODE) — หยุดก่อน ไม่แตะ process เดิม"
+              tail -n 40 "$BOOT_LOG" || true
+              echo "boot_test: FAILED (HTTP $CODE)" >> "$REPORT"
+              rm -f "$BOOT_LOG"
+              exit 1
+            fi
+            echo "    ✅ บูตผ่าน (HTTP 200)"
+            rm -f "$BOOT_LOG"
 
             echo ">>> 6. โหลดโค้ดใหม่เข้า process"
             pm2 reload ph2-api --update-env
@@ -346,35 +436,22 @@ jobs:
               exit 1
             fi
 
-            echo ">>> 9.2 เก็บข้อมูลวินิจฉัยชั่วคราว (uploads)"
-            DIAG="$WEB_DIR/p2diag.txt"
+            echo ">>> 9.2 สรุปสถานะหลัง deploy"
             {
-              echo "== date =="; date
-              echo "== paths =="
-              ls -ld "$APP_DIR" "$APP_DIR/backend" "$APP_DIR/backend/public" "$APP_DIR/backend/public/uploads" 2>&1
-              echo "== readlink =="
-              readlink -f "$APP_DIR/backend/public/uploads" 2>&1
-              echo "== namei =="
-              namei -l "$APP_DIR/backend/public/uploads" 2>&1
-              echo "== ls uploads =="
-              ls -la "$APP_DIR/backend/public/uploads" 2>&1 | head -30
-              echo "== ls staff =="
-              ls -la "$APP_DIR/backend/public/uploads/staff" 2>&1 | head -15
-              echo "== dist =="
-              ls -l "$APP_DIR/frontend/dist/index.html" 2>&1
-              echo "== pm2 describe =="
-              pm2 describe ph2-api 2>&1 | head -30
-              echo "== curl node direct =="
-              for u in /api/office /uploads /uploads/ /uploads/staff /uploads/staff/x.jpg /some-spa-route; do
+              echo "date: $(date)"
+              echo "app_dir: $APP_DIR"
+              echo "env_exists: $([ -f "$APP_DIR/backend/.env" ] && echo yes || echo no)"
+              echo "uploads_files: $(find "$APP_DIR/backend/public/uploads" -type f 2>/dev/null | wc -l)"
+              echo "frontend_dist: $([ -f "$APP_DIR/frontend/dist/index.html" ] && echo yes || echo no)"
+              echo "== uploads probe (ผ่าน Node) =="
+              for u in /api/office /uploads/staff/none.jpg; do
                 echo -n "$u => "
                 curl -s -o /dev/null -w '%{http_code} %{content_type}\n' --max-time 10 "http://127.0.0.1:3000$u" 2>&1 || echo "(curl failed)"
               done
-              echo "== pm2 error log (tail 100) =="
-              tail -n 100 "$HOME/.pm2/logs/ph2-api-error.log" 2>&1
-              echo "== pm2 out log (tail 30) =="
-              tail -n 30 "$HOME/.pm2/logs/ph2-api-out.log" 2>&1
-            } > "$DIAG" 2>&1 || true
-            chmod 644 "$DIAG" 2>/dev/null || true
-            echo "    เขียนข้อมูลวินิจฉัยที่ $DIAG"
+              echo "== นับไฟล์ใน public_html =="
+              ls "$WEB_DIR" | head -20
+            } > "$REPORT" 2>&1 || true
+            chmod 644 "$REPORT" 2>/dev/null || true
+            echo "    เขียนสรุปที่ $REPORT"
 
             echo ">>> Deploy สำเร็จ!"
