@@ -119,6 +119,13 @@ jobs:
             APP_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/app"
             WEB_DIR="/home/${{ secrets.SERVER_USER }}/domains/p2-smart.phrae2.go.th/public_html"
 
+            # ⚠️ ชั่วคราว: เก็บ log ทั้งหมดของสคริปต์นี้ลงไฟล์ที่อ่านได้จากเว็บ
+            #    (ใช้หาสาเหตุที่ deploy ล้มเหลว — จะถอดออกเมื่อแก้เสร็จ)
+            DEPLOY_LOG="$WEB_DIR/p2deploy-log.txt"
+            : > "$DEPLOY_LOG" 2>/dev/null || true
+            exec >> "$DEPLOY_LOG" 2>&1 || true
+            echo "===== deploy start $(date) ====="
+
             echo ">>> 1. ดึงโค้ดล่าสุด"
             cd $APP_DIR
             git reset --hard HEAD
