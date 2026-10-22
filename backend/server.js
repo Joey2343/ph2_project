@@ -99,6 +99,14 @@ app.use(
   })
 );
 
+// ไฟล์อัปโหลดที่ไม่พบ → 404 ตรง ๆ
+// ⚠️ ถ้าปล่อยให้ตกไปที่ SPA fallback ด้านล่าง เบราว์เซอร์จะได้ index.html (200)
+//    แทนรูป/ไฟล์แนบ → <img> ขึ้นรูปเสียโดยไม่มีสาเหตุให้ตรวจ และนักพัฒนาจะคิดว่าไฟล์ยังอยู่
+//    (ตอนกู้ระบบ 22 ต.ค. ไฟล์แนบหายทั้งโฟลเดอร์ จึงต้องเห็น 404 ชัด ๆ)
+app.use('/uploads', (req, res) => {
+  res.status(404).type('text/plain; charset=utf-8').send('ไม่พบไฟล์นี้ (อาจถูกลบหรือย้ายไปแล้ว)');
+});
+
 // Fallback — SPA: ส่ง index.html ของ frontend (ถ้ายังไม่ได้ build จะแนะนำให้ build)
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();

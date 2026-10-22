@@ -156,6 +156,19 @@ echo ">>> 5. ตั้งรหัสโรงเรียนตามทะเ�
 #   - เป็น UPDATE เฉพาะคอลัมน์ code ไม่ลบตาราง
 node scripts/migrate_school_codes.js --apply
 
+echo ">>> 5.4 Build Frontend"
+# ⚠️ ต้อง build "ก่อน" reload process (ขั้น 6)
+#    ตอน clone โปรเจกต์ใหม่ frontend/dist ยังไม่มี → server.js ตั้งค่า
+#    FRONTEND_EXISTS = false ตั้งแต่ตอนบูต และไม่รู้จัก dist ที่เพิ่งสร้างทีหลัง
+#    → คำขอที่ไม่ใช่ /api/ (เช่น /uploads/none.jpg) จะได้ 503 "ยังไม่ได้ build หน้าเว็บ"
+#    แทนที่จะเป็น SPA fallback ปกติ (เจอจริงรอบกู้ระบบ 22 ต.ค.)
+cd ../frontend
+npm ci
+npm run build
+# กลับมาที่ backend เพื่อให้ขั้น 5.5 รัน `node server.js` ในโฟลเดอร์ที่ถูก
+# (dotenv อ่าน backend/.env จาก cwd)
+cd ../backend
+
 echo ">>> 5.5 ทดสอบให้แอปใหม่บูตบนพอร์ตสำรองก่อนสลับ"
 # ⚠️ ถ้า process เดิมยังทำงานอยู่แล้วเราสั่ง reload ทันที
 #    แต่แอปใหม่บูตไม่ขึ้น (เช่น .env ผิด/ต่อฐานข้อมูลไม่ได้)
@@ -184,15 +197,11 @@ rm -f "$BOOT_LOG"
 echo ">>> 6. โหลดโค้ดใหม่เข้า process"
 pm2 reload ph2-api --update-env
 
-echo ">>> 7. Build Frontend"
-cd ../frontend
-npm ci
-npm run build
-
 echo ">>> 8. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
 # คัดลอกเฉพาะไฟล์ที่ build ได้ไปวางที่ public_html โดยไม่ลบ .htaccess
 # cp ทับเฉยๆ จะทำให้ไฟล์รุ่นเก่าไม่ถูกลบออกไปเลย (cp ไม่มีคำสั่งลบ)
 # เว็บยังใช้ได้ตลอด แต่ public_html จะโตขึ้นทุกครั้งที่ deploy
+cd ../frontend
 cp -r dist/* $WEB_DIR/
 
 # ค่อยล้างไฟล์ใน assets ที่ไม่อยู่ใน build ปัจจุบัน
