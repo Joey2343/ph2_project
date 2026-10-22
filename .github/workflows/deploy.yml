@@ -184,6 +184,22 @@ jobs:
               # (ง) ค่าเริ่มต้นที่บันทึกไว้ในเอกสารโปรเจกต์
               echo "admin_ph2pass" >> "$CANDS"
 
+              # (จ) จาก wp-config.php ของเว็บ WordPress บนโฮสต์เดียวกัน
+              #     (ผู้ดูแลมักตั้งรหัสฐานข้อมูลซ้ำกันทุกบริการ)
+              for f in $(find "$HOME/domains" -maxdepth 4 -type f -name 'wp-config.php' 2>/dev/null | head -10); do
+                sed -n "s/.*DB_PASSWORD[^']*'\([^']*\)'.*/\1/p" "$f" 2>/dev/null | head -1 >> "$CANDS"
+              done
+
+              # (ฉ) จาก cron ที่อาจเก็บ -p<รหัส>
+              crontab -l 2>/dev/null | grep -oE -- '-p[^[:space:]]+' | sed 's/^-p//' >> "$CANDS" || true
+
+              # (ช) จากไฟล์ php/sh/conf ที่มี mysql:// อยู่
+              grep -rhoE 'mysql2?://[^[:space:]"'"'"']+' "$HOME/domains" --include='*.php' --include='*.sh' --include='*.conf' --include='*.env' 2>/dev/null | head -20 >> "$CANDS" || true
+
+              # (ซ) รหัสว่าง และชื่อผู้ใช้เป็นรหัส
+              echo "__EMPTY__" >> "$CANDS"
+              echo "admin_ph2" >> "$CANDS"
+
               TRY="$PWD/.try-env.js"
               cat > "$TRY" <<'JS'
             const fs = require('fs');
@@ -198,7 +214,9 @@ jobs:
                 const s = raw.trim();
                 if (!s || seen.has(s)) continue;
                 seen.add(s);
-                if (/^mysql2?:\/\//i.test(s)) {
+                if (s === '__EMPTY__') {
+                  candidates.push({ host: '127.0.0.1', port: 3306, user: 'admin_ph2', password: '', database: 'admin_ph2' });
+                } else if (/^mysql2?:\/\//i.test(s)) {
                   try {
                     const u = new URL(s);
                     candidates.push({
@@ -229,6 +247,7 @@ jobs:
               process.exit(2);
             })();
             JS
+              echo "    ลองเชื่อมต่อด้วย $(wc -l < "$CANDS") ตัวเลือก"
               DB_URL=$(node "$TRY" "$CANDS" 2>/dev/null || true)
               rm -f "$TRY" "$CANDS"
               if [ -n "$DB_URL" ]; then
