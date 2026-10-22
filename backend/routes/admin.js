@@ -644,6 +644,16 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
   if (req.user.role !== 'admin' && row.created_by !== req.user.id && !isOfficeClerk) return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขหนังสือนี้' });
   const b = req.body || {};
   let file = row.file;
+  /*
+   * ⚠️ ไฟล์เดิมต้องถูกลบ "หลัง" UPDATE สำเร็จเท่านั้น
+   *
+   *   เดิมลบตรงนี้เลย → ถ้า UPDATE ล้มเหลว (ข้อมูลไม่ผ่าน constraint / คอลัมน์สั้นเกิน /
+   *   การเชื่อมต่อฐานขาด) ไฟล์ถูกทิ้งไปแล้ว แต่ฐานข้อมูลยังชี้ชื่อไฟล์เดิม
+   *   → ไฟล์แนบหายถาวรทั้งที่ผู้ใช้เห็นข้อความ "บันทึกไม่สำเร็จ"
+   *
+   *   เก็บค่าไว้ในตัวแปร แล้วไปลบหลัง UPDATE (แบบเดียวกับยานพาหนะ/โรงเรียน)
+   */
+  let fileToDelete = null;
   if (req.files && req.files.length) {
     var fPrefixUp = getSchoolPrefix(req);
     var newFiles = req.files.map(f => fPrefixUp + 'documents/' + f.filename);
@@ -662,13 +672,16 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
        */
       file = JSON.stringify(oldFiles.concat(newFiles.filter(function(f) { return !oldFiles.includes(f); })));
     } else {
-      if (row.file) deleteUploadedFile(row.file);
       file = newFiles.length === 1 ? newFiles[0] : JSON.stringify(newFiles);
+      fileToDelete = row.file;
     }
   } else if (req.file) {
-    if (row.file) deleteUploadedFile(row.file);
     file = getSchoolPrefix(req) + 'documents/' + req.file.filename;
+    fileToDelete = row.file;
   }
+  // ไฟล์เกียรติบัตรที่ถูกแทนที่ก็ต้องลบของเดิม (ไม่ให้ค้างเป็นขยะบนดิสก์)
+  const oldHonorFile = row.honor_saved_file || '';
+  const newHonorFile = (b.honor_saved_file ?? (row.honor_saved_file || '')).trim();
   await db.prepare(`UPDATE documents SET doc_type=?, doc_no=?, title=?, from_org=?, to_org=?, date=?, letter_date=?, category=?, file=?, file_names=?, note=?, body_text=?, priority=?, person_name=?, person_school=?, honor_signer=?, honor_template=?, honor_saved_file=?, reg_no=?, workgroup=?, is_registered=?, requester=?, cert_position=?, officer=?, owner_group=?, order_registrar=? WHERE id=?`)
     .run(b.doc_type || row.doc_type, (b.doc_no ?? (row.doc_no || '')).trim(), String(b.title || row.title).trim(),
       (b.from_org ?? (row.from_org || '')).trim(), (b.to_org ?? (row.to_org || '')).trim(),
@@ -676,10 +689,20 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
       file, (b.file_names ?? (row.file_names || '')).toString().trim(), (b.note ?? (row.note || '')).trim(),
       (b.body_text ?? (row.body_text || '')).trim(), (b.priority ?? (row.priority || 'normal')).trim(),
       (b.person_name ?? (row.person_name || '')).trim(), (b.person_school ?? (row.person_school || '')).trim(),
-      (b.honor_signer ?? (row.honor_signer || '')).trim(), (b.honor_template ?? (row.honor_template || '')).trim(), (b.honor_saved_file ?? (row.honor_saved_file || '')).trim(),
+      (b.honor_signer ?? (row.honor_signer || '')).trim(), (b.honor_template ?? (row.honor_template || '')).trim(), newHonorFile,
       (b.reg_no ?? row.reg_no ?? '').toString().trim(), (b.workgroup ?? row.workgroup ?? '').toString().trim(),
       (b.is_registered !== undefined ? (Number(b.is_registered) ? 1 : 0) : (row.is_registered ? 1 : 0)),
       (b.requester ?? (row.requester || '')).trim(), (b.cert_position ?? (row.cert_position || '')).trim(), (b.officer ?? (row.officer || '')).trim(), (b.owner_group ?? (row.owner_group || '')).trim(), (b.order_registrar ?? (row.order_registrar || '')).trim(), id);
+
+  // ลบไฟล์เดิมได้ก็ต่อเมื่อ UPDATE ข้างบนสำเร็จแล้ว (ถ้าถึงบรรทัดนี้ = สำเร็จ)
+  if (fileToDelete) deleteUploadedFile(fileToDelete);
+  /*
+   * ไฟล์เกียรติบัตร: ลบของเดิมเฉพาะเมื่อ "ถูกแทนที่ด้วยไฟล์ใหม่"
+   * ⚠️ ไม่ลบเมื่อค่าถูกส่งมาเป็น '' เพราะหนังสือลับจะถูกปิดข้อมูล (honor_saved_file = '')
+   *    ตอนอ่านจาก API — ถ้าลบตาม ไฟล์ของเจ้าของจะหายไปโดยที่ไม่มีใครสั่ง
+   *    (ไฟล์ที่ค้างแบบนี้หาได้ด้วย `npm run uploads:find`)
+   */
+  if (oldHonorFile && newHonorFile && oldHonorFile !== newHonorFile) deleteUploadedFile(oldHonorFile);
 
   /*
    * โรงเรียนแก้หนังสือที่ถูกส่งกลับมาแล้วส่งอีกครั้ง → ล้างสถานะ "ส่งกลับ"
