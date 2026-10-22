@@ -1,0 +1,3 @@
+# ไฟล์ shell ต้องเป็น LF เสมอ — สคริปต์ deploy รันบนเซิร์ฟเวอร์ Linux
+# ถ้า checkout เป็น CRLF จะได้ error ว่า \r: command not found
+*.sh text eol=lf
