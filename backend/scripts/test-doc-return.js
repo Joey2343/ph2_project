@@ -171,13 +171,25 @@ async function loginAs(userId) {
     /* ── ② หนังสือยังอยู่ในรายการ สพป. ──────────────────────────────── */
     console.log('');
     console.log('⑤ หลังส่งกลับ หนังสือยังอยู่ในรายการฝั่ง สพป. (ไม่หาย)');
-    const inc = await jget('/api/documents?doc_type=outgoing', admin);
+    /*
+     * หนังสือที่สถานศึกษาส่งมาอยู่ในแท็บ "หนังสือรับ" ของ สพป. (/my-incoming)
+     * ไม่ใช่แท็บ "หนังสือส่ง" — แท็บหนังสือส่งคือหนังสือที่สำนักงานส่งออกไปเอง
+     *
+     * เดิมเทสต์นี้ยิง /documents?doc_type=outgoing เพราะตอนนั้นยังกรอง
+     * created_by = ตัวเอง ทำให้หนังสือของโรงเรียนหลุดมาอยู่แท็บหนังสือส่ง
+     * ของสำนักงาน (แก้แล้ว 25 ต.ค. 2569) → เพิ่มแถวผู้รับเหมือนที่ POST /documents ทำ
+     */
+    await db.prepare('INSERT INTO document_recipients (document_id, user_id) VALUES (?, ?)').run(docId, veh.id);
+    const inc = await jget('/api/my-incoming', admin);
     const stillThere = (inc.documents || []).some((d) => Number(d.id) === docId);
     check(stillThere, 'หนังสือยังอยู่ในรายการ',
       'ถ้าหายไป ผู้ใช้จะเห็นว่าหนังสือถูกลบทิ้ง ไม่ใช่ถูกส่งกลับ');
     const withStatus = (inc.documents || []).find((d) => Number(d.id) === docId);
     check(withStatus && withStatus.status === 'returned',
       'รายการคืนค่า status = "returned" ให้หน้าเว็บแสดงผลได้');
+    const outList = await jget('/api/documents?doc_type=outgoing', admin);
+    check(!(outList.documents || []).some((d) => Number(d.id) === docId),
+      'หนังสือของสถานศึกษาไม่ไปโผล่ในแท็บ "หนังสือส่ง" ของสำนักงานเขต');
 
     /* ── ⑧ การ์ดหน้าแรกของโรงเรียนเห็นหนังสือที่รอแก้ ─────────────────── */
     // ไม่งั้นโรงเรียนต้องเปิดทุกแท็บเพื่อหาว่ามีอะไรรออยู่

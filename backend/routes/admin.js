@@ -59,6 +59,21 @@ async function schoolDocScope(user) {
   };
 }
 
+/**
+ * ผู้ใช้คนนี้เป็น "เจ้าหน้าที่สารบัญเขต" ไหม (admin นับด้วย)
+ *
+ * ใช้ตัดสินว่าใครเห็นงานหนังสือราชการ "ของทั้งสำนักงานเขต"
+ * ไม่ใช่ของบัญชีผู้ใช้ — เปลี่ยนตัวเจ้าหน้าที่แล้วงานเดิมต้องอยู่ครบ
+ */
+async function isOfficeDocStaff(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  const row = await db
+    .prepare("SELECT id FROM document_staff WHERE staff_type = 'office' AND user_id = ?")
+    .get(user.id);
+  return !!row;
+}
+
 
 function getYearBE() { return simdate.todayISO().slice(0, 4) - 0 + 543; }
 async function nextDocNo(table, idCol) {
@@ -178,8 +193,7 @@ router.put('/documents/:id/return', auth.requireAuth, async (req, res) => {
   if (String(row.sender_type || '') !== 'school') {
     return res.status(400).json({ error: 'ส่งกลับได้เฉพาะหนังสือที่ส่งมาจากสถานศึกษาเท่านั้น' });
   }
-  const isOfficeClerk = req.user.role === 'admin'
-    || !!await db.prepare("SELECT id FROM document_staff WHERE staff_type = 'office' AND user_id = ?").get(req.user.id);
+  const isOfficeClerk = await isOfficeDocStaff(req.user);
   if (!isOfficeClerk) return res.status(403).json({ error: 'เฉพาะเจ้าหน้าที่สารบัญเขตเท่านั้นที่ส่งกลับหนังสือได้' });
 
   const note = ((req.body || {}).note || '').trim();
@@ -366,6 +380,19 @@ router.get('/documents', auth.requireAuth, async (req, res) => {
         const scope = await schoolDocScope(req.user);
         sql += ' AND (' + scope.clause + ')';
         args.push(...scope.params);
+      } else if (await isOfficeDocStaff(req.user)) {
+        /*
+         * สำนักงานเขต: "หนังสือส่ง" ของสารบัญเขต = ของสำนักงาน ไม่ใช่ของบัญชี
+         * ─────────────────────────────────────────────────────────────────
+         * เดิมกรอง d.created_by = ตัวเอง → ลบเจ้าหน้าที่สารบัญเขตคนเก่า
+         * แล้วเพิ่มคนใหม่ หนังสือส่งที่คนเก่าส่งไว้หายหมดจากสายตา
+         * (เจอจริง 25 ต.ค. 2569 · สพป. 54020000 เปลี่ยนตัวสารบัญเขต)
+         *
+         * ใช้เงื่อนไขเดียวกับทะเบียนหนังสือส่งฝั่งสำนักงานเขต:
+         *   ไม่มีรหัสโรงเรียน (ของโรงเรียนเป็นของโรงเรียน) + ผู้สร้างไม่ใช่ฝั่งสถานศึกษา
+         * เจ้าหน้าที่ทั่วไปที่ไม่ได้เป็นสารบัญเขต ยังเห็นเฉพาะหนังสือที่ตัวเองสร้าง
+         */
+        sql += " AND (d.school_code IS NULL OR d.school_code = '') AND COALESCE(u.user_group, 'office') != 'school'";
       } else {
         sql += ' AND d.created_by = ?';
         args.push(req.user.id);
@@ -1719,7 +1746,7 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
     // "เป็นของสำนักงานเขต" ตัดสินจากฝั่งของผู้สร้างหนังสือ (users.user_group)
     // ไม่ใช่รหัสโรงเรียน เพราะรหัสสำนักงานเขตถูกถอดออกจากตาราง schools ไปแล้ว
     // และผู้ใช้ฝั่งสำนักงานไม่มี school_code อยู่แล้ว
-    const isOfficeClerk = !!await db.prepare("SELECT id FROM document_staff WHERE staff_type = 'office' AND user_id = ?").get(userId) || req.user.role === 'admin';
+    const isOfficeClerk = await isOfficeDocStaff(req.user);
     if (isOfficeClerk) sql += " AND (COALESCE(u.user_group, 'office') != 'school' OR d.sender_type = 'school')";
     else sql += " AND COALESCE(u.user_group, 'office') != 'school'";
   }

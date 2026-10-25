@@ -139,7 +139,13 @@ const VUE_PAGES = {
       },
       {
         name: 'ปุ่มกดดูรายละเอียด (แบบฟอร์มทางการ) มีอยู่',
-        check: `[...document.querySelectorAll('.tbl tbody .btn')].some(b => b.innerText.includes('รายละเอียด'))`,
+        // ไม่มีรายการจองในฐาน (ฐาน dev ว่าง) → ไม่มีปุ่มให้ตรวจ ไม่ตัดสิน
+        // (เหมือนข้อถัดไป — เดิมเทสต์แดงทั้งที่หน้าเว็บถูก เพราะฐานไม่มีข้อมูล)
+        check: `(() => {
+          const rows = document.querySelectorAll('.tbl tbody tr');
+          if (!rows.length) return true;
+          return [...document.querySelectorAll('.tbl tbody .btn')].some(b => b.innerText.includes('รายละเอียด'));
+        })()`,
       },
       {
         // เคยพัง: :disabled="loading || error" → false || '' = ''

@@ -458,6 +458,11 @@ async function saveEditors() {
   }
 }
 
+/** ตำแหน่ง • กลุ่มงาน ของแต่ละคน — แสดงในบรรทัดเดียวกันกับชื่อ */
+function editorMeta(u) {
+  return [u.position, u.workplace].filter(Boolean).join(' • ');
+}
+
 onMounted(async () => {
   await loadToday();
   // ใช้ "วันนี้" ของเซิร์ฟเวอร์ (รองรับโหมดจำลองวันที่) เป็นค่าเริ่มต้นของตาราง
@@ -789,18 +794,11 @@ onBeforeUnmount(() => {
         เลือกเจ้าหน้าที่ที่ต้องการให้สิทธิ์เห็นปุ่มแก้ไขเวลา/ลบบันทึกในหน้าลงเวลาทำงาน
         (ผู้ดูแลระบบมีสิทธิ์อยู่แล้ว)
       </p>
-      <div style="max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px">
-        <label
-          v-for="u in editors"
-          :key="u.id"
-          class="editor-opt"
-          style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-radius: 8px"
-        >
+      <div class="editor-list">
+        <label v-for="u in editors" :key="u.id" class="editor-opt">
           <input v-model="editorsChecked" type="checkbox" :value="u.id" />
-          <div>
-            <div>{{ UI.personName(u) }}</div>
-            <div class="hint">{{ u.position || '' }}{{ u.workplace ? ' • ' + u.workplace : '' }}</div>
-          </div>
+          <span class="editor-name">{{ UI.personName(u) }}</span>
+          <span v-if="editorMeta(u)" class="editor-meta">{{ editorMeta(u) }}</span>
         </label>
       </div>
     </template>
@@ -823,5 +821,60 @@ onBeforeUnmount(() => {
 }
 .clock-day-picker :deep(.hint) {
   display: none;
+}
+
+/*
+ * รายชื่อผู้มีสิทธิ์แก้ไขเวลา — คนละ 1 บรรทัด มีเส้นคั่นบาง ๆ ระหว่างคน
+ * เดิมชื่อกับตำแหน่ง/กลุ่มงานขึ้นคนละบรรทัด ทำให้รายการสูงและอ่านยาก
+ */
+.editor-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+.editor-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.editor-opt:last-child {
+  border-bottom: none;
+}
+.editor-opt:hover {
+  background: var(--primary-light, #eef4ff);
+}
+/*
+ * ⚠️ ต้องกำหนด width/height เอง — theme.css ตั้ง input ให้กว้าง 100%
+ *    (กฎกลางของฟอร์ม) ทำให้ checkbox ยืดเต็มแถว แล้วชื่อ/ตำแหน่งถูกดันตกขอบ
+ *    ห้ามแก้ theme.css → override ใน component เท่านั้น
+ */
+.editor-opt input[type='checkbox'] {
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+.editor-name {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.editor-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-muted, #6b7280);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

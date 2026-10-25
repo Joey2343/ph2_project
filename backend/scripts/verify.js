@@ -189,6 +189,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบงานหนังสือราชการของสำนักงานเขต — เปลี่ยนตัวสารบัญเขตแล้วต้องเห็นงานเดิมครบ]');
+  results.push(run('test-office-doc-handover', [path.join(__dirname, 'test-office-doc-handover.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
