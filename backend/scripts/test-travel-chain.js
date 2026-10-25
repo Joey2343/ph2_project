@@ -98,11 +98,18 @@ async function writeMap(db, obj) {
   console.log('① travelChainLevels() อ่านจากหน้า ⊛ กำหนดผู้อนุมัติไปราชการ');
 
   const adminId = 1;
-  // ผู้ขอที่ใช้ทดสอบ = เจ้าหน้าที่ สพป. คนที่ 2 (เหมือน test-leave-chain.js)
-  const r2 = await db.prepare("SELECT id, username FROM users WHERE status='active' AND id <> ? AND (user_group IS NULL OR user_group <> 'school') ORDER BY id LIMIT 1").get(adminId);
+  // ผู้ขอที่ใช้ทดสอบ = เจ้าหน้าที่ สพป. คนแรกที่ "ไม่มีค่า Telegram" (เหมือน test-leave-chain.js)
+  //   ⚠️ ห้ามเลือกคนที่มี telegram_token/chat_id จริง — การอนุมัติจะส่งข้อความจริงถึงผู้ใช้
+  //      แล้วเทสต์ลบรายการทิ้ง → ผู้ใช้ได้ข้อความของรายการที่ไม่มีอยู่ (เจอจริง 25 ต.ค. 2569)
+  const r2 = await db.prepare(`SELECT id, username, COALESCE(telegram_token,'') AS telegram_token
+       FROM users WHERE status='active' AND id <> ? AND (user_group IS NULL OR user_group <> 'school')
+      ORDER BY (COALESCE(telegram_token,'') = '' AND COALESCE(telegram_chat_id,'') = '') DESC, id LIMIT 1`).get(adminId);
   const requesterId = r2 ? r2.id : adminId;
   const requesterCookie = r2 ? await login(r2.username, 'Test1234**') : '';
   const submitAs = requesterCookie || (await login('admin', 'Joey2343**'));
+  if (r2 && r2.telegram_token) {
+    console.log(`  ⚠ ผู้ขอ (${r2.username}) มีค่า Telegram — ถ้าเซิร์ฟเวอร์ไม่ได้ตั้ง TELEGRAM_DISABLED=1 จะส่งข้อความจริง`);
+  }
 
   const cases = [
     [{ [requesterId]: { supervisor: 3, approver: 5 } }, [1, 2], 'ตั้ง supervisor+approver → 2 ขั้น'],

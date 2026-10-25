@@ -8,6 +8,12 @@
  * จึงใช้ 🟢/✅ (สีเขียว = อนุมัติ) และ 🔴/❌ (สีแดง = ไม่อนุมัติ) เป็นสัญลักษณ์สี
  *
  * TELEGRAM_API_BASE ใช้สำหรับทดสอบกับเซิร์ฟเวอร์จำลองในเครื่อง (ค่าเริ่มต้นคือ API จริง)
+ *
+ * ⚠️ TELEGRAM_DISABLED=1 = ปิดการส่งทั้งหมด (ไม่ยิง fetch ออกนอกเครื่องเลย)
+ *    ใช้กับเซิร์ฟเวอร์ที่ชุดทดสอบ (`npm run verify`) เปิดขึ้นเอง
+ *    เพราะฐาน dev ในเครื่องมี telegram_token/chat_id จริงของผู้ใช้
+ *    เคยเกิดเหตุ: เทสต์อนุมัติคำขอลา/ไปราชการของผู้ใช้จริง → ผู้ใช้ได้ข้อความ
+ *    "🟢✅ ... ได้รับการอนุมัติแล้ว" ของรายการที่เทสต์ลบไปแล้ว (25 ต.ค. 2569)
  */
 const db = require('../db');
 const approvals = require('./approvals');
@@ -686,11 +692,20 @@ async function notifyRequest({ system, id, approved, deciderName, note, extra })
 }
 
 /**
+ * ปิดการส่ง Telegram หรือไม่ (อ่านค่าทุกครั้งที่เรียก — เทสต์สลับค่าได้)
+ * ตั้ง TELEGRAM_DISABLED=1 เมื่อต้องการให้ระบบไม่ส่งข้อความออกนอกเครื่องเลย
+ */
+function telegramDisabled() {
+  return String(process.env.TELEGRAM_DISABLED || '').trim() === '1';
+}
+
+/**
  * ส่งข้อความ Telegram (token/chatId จากข้อมูลสมาชิก)
  * ไม่ throw ต่อให้ส่งไม่สำเร็จ (แจ้งเตือนล้มเหลวต้องไม่ขัดขวางการอนุมัติ)
  * @returns {Promise<boolean>} ส่งสำเร็จหรือไม่
  */
 async function sendTelegram({ token, chatId, text }) {
+  if (telegramDisabled()) return false;
   if (!token || !chatId || !text) return false;
   try {
     const resp = await fetch(`${API_BASE}/bot${token}/sendMessage`, {
@@ -1047,5 +1062,5 @@ module.exports = {
   notifyLeaveSubmitted, notifyLeaveNextLevel,
   notifyLeaveCancelRequested, notifyLeaveCancelled,
   travelSubmittedText, travelNextLevelText, notifyTravelSubmitted, notifyTravelNextLevel,
-  notifyRequest, sendTelegram,
+  notifyRequest, sendTelegram, telegramDisabled,
 };

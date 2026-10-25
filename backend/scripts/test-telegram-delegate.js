@@ -34,6 +34,10 @@ function check(ok, name, detail = '') {
 const ROOT = path.join(__dirname, '..');
 const telegramPath = path.join(ROOT, 'lib', 'telegram.js');
 
+// เทสต์นี้แทน fetch ด้วยตัวจับการเรียกเอง (ไม่ส่งจริง) จึงต้องปิดสวิตช์ TELEGRAM_DISABLED
+// ที่ scripts/verify.js ใส่ให้ทุกโปรเซสลูก — ไม่งั้น sendTelegram() จะคืน false ทันที
+delete process.env.TELEGRAM_DISABLED;
+
 (async () => {
   const db = require(path.join(ROOT, 'db.js'));
   await db.init();

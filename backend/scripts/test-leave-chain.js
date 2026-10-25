@@ -103,11 +103,19 @@ function restore(saved) {
   // ⚠️ "ผู้ขอ" ต้องเป็นคนที่เราจะตั้งสายให้ และต้องยื่นคำขอในชื่อเขา
   //   ถ้ายื่นด้วย admin แต่ไปตั้ง leave_approvers ของคนอื่น ระบบจะอ่านสายของ admin → เทสต์หลอกตัวเอง
   const requester = await db.prepare(
-    "SELECT id, username FROM users WHERE status='active' AND id <> ? AND (user_group IS NULL OR user_group <> 'school') ORDER BY id LIMIT 1",
+    // ⚠️ เรียงคนที่ "ไม่มีค่า Telegram" ขึ้นก่อน — กันเทสต์ส่งข้อความจริงถึงผู้ใช้
+    //   (ฐาน dev มี telegram_token/chat_id จริง · ถ้าเลือกคนนั้น การอนุมัติจะส่งจริง
+    //    แล้วเทสต์ลบรายการทิ้ง → ผู้ใช้ได้ข้อความของรายการที่ไม่มีอยู่ · เจอจริง 25 ต.ค. 2569)
+    `SELECT id, username, COALESCE(telegram_token,'') AS telegram_token
+       FROM users WHERE status='active' AND id <> ? AND (user_group IS NULL OR user_group <> 'school')
+      ORDER BY (COALESCE(telegram_token,'') = '' AND COALESCE(telegram_chat_id,'') = '') DESC, id LIMIT 1`,
   ).get(adminId);
   const requesterId = requester ? requester.id : adminId;
   const requesterCookie = requester ? await login(requester.username, 'Test1234**') : '';
   const submitAs = requesterCookie ? requesterCookie : (await login('admin', 'Joey2343**'));
+  if (requester && requester.telegram_token) {
+    console.log(`  ⚠ ผู้ขอ (${requester.username}) มีค่า Telegram — ถ้าเซิร์ฟเวอร์ไม่ได้ตั้ง TELEGRAM_DISABLED=1 จะส่งข้อความจริง`);
+  }
 
   const cases = [
     [{ 1: { [requesterId]: 3 }, 2: { [requesterId]: 20 }, 3: { [requesterId]: 5 } }, [1, 2, 3], 'ตั้ง ❶+❷+❸ → 3 ขั้น'],

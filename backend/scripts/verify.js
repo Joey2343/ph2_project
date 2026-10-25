@@ -13,7 +13,7 @@
 
 require('dotenv').config();
 
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -21,12 +21,62 @@ const BACKEND = path.join(__dirname, '..');
 const PROJECT = path.join(BACKEND, '..');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 
+/**
+ * ชุดทดสอบต้องยิงเข้าที่ "เซิร์ฟเวอร์ทดสอบ" ที่ไฟล์นี้เปิดขึ้นเองเท่านั้น
+ *
+ * ทำไม — บนเครื่อง dev ฐานข้อมูลมี telegram_token/chat_id จริงของผู้ใช้
+ * ถ้าเทสต์ไปกดอนุมัติที่เซิร์ฟเวอร์ dev (พอร์ต 3000) ระบบจะส่งข้อความ Telegram
+ * จริงออกไป แล้วเทสต์ลบรายการทิ้ง → ผู้ใช้ได้ข้อความอนุมัติของ "รายการที่ไม่มีอยู่"
+ * (เจอจริง 25 ต.ค. 2569 · มาจาก test-leave-chain / test-travel-chain)
+ *
+ * → เซิร์ฟเวอร์ทดสอบถูกเปิดด้วย TELEGRAM_DISABLED=1 เสมอ และใช้พอร์ตสุ่ม
+ *   เพื่อไม่ให้ไปชน/ไปต่อกับเซิร์ฟเวอร์ dev ที่ผู้พัฒนากำลังเปิดอยู่
+ */
+const TEST_PORT = Number(process.env.TEST_SERVER_PORT || (3301 + Math.floor(Math.random() * 200)));
+const TEST_BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
+
+/** เปิดเซิร์ฟเวอร์ทดสอบ (ปิด Telegram) แล้วรอจน /api/office ตอบ 200 */
+async function startTestServer() {
+  console.log('\n[เซิร์ฟเวอร์ทดสอบ]');
+  const child = spawn(process.execPath, ['server.js'], {
+    cwd: BACKEND,
+    env: { ...process.env, PORT: String(TEST_PORT), TELEGRAM_DISABLED: '1', NODE_NO_WARNINGS: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let out = '';
+  const collect = (d) => { out = (out + d.toString()).slice(-8000); };
+  child.stdout.on('data', collect);
+  child.stderr.on('data', collect);
+  let dead = false;
+  child.on('exit', () => { dead = true; });
+  // กันโปรเซสผี: ไม่ว่าจบทางไหน (process.exit / throw / Ctrl+C) ต้องปิดเซิร์ฟเวอร์ทดสอบ
+  process.on('exit', () => { try { child.kill(); } catch (e) { /* ignore */ } });
+
+  for (let i = 0; i < 60; i += 1) {
+    if (dead) break;
+    try {
+      const r = await fetch(`${TEST_BASE_URL}/api/office`, { signal: AbortSignal.timeout(2000) });
+      if (r.status === 200) {
+        console.log(`  ✔ ${TEST_BASE_URL} พร้อม (TELEGRAM_DISABLED=1 → ไม่ส่งข้อความจริง)`);
+        return child;
+      }
+    } catch (e) { /* ยังไม่พร้อม — รอต่อ */ }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  try { child.kill(); } catch (e) { /* ignore */ }
+  console.log('  ✖ เปิดเซิร์ฟเวอร์ทดสอบไม่สำเร็จ (พอร์ต ' + TEST_PORT + ')');
+  out.split('\n').filter((l) => l.trim()).slice(-12).forEach((l) => console.log('      ' + l));
+  return null;
+}
+
 function run(label, args, opts = {}) {
   process.stdout.write(`  ${label} … `);
   const r = spawnSync(process.execPath, args, {
     cwd: opts.cwd || BACKEND,
     encoding: 'utf8',
-    env: { ...process.env, NODE_NO_WARNINGS: '1', ...opts.env },
+    // TELEGRAM_DISABLED=1 ให้ทุกโปรเซสลูก — กันเทสต์ที่เรียก lib/telegram.js ตรง ๆ
+    env: { ...process.env, NODE_NO_WARNINGS: '1', TELEGRAM_DISABLED: '1', ...opts.env },
   });
   const ok = r.status === 0;
   process.stdout.write(ok ? 'ผ่าน\n' : 'ไม่ผ่าน\n');
@@ -46,10 +96,9 @@ function nodeVersionOk() {
   return { ok: major >= 22, major, text: `${process.versions.node}` };
 }
 
-function main() {
+async function main() {
   console.log('\nตรวจความถูกต้องระบบ P2-SMART\n');
   const results = [];
-
   console.log('[สภาพแวดล้อม]');
   const v = nodeVersionOk();
   console.log(`  Node.js ${v.text} ${v.ok ? '✔ (ต้อง >= 22)' : '✖ (ต้อง >= 22)'}`);
@@ -82,6 +131,10 @@ function main() {
   console.log(`  ${DATABASE_URL ? '✔' : '✖'} DATABASE_URL ถูกตั้งค่า`);
   results.push(Boolean(DATABASE_URL));
 
+  // เซิร์ฟเวอร์ทดสอบของชุดทดสอบเอง (ปิด Telegram) — ต้องมีก่อนเทสต์ที่ยิง HTTP
+  const testServer = await startTestServer();
+  results.push(Boolean(testServer));
+
   console.log('\n[ตรวจ syntax ทุกไฟล์]');
   results.push(
     run('acorn parse', [path.join(__dirname, 'check-syntax.js')])
@@ -113,22 +166,22 @@ function main() {
 
   console.log('\n[ทดสอบชื่อไฟล์แนบ — ต้องตรงลำดับไฟล์เสมอ]');
   results.push(run('test-file-names', [path.join(__dirname, 'test-file-names.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบลบหนังสือแล้วไฟล์แนบต้องหายจากดิสก์ — ไม่ใช่ค้างทุกครั้ง]');
   results.push(run('test-upload-cleanup', [path.join(__dirname, 'test-upload-cleanup.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบ endpoint เปลี่ยนสถานะต้องคืนค่าจริงของแถว — ให้หน้าเว็บอัปเดตทันที]');
   results.push(run('test-row-patch', [path.join(__dirname, 'test-row-patch.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบส่งกลับหนังสือจากสถานศึกษาให้ไปแก้ไข + ตัวเลขการ์ดหน้าแรกต้องเป็นตัวเลขจริง]');
   results.push(run('test-doc-return', [path.join(__dirname, 'test-doc-return.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
@@ -136,12 +189,12 @@ function main() {
 
   console.log('\n[ทดสอบดาวน์โหลดรายชื่อเจ้าหน้าที่เป็น Excel]');
   results.push(run('test-staff-export', [path.join(__dirname, 'test-staff-export.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบบทบาทฝั่งสถานศึกษา แยกจากฝั่ง สพป.]');
   results.push(run('test-school-roles', [path.join(__dirname, 'test-school-roles.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบลำดับรายชื่อเจ้าหน้าที่ทุกจุดที่ให้เลือก]');
@@ -153,25 +206,28 @@ function main() {
   console.log('\n[ทดสอบ Telegram แจ้งผู้ได้รับมอบหมายงานให้ทำหน้าที่แทน]');
   results.push(run('test-telegram-delegate', [path.join(__dirname, 'test-telegram-delegate.js')]));
 
+  console.log('\n[ทดสอบว่าชุดทดสอบส่ง Telegram จริงไม่ได้ — TELEGRAM_DISABLED ต้องปิดการส่ง]');
+  results.push(run('test-telegram-guard', [path.join(__dirname, 'test-telegram-guard.js')]));
+
   console.log('\n[ทดสอบสิทธิ์อนุมัติ — callback ต้องถูก await ทุกตัว]');
   results.push(run('test-approval-perm', [path.join(__dirname, 'test-approval-perm.js')]));
 
   console.log('\n[ทดสอบยื่นลา + สายอนุมัติการลา ตั้งแต่ต้นจนจบ]');
   results.push(run('test-leave-flow', [path.join(__dirname, 'test-leave-flow.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   // คนละเรื่องกับ test-leave-flow: ตัวนั้นจบที่ "ผู้ตรวจสอบกดตรวจสอบได้"
   // ยังไม่เคยกดอนุมัติต่อ — พอดีกับจุดที่พังจริง
   console.log('\n[ทดสอบสายอนุมัติการลา: จำนวนขั้นต้องมาจากที่ตั้งรายคน]');
   results.push(run('test-leave-chain', [path.join(__dirname, 'test-leave-chain.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   // บั๊กชนิดเดียวกัน: approval_travel เป็นค่ากลาง ทำให้คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกใช้
   console.log('\n[ทดสอบสายอนุมัติไปราชการ: จำนวนขั้นต้องมาจากคอลัมน์ที่ตั้งรายคน]');
   results.push(run('test-travel-chain', [path.join(__dirname, 'test-travel-chain.js')], {
-    env: { TEST_BASE_URL: `http://127.0.0.1:${process.env.PORT || 3000}` },
+    env: { TEST_BASE_URL },
   }));
 
   console.log('\n[ทดสอบ endpoint บน MariaDB]');
@@ -187,6 +243,11 @@ function main() {
     );
   }
 
+  // ปิดเซิร์ฟเวอร์ทดสอบก่อนสรุปผล (ไม่ให้ค้างเป็นโปรเซสผี)
+  if (testServer) {
+    try { testServer.kill(); } catch (e) { /* ignore */ }
+  }
+
   const pass = results.filter(Boolean).length;
   const total = results.length;
   console.log(`\n${'='.repeat(50)}`);
@@ -196,4 +257,7 @@ function main() {
   process.exit(pass === total ? 0 : 1);
 }
 
-main();
+main().catch((e) => {
+  console.error('\nตรวจไม่สำเร็จ:', e && e.message ? e.message : e);
+  process.exit(1);
+});
