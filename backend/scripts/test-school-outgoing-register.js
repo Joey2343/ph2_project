@@ -299,6 +299,35 @@ async function loginAs(userId) {
         `migrate เติมรหัสโรงเรียนให้หนังสือ (ได้ "${afterDocD ? afterDocD.school_code : ''}")`);
       check(afterOrphan && afterOrphan.school_code === SCHOOL,
         `migrate กู้รหัสโรงเรียนให้หนังสือที่ผู้สร้างถูกลบแล้ว (ได้ "${afterOrphan ? afterOrphan.school_code : ''}")`);
+
+      /* ── ⑩ แท็บ "หนังสือส่ง" ของโรงเรียน ก็ต้องเป็นของโรงเรียน ─────── */
+      console.log('');
+      console.log('⑩ แท็บหนังสือส่ง (ไม่ใช่ทะเบียน) เห็นของโรงเรียน ไม่ใช่ของบัญชี');
+      // โรงเรียนส่งหนังสือถึง สพป. (sender_type = 'school') — ผู้สร้างถูกลบไปแล้ว
+      const docSent = await mkDoc({
+        title: 'ทดสอบหนังสือส่งของโรงเรียน (ผู้สร้างถูกลบแล้ว)', doc_no: 'ที่ ศธ 04110.1/7',
+        from_org: WORKPLACE, to_org: 'สพป.แพร่ เขต 2',
+        created_by: 999998, sender_type: 'school', school_code: SCHOOL,
+      });
+      // หนังสือของโรงเรียนอื่น — ต้องไม่โผล่ให้โรงเรียนนี้เห็น
+      const docOther = await mkDoc({
+        title: 'ทดสอบหนังสือส่งของโรงเรียนอื่น', doc_no: 'ที่ ศธ 04110.2/1',
+        from_org: '88888888 โรงเรียนอื่น', to_org: 'สพป.แพร่ เขต 2',
+        created_by: userB, sender_type: 'school', school_code: '88888888',
+      });
+      // หนังสือส่งของสำนักงานเขต — ต้องไม่โผล่ในทะเบียนของโรงเรียน
+      const docOfficeOut = await mkDoc({
+        title: 'ทดสอบหนังสือส่งของสำนักงานเขต', doc_no: 'ที่ ศธ 04110/97',
+        from_org: 'สพป.แพร่ เขต 2', to_org: 'กลุ่มงานทดสอบ',
+        created_by: adminRow.id, sender_type: 'office', school_code: '',
+      });
+      const rSent = await jget('/api/documents?doc_type=outgoing', cookieB);
+      check(docIds(rSent).includes(docSent), 'เห็นหนังสือส่งที่เจ้าหน้าที่คนก่อนสร้างไว้',
+        `ได้ id: ${docIds(rSent).join(',')} · ต้องมี ${docSent}`);
+      check(!docIds(rSent).includes(docOther), 'ไม่เห็นหนังสือส่งของโรงเรียนอื่น',
+        `ได้ id: ${docIds(rSent).join(',')} · ต้องไม่มี ${docOther}`);
+      check(!docIds(rSent).includes(docOfficeOut), 'ไม่เห็นหนังสือส่งของสำนักงานเขต',
+        `ได้ id: ${docIds(rSent).join(',')} · ต้องไม่มี ${docOfficeOut}`);
     }
   } catch (e) {
     check(false, 'ทดสอบไม่จบ', e && e.stack ? e.stack.split('\n').slice(0, 4).join('\n') : String(e));

@@ -23,6 +23,42 @@ function getSchoolPrefix(req) {
   return '';
 }
 
+/**
+ * เงื่อนไข "เอกสารของโรงเรียนนี้" (alias ตาราง documents คือ d)
+ *
+ * ทำไมต้องมี helper
+ * ────────────────
+ * เอกสารฝั่งสถานศึกษาเป็นของ "โรงเรียน" ไม่ใช่ของบัญชีเจ้าหน้าที่สารบัญ
+ * เปลี่ยนตัวเจ้าหน้าที่แล้ว คนใหม่ต้องเห็นงานเดิมทั้งหมด
+ *
+ * เงื่อนไข 2 ชั้น
+ *   ① d.school_code = รหัสโรงเรียน  → แถวที่บันทึกหลังแก้บั๊ก (ปกติ)
+ *   ② school_code ว่าง + ผู้สร้างเป็นคนของโรงเรียนนี้ → แถวเก่าก่อน migrate เติม
+ *      (created_by ไม่มี FK → แถวยังอยู่แม้ลบบัญชีผู้สร้าง)
+ *
+ * ไม่รู้รหัสโรงเรียนเลย (school_code/workplace/current_school ว่างหมด)
+ *   → เห็นเฉพาะที่ตัวเองสร้าง (ปลอดภัยกว่าเห็นของโรงเรียนอื่น)
+ *
+ * @returns {{clause: string, params: any[]}} ต่อท้ายด้วย " AND (clause) "
+ */
+async function schoolDocScope(user) {
+  const code = schoolCodeOf(user);
+  if (!code) return { clause: 'd.created_by = ?', params: [user.id] };
+
+  const mates = await db
+    .prepare("SELECT id FROM users WHERE user_group = 'school' AND (school_code = ? OR workplace LIKE ? OR current_school LIKE ?)")
+    .all(code, code + '%', code + '%');
+  const ids = mates.map((r) => Number(r.id)).filter((n) => n > 0);
+  if (!ids.length) return { clause: 'd.school_code = ?', params: [code] };
+
+  return {
+    clause:
+      "d.school_code = ? OR ((d.school_code IS NULL OR d.school_code = '') AND d.created_by IN (" +
+      ids.map(() => '?').join(',') + '))',
+    params: [code, ...ids],
+  };
+}
+
 
 function getYearBE() { return simdate.todayISO().slice(0, 4) - 0 + 543; }
 async function nextDocNo(table, idCol) {
@@ -321,13 +357,18 @@ router.get('/documents', auth.requireAuth, async (req, res) => {
     args.push(doc_type);
     // For outgoing documents, only show documents created by current user
     if (doc_type === 'outgoing') {
-      sql += ' AND d.created_by = ? AND (d.sender_type IS NULL OR d.sender_type != ?)';
-      args.push(req.user.id);
+      sql += ' AND (d.sender_type IS NULL OR d.sender_type != ?)';
       args.push('registered');
-      // โรงเรียน: เห็นเฉพาะหนังสือส่งของโรงเรียนตัวเองเท่านั้น (แยกชัดเจนระหว่างโรงเรียน เช่น 54020036 ≠ 54020055)
-      if (req.user.user_group === 'school' && req.user.school_code) {
-        sql += ' AND d.school_code = ?';
-        args.push(req.user.school_code);
+      if (req.user.user_group === 'school') {
+        // โรงเรียน: หนังสือส่งเป็นของ "โรงเรียน" ไม่ใช่ของบัญชีเจ้าหน้าที่สารบัญ
+        // (เดิมกรอง d.created_by = ตัวเอง → เปลี่ยนเจ้าหน้าที่แล้วหนังสือส่งเดิมหายหมด)
+        // ยังคงแยกชัดเจนระหว่างโรงเรียน เช่น 54020036 ≠ 54020055
+        const scope = await schoolDocScope(req.user);
+        sql += ' AND (' + scope.clause + ')';
+        args.push(...scope.params);
+      } else {
+        sql += ' AND d.created_by = ?';
+        args.push(req.user.id);
       }
     }
   }
@@ -1697,7 +1738,6 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
   const isSchool = req.user.user_group === 'school';
   const q = req.query.q || '';
-  const schoolCode = schoolCodeOf(req.user);
   let sql = "SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'outgoing' AND d.sender_type = 'registered'";
   const params = [];
   if (isSchool) {
@@ -1709,30 +1749,11 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
      *      → กรองด้วย '' = ไม่เห็นอะไรเลย
      *   ② รายการเก่าที่ลงทะเบียนตอน school_code ยังว่าง → school_code = ''
      *      → ไม่มีใครที่มีรหัสถูกต้องเห็นอีกเลย
-     * จึงต้องมีทางสำรอง: แถวที่ไม่มีรหัสโรงเรียนให้ดูจาก "ผู้สร้างว่าเป็นคนของโรงเรียนนี้ไหม"
-     * (created_by ไม่มี FK → แถวไม่หายเมื่อลบผู้ใช้
-     *  ส่วนแถวที่ผู้สร้างถูกลบไปแล้ว migrate() กู้รหัสจากช่อง "จาก" ให้ตอนบูต)
+     * → ใช้ schoolDocScope() (ดูคำอธิบายที่ตัวช่วยด้านบนไฟล์)
      */
-    if (schoolCode) {
-      // คนของโรงเรียนนี้ (ใช้ตามหาหนังสือเก่าที่ยังไม่มีรหัสโรงเรียน)
-      // ทำเป็นรายการ id ก่อน ไม่เขียน subquery ซ้อนใน SQL หลัก
-      // — subquery ที่มีวงเล็บซ้อนทำให้ตัวตรวจ schema อ่านผิด และอ่านยาก
-      const mates = await db
-        .prepare("SELECT id FROM users WHERE user_group = 'school' AND (school_code = ? OR workplace LIKE ? OR current_school LIKE ?)")
-        .all(schoolCode, schoolCode + '%', schoolCode + '%');
-      const mateIds = mates.map((r) => Number(r.id)).filter((n) => n > 0);
-      if (mateIds.length) {
-        sql += " AND (d.school_code = ? OR ((d.school_code IS NULL OR d.school_code = '') AND d.created_by IN (" + mateIds.map(() => '?').join(',') + ")))";
-        params.push(schoolCode, ...mateIds);
-      } else {
-        sql += ' AND d.school_code = ?';
-        params.push(schoolCode);
-      }
-    } else {
-      // ไม่รู้รหัสโรงเรียน → เห็นเฉพาะที่ตัวเองลงทะเบียน (ไม่เห็นของโรงเรียนอื่น)
-      sql += ' AND d.created_by = ?';
-      params.push(userId);
-    }
+    const scope = await schoolDocScope(req.user);
+    sql += ' AND (' + scope.clause + ')';
+    params.push(...scope.params);
   }
   // ฝั่งสำนักงานเขต: เฉพาะรายการที่ไม่มีรหัสโรงเรียน (ของโรงเรียนเป็นของโรงเรียน)
   // (เดิมคัดด้วย d.school_code = '54020000' ซึ่งไม่มีผล เพราะรหัสนี้ถูกถอดจาก schools แล้ว
