@@ -201,6 +201,42 @@ CREATE TABLE IF NOT EXISTS \`document_staff\` (
   UNIQUE KEY \`staff_type\` (\`staff_type\`,\`user_id\`,\`school_code\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+/*
+ * สถานศึกษาปลายทางของหนังสือ — เก็บแยกจาก "ผู้รับ" โดยตั้งใจ
+ *
+ * document_recipients ผูกกับ users ด้วย FK ON DELETE CASCADE
+ * → ลบผู้ใช้ออก (เช่น เปลี่ยนตัวเจ้าหน้าที่สารบัญ) แถวผู้รับหายทั้งหมด
+ * → สารบัญคนใหม่ของโรงเรียนเดิมจึงไม่เห็นหนังสือเก่า (เจอจริง 25 ต.ค. 2569)
+ *
+ * ตารางนี้ผูกกับ "โรงเรียน" ไม่ใช่ "บัญชีผู้ใช้" — ลบ/เปลี่ยนเจ้าหน้าที่กี่ครั้งก็ไม่หาย
+ * ใช้ตอนกำหนดเจ้าหน้าที่สารบัญสถานศึกษา (sync ผู้รับย้อนหลัง) และกรองทะเบียนหนังสือรับ
+ */
+CREATE TABLE IF NOT EXISTS \`document_school_targets\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`document_id\` int(11) NOT NULL,
+  \`school_code\` varchar(20) NOT NULL DEFAULT '',
+  \`created_at\` varchar(30) DEFAULT current_timestamp(),
+  PRIMARY KEY (\`id\`),
+  UNIQUE KEY \`document_school\` (\`document_id\`,\`school_code\`),
+  KEY \`school_code\` (\`school_code\`),
+  CONSTRAINT \`document_school_targets_ibfk_1\` FOREIGN KEY (\`document_id\`) REFERENCES \`documents\` (\`id\`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+/*
+ * เลขหนังสือของสถานศึกษา — เก็บตาม "โรงเรียน" ไม่ใช่ตามบัญชีผู้ใช้
+ *
+ * เดิมเก็บใน document_staff.doc_prefix ซึ่งเป็นแถวของผู้ใช้
+ * พอลบผู้ใช้ออก (หรือเปลี่ยนตัวสารบัญ) เลขที่ตั้งไว้หายไปด้วย
+ * ตอนนี้ย้ายมาเก็บที่ตารางนี้ → ตั้งครั้งเดียวใช้ได้ตลอด แม้เปลี่ยนคน
+ * (ยังเขียนสำเนาลง document_staff.doc_prefix เพื่อความเข้ากันได้กับโค้ดเดิม)
+ */
+CREATE TABLE IF NOT EXISTS \`school_doc_prefix\` (
+  \`school_code\` varchar(20) NOT NULL,
+  \`doc_prefix\` varchar(255) COLLATE utf8mb4_bin DEFAULT '',
+  \`updated_at\` varchar(30) DEFAULT current_timestamp(),
+  PRIMARY KEY (\`school_code\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
 CREATE TABLE IF NOT EXISTS \`leave_requests\` (
   \`id\` int(11) NOT NULL AUTO_INCREMENT,
   \`leave_no\` mediumtext DEFAULT NULL,
@@ -560,10 +596,73 @@ async function ensureColumn(table, col, ddl) {
   return false;
 }
 
+/**
+ * ย้าย "สถานศึกษาปลายทาง" ของหนังสือที่มีอยู่แล้ว → document_school_targets
+ *
+ * ทำไมต้องมี
+ * ──────────
+ * เดิมรู้ว่าโรงเรียนไหนได้รับหนังสือ จากแถวผู้รับ (document_recipients.as_school)
+ * และจากข้อความช่อง "ถึง" (to_org ขึ้นต้นด้วยรหัสโรงเรียน)
+ * แถวผู้รับผูกกับผู้ใช้ → ลบผู้ใช้ออก หลักฐานนั้นหายทันที
+ * ตารางใหม่จึงเก็บถาวร และฟังก์ชันนี้เติมย้อนหลังให้หนังสือเก่า
+ *
+ * หลักฐานที่ใช้ (เรียงตามความน่าเชื่อถือ)
+ *   1. document_recipients.as_school — บันทึกไว้ตอนส่งว่า "รับในฐานะโรงเรียนไหน"
+ *   2. รหัสโรงเรียนที่ปรากฏในช่อง "ถึง" (เช่น "54020071 โรงเรียน...") — เฉพาะรหัสที่มีจริงใน schools
+ *
+ * ⚠️ หนังสือที่ส่งแบบ "ทุกโรงเรียน/กลุ่มโรงเรียน" และมีผู้รับเพียงคนเดียวซึ่งถูกลบไปแล้ว
+ *    จะกู้คืนไม่ได้ (ไม่มีหลักฐานเหลือ) — ตั้งแต่ตอนนี้เป็นต้นไปไม่เกิดซ้ำ เพราะบันทึกตอนส่ง
+ */
+async function backfillDocumentSchoolTargets() {
+  try {
+    await db.exec(`
+      INSERT IGNORE INTO document_school_targets (document_id, school_code)
+      SELECT DISTINCT dr.document_id, dr.as_school
+      FROM document_recipients dr
+      WHERE dr.as_school IS NOT NULL AND dr.as_school <> ''
+    `);
+
+    const known = new Set(
+      (await db.prepare('SELECT code FROM schools').all()).map((s) => String(s.code || '').trim())
+    );
+    if (!known.size) return;
+
+    const pending = await db
+      .prepare(
+        `SELECT d.id, d.to_org FROM documents d
+         WHERE d.sender_type IN ('office','school_to_school') AND d.to_org <> ''
+           AND NOT EXISTS (SELECT 1 FROM document_school_targets t WHERE t.document_id = d.id)`
+      )
+      .all();
+    if (!pending.length) return;
+
+    const ins = db.prepare(
+      'INSERT IGNORE INTO document_school_targets (document_id, school_code) VALUES (?,?)'
+    );
+    let added = 0;
+    for (const d of pending) {
+      const codes = new Set(
+        (String(d.to_org).match(/\d{7,8}/g) || []).filter((c) => known.has(c))
+      );
+      for (const c of codes) {
+        await ins.run(d.id, c);
+        added++;
+      }
+    }
+    if (added) console.log(`[migrate] ผูกสถานศึกษาปลายทางของหนังสือเก่า ${added} รายการ`);
+  } catch (e) {
+    // เติมย้อนหลังไม่สำเร็จไม่ควรทำให้ระบบบูตไม่ขึ้น — รอบถัดไปลองใหม่
+    console.error('[migrate] เติมสถานศึกษาปลายทางของหนังสือเก่าไม่สำเร็จ:', e.message);
+  }
+}
+
 async function migrate() {
   for (const [table, col, ddl] of COLUMN_MIGRATIONS) {
     await ensureColumn(table, col, ddl);
   }
+
+  // ผูก "สถานศึกษาปลายทาง" ของหนังสือเก่าเข้าตารางถาวร (รันซ้ำได้ ไม่สร้างแถวซ้ำ)
+  await backfillDocumentSchoolTargets();
 
   /*
    * แก้ไข charset ของคอลัมน์ revision_note ที่สร้างไว้ก่อนหน้านี้

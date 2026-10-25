@@ -450,6 +450,48 @@ router.put('/sim-date', auth.requireAdmin, async (req, res) => {
   res.json({ ok: true, sim_today: applied || null, message: applied ? ('เปิดโหมดจำลอง: ระบบถือว่าวันนี้คือ ' + applied) : 'ปิดโหมดจำลอง — กลับสู่เวลาจริงแล้ว' });
 });
 
+// ---------- สถานศึกษาปลายทางของหนังสือ (ถาวร ไม่ผูกกับบัญชีผู้ใช้) ----------
+
+/**
+ * แปลงค่า recipient_schools ที่ส่งมาจากฟอร์ม → รหัสโรงเรียน (ไม่ซ้ำ)
+ *
+ * รับได้ทั้ง array ของรหัส, array ของ JSON string, และ string เดียว
+ * (ฟอร์มเดิมส่ง JSON.stringify ต่อหนึ่งค่า และบางสาขาส่งซ้ำหลายค่า)
+ */
+function parseRecipientSchoolCodes(raw) {
+  const out = [];
+  const push = (v) => {
+    const code = String(v == null ? '' : v).split(' ')[0].trim();
+    if (/^\d{7,8}$/.test(code) && out.indexOf(code) === -1) out.push(code);
+  };
+  const list = Array.isArray(raw) ? raw : [raw];
+  for (const item of list) {
+    if (item == null) continue;
+    let parsed = null;
+    try { parsed = JSON.parse(item); } catch (e) { parsed = null; }
+    if (Array.isArray(parsed)) parsed.forEach(push);
+    else String(item).split(',').forEach(push);
+  }
+  return out;
+}
+
+/**
+ * บันทึก "โรงเรียนปลายทาง" ลงตารางถาวร (document_school_targets)
+ *
+ * ⚠️ ห้ามพึ่ง document_recipients อย่างเดียว — แถวนั้นผูกกับผู้ใช้ (ON DELETE CASCADE)
+ *    ลบเจ้าหน้าที่สารบัญออก = หลักฐานว่าโรงเรียนไหนได้รับหนังสือหายทั้งหมด
+ *    แล้วสารบัญคนใหม่จะไม่เห็นหนังสือเก่า (เจอจริง 25 ต.ค. 2569)
+ */
+async function recordSchoolTargets(docId, codes) {
+  if (!docId || !codes || !codes.length) return;
+  const ins = db.prepare(
+    'INSERT IGNORE INTO document_school_targets (document_id, school_code) VALUES (?,?)'
+  );
+  for (const code of codes) {
+    try { await ins.run(docId, code); } catch (e) { /* ไม่กระทบการบันทึกหนังสือ */ }
+  }
+}
+
 router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), uploadErrorHandler, async (req, res) => {
   const b = req.body || {};
   if (!DOC_TYPES.includes(b.doc_type)) return res.status(400).json({ error: 'กรุณาเลือกประเภทหนังสือ' });
@@ -624,6 +666,22 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   };
   } catch (e) { /* ignore parse errors */ }
 }
+  /*
+   * บันทึกโรงเรียนปลายทางลงตารางถาวร — ต้องทำ "ก่อน" ตอบกลับ
+   * ให้ครอบทุกเส้นทางที่ส่งถึงโรงเรียน: สพป.→โรงเรียน (เลือกเอง/ทุกโรงเรียน/กลุ่ม)
+   * และโรงเรียน→โรงเรียน (เดียว/หลายโรงเรียน/กลุ่ม)
+   */
+  try {
+    const targetCodes = new Set();
+    if (b.recipient_schools) {
+      for (const code of parseRecipientSchoolCodes(b.recipient_schools)) targetCodes.add(code);
+    }
+    if (senderType === 'office' || senderType === 'school_to_school') {
+      // ฟอร์มเก่าที่พิมพ์ "รหัส โรงเรียน" ลงช่องถึงตรง ๆ (ไม่มี recipient_schools)
+      for (const code of String(toOrg).match(/\d{7,8}/g) || []) targetCodes.add(code);
+    }
+    await recordSchoolTargets(docId, [...targetCodes]);
+  } catch (e) { /* ไม่กระทบการบันทึกหนังสือ */ }
   // เตือนหลังบันทึก: กรณีที่ตรวจล่วงหน้าไม่ได้ (ทุกคน/กลุ่ม: ไม่มีสมาชิก) — หนังสือถูกบันทึกแต่ไม่มีผู้รับ
   try {
     const recipCount = (await db.prepare('SELECT COUNT(*) AS c FROM document_recipients WHERE document_id = ?').get(docId)).c;
@@ -766,23 +824,65 @@ router.get('/document-staff/me', auth.requireAuth, async (req, res) => {
   });
 });
 
-// GET /document-staff/school-prefix - ดึงเลขหนังสือของสถานศึกษาที่กำลังใช้งาน (แยกตาม school_code)
+/*
+ * เลขหนังสือของสถานศึกษา — เก็บตาม "โรงเรียน" (school_doc_prefix)
+ *
+ * ⚠️ เดิมเก็บใน document_staff.doc_prefix ซึ่งเป็นแถวของ "บัญชีผู้ใช้"
+ *    พอลบเจ้าหน้าที่สารบัญออกจากระบบ เลขที่ตั้งไว้หายไปด้วย
+ *    แล้วคนใหม่ที่รับช่วงต่อต้องตั้งเลขใหม่ทั้งที่โรงเรียนเดิม
+ *    (เจอจริง 25 ต.ค. 2569 — โรงเรียน 54020071)
+ *
+ *    ตั้งแต่ตอนนี้ค่าอยู่กับโรงเรียน → เปลี่ยนคนกี่ครั้งก็ยังเป็นเลขเดิม
+ *    ยังเขียนสำเนาลง document_staff.doc_prefix ด้วย เพื่อให้โค้ด/รายงานเดิมอ่านได้
+ */
 router.get('/document-staff/school-prefix', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
-  const myCode = req.user.school_code || '';
-  const row = await db.prepare('SELECT doc_prefix FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?').get('school', userId, myCode);
-  res.json({ doc_prefix: row ? (row.doc_prefix || '') : '', school_code: myCode });
+  const myCode = String(req.user.school_code || '').trim();
+  if (!myCode) return res.json({ doc_prefix: '', school_code: '' });
+  // ต้องเป็นเจ้าหน้าที่สารบัญของสถานศึกษานี้เท่านั้น (เหมือนเดิม)
+  const isClerk = await db
+    .prepare('SELECT id FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?')
+    .get('school', userId, myCode);
+  if (!isClerk) return res.json({ doc_prefix: '', school_code: myCode });
+
+  let row = await db.prepare('SELECT doc_prefix FROM school_doc_prefix WHERE school_code = ?').get(myCode);
+  if (!row) {
+    // ค่าเดิมเคยอยู่กับบัญชีผู้ใช้ — ย้ายมาเก็บตามโรงเรียนเมื่อเปิดใช้ครั้งแรก
+    const legacy = await db
+      .prepare(
+        "SELECT doc_prefix FROM document_staff WHERE staff_type = 'school' AND school_code = ? AND doc_prefix IS NOT NULL AND doc_prefix <> '' ORDER BY id DESC LIMIT 1"
+      )
+      .get(myCode);
+    if (legacy && legacy.doc_prefix) {
+      await db
+        .prepare('INSERT IGNORE INTO school_doc_prefix (school_code, doc_prefix) VALUES (?, ?)')
+        .run(myCode, legacy.doc_prefix);
+      row = { doc_prefix: legacy.doc_prefix };
+    }
+  }
+  res.json({ doc_prefix: row ? row.doc_prefix || '' : '', school_code: myCode });
 });
 
-// PUT /document-staff/school-prefix - บันทึกเลขหนังสือของสถานศึกษาที่กำลังใช้งาน (แยกตาม school_code)
 router.put('/document-staff/school-prefix', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
-  const myCode = req.user.school_code || '';
-  const { doc_prefix } = req.body;
-  const row = await db.prepare('SELECT id FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?').get('school', userId, myCode);
+  const myCode = String(req.user.school_code || '').trim();
+  const { doc_prefix } = req.body || {};
+  if (!myCode) return res.status(400).json({ error: 'ไม่พบสถานศึกษาของผู้ใช้' });
+  const row = await db
+    .prepare('SELECT id FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?')
+    .get('school', userId, myCode);
   if (!row) return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขเลขหนังสือของสถานศึกษานี้' });
-  await db.prepare('UPDATE document_staff SET doc_prefix = ? WHERE id = ?').run(doc_prefix || '', row.id);
-  res.json({ message: 'บันทึกเลขหนังสือเรียบร้อย', doc_prefix: doc_prefix || '', school_code: myCode });
+  const val = String(doc_prefix || '');
+  await db
+    .prepare(
+      'INSERT INTO school_doc_prefix (school_code, doc_prefix) VALUES (?, ?) ON DUPLICATE KEY UPDATE doc_prefix = VALUES(doc_prefix)'
+    )
+    .run(myCode, val);
+  // สำเนาไว้ที่แถวเจ้าหน้าที่ (คอลัมน์เดิม) — ไม่ใช่แหล่งข้อมูลหลักแล้ว
+  await db
+    .prepare("UPDATE document_staff SET doc_prefix = ? WHERE staff_type = 'school' AND school_code = ?")
+    .run(val, myCode);
+  res.json({ message: 'บันทึกเลขหนังสือเรียบร้อย', doc_prefix: val, school_code: myCode });
 });
 
 // ---------- เจ้าหน้าที่หนังสือราชการ (admin only) ----------
@@ -819,9 +919,15 @@ router.post('/document-staff/office', auth.requireAdmin, async (req, res) => {
   if (!ids.length) return res.status(400).json({ error: 'กรุณาเลือกเจ้าหน้าที่' });
   const ins = db.prepare('INSERT IGNORE INTO document_staff (staff_type, user_id) VALUES (?, ?)');
   // สารบัญคนใหม่ต้องเห็นหนังสือที่สถานศึกษาส่งมาทั้งหมดที่เคยมี (sync ผู้รับย้อนหลัง)
-  const syncRecip = db.prepare("INSERT IGNORE INTO document_recipients (document_id, user_id) SELECT id, ? FROM documents WHERE sender_type = 'school'");
+  // ⚠️ document_recipients ไม่มี UNIQUE(document_id,user_id) → INSERT IGNORE กันซ้ำไม่ได้
+  const syncRecip = db.prepare(`
+    INSERT INTO document_recipients (document_id, user_id)
+    SELECT d.id, ? FROM documents d
+    WHERE d.sender_type = 'school'
+      AND NOT EXISTS (SELECT 1 FROM document_recipients dr WHERE dr.document_id = d.id AND dr.user_id = ?)
+  `);
   let added = 0;
-  for (const uid of ids) { const r = await ins.run('office', Number(uid)); if (r.changes) { added++; await syncRecip.run(Number(uid)); } };
+  for (const uid of ids) { const r = await ins.run('office', Number(uid)); if (r.changes) { added++; await syncRecip.run(Number(uid), Number(uid)); } };
   res.json({ ok: true, message: 'เพิ่มเจ้าหน้าที่เรียบร้อย (' + added + ' คน)' });
 });
 
@@ -837,25 +943,86 @@ router.delete('/document-staff/office/:id', auth.requireAdmin, async (req, res) 
   res.json({ ok: true, message: 'ลบเจ้าหน้าที่เรียบร้อย' });
 });
 
-// บันทึกเจ้าหน้าที่สถานศึกษา (replace ทั้งหมดของโรงเรียนนั้น)
+/*
+ * บันทึกเจ้าหน้าที่สารบัญสถานศึกษา (replace ทั้งหมดของโรงเรียนนั้น)
+ *
+ * ⚠️ กุญแจสำคัญ: "หนังสือของโรงเรียน" ต้องผูกกับโรงเรียน ไม่ใช่บัญชีผู้ใช้
+ *   document_recipients ผูกกับ users (ON DELETE CASCADE) → ลบคนเก่าออก แถวผู้รับหายหมด
+ *   ถ้า sync ย้อนหลังใช้แค่ to_org/ผู้รับเดิม สารบัญคนใหม่จะไม่เห็นหนังสือเก่า
+ *   (เจอจริง 25 ต.ค. 2569: โรงเรียน 54020071 เปลี่ยนตัวสารบัญ แล้วหนังสือรับหายทั้งกอง)
+ *
+ *   จึง sync จาก document_school_targets (ตารางถาวรที่บันทึกตอนส่งหนังสือ) เป็นหลัก
+ *   และคงเส้นทางเดิม (to_org / ผู้รับที่ยังเหลือ) ไว้เป็น fallback สำหรับหนังสือเก่า
+ *
+ * ⚠️ document_recipients ไม่มี UNIQUE(document_id, user_id)
+ *   INSERT IGNORE จึงกันแถวซ้ำไม่ได้ → ต้องเช็ค NOT EXISTS เอง
+ *   ไม่งั้นกดบันทึกซ้ำ = หนังสือโผล่ซ้ำในรายการรับ
+ */
 router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
-  const { school_code, userIds } = req.body;
+  const school_code = String((req.body || {}).school_code || '').trim();
   if (!school_code) return res.status(400).json({ error: 'กรุณาเลือกสถานศึกษา' });
-  const ids = (userIds || []).map(Number);
+  const ids = (req.body.userIds || []).map(Number).filter((n) => !!n);
   const before = (await db.prepare("SELECT user_id FROM document_staff WHERE staff_type = 'school' AND school_code = ?").all(school_code)).map(r => r.user_id);
   await db.prepare('DELETE FROM document_staff WHERE staff_type = ? AND school_code = ?').run('school', school_code);
   const ins = db.prepare('INSERT INTO document_staff (staff_type, user_id, school_code) VALUES (?, ?, ?)');
   for (const uid of ids) { await ins.run('school', uid, school_code) };
-  // sync ผู้รับหนังสือที่ สพป. ส่งถึงสถานศึกษานี้ (ย้อนหลังทั้งหมด)
-  const syncRecip = db.prepare("INSERT IGNORE INTO document_recipients (document_id, user_id) SELECT d.id, ? FROM documents d WHERE d.sender_type = 'office' AND (d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id WHERE dr.document_id = d.id AND u.user_group = 'school' AND (u.school_code = ? OR u.workplace LIKE ?)))");
-  const syncArgs = [school_code + '%', school_code, school_code + '%'];
-  for (const uid of ids) { await syncRecip.run(uid, ...syncArgs) };
-  // ถอดผู้รับที่ถูกปลด (เคยเป็นสารบัญของโรงเรียนนี้ แต่ไม่อยู่ในรายการใหม่) — ถอดเฉพาะหนังสือของโรงเรียนนี้ เพื่อไม่กระทบสิทธิ์ของโรงเรียนอื่นที่ยังดูแลอยู่
+
+  // 1) หนังสือที่ "ส่งถึงโรงเรียนนี้" ตามตารางถาวร — ครอบทั้ง สพป.→โรงเรียน และ โรงเรียน→โรงเรียน
+  const syncFromTargets = db.prepare(`
+    INSERT INTO document_recipients (document_id, user_id, as_school)
+    SELECT t.document_id, ?, t.school_code
+    FROM document_school_targets t
+    WHERE t.school_code = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM document_recipients dr
+        WHERE dr.document_id = t.document_id AND dr.user_id = ?
+      )
+  `);
+  // 2) หนังสือเก่าก่อนมีตารางถาวร — ใช้ to_org หรือผู้รับที่ยังเหลือเป็นหลักฐาน
+  const syncLegacy = db.prepare(`
+    INSERT INTO document_recipients (document_id, user_id, as_school)
+    SELECT d.id, ?, ?
+    FROM documents d
+    WHERE d.sender_type IN ('office', 'school_to_school')
+      AND (d.to_org LIKE ? OR EXISTS (
+        SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id
+        WHERE dr.document_id = d.id AND u.user_group = 'school'
+          AND (u.school_code = ? OR u.workplace LIKE ?)
+      ))
+      AND NOT EXISTS (
+        SELECT 1 FROM document_recipients dr2
+        WHERE dr2.document_id = d.id AND dr2.user_id = ?
+      )
+  `);
+  for (const uid of ids) {
+    await syncFromTargets.run(uid, school_code, uid);
+    await syncLegacy.run(uid, school_code, school_code + '%', school_code, school_code + '%', uid);
+  }
+
+  // 3) ผู้ที่ถูกปลดออกจากสารบัญของโรงเรียนนี้ → ถอดสิทธิ์รับ "เฉพาะหนังสือของโรงเรียนนี้"
+  //    (ถ้ายังดูแลโรงเรียนอื่นอยู่ แถวของโรงเรียนนั้นมี as_school ต่างกัน จึงไม่ถูกแตะ)
+  const delOld = db.prepare(`
+    DELETE FROM document_recipients
+    WHERE user_id = ?
+      AND (
+        as_school = ?
+        OR (
+          (as_school IS NULL OR as_school = '')
+          AND (
+            document_id IN (SELECT document_id FROM document_school_targets WHERE school_code = ?)
+            OR document_id IN (
+              SELECT id FROM documents
+              WHERE sender_type IN ('office', 'school_to_school') AND to_org LIKE ?
+            )
+          )
+        )
+      )
+  `);
   for (const oldUid of before) {
-  // เดิมเป็น `return` → ออกจาก handler ก่อน res.json() ทำให้ค้าง และข้ามการถอดผู้รับคนที่เหลือ
-  if (ids.indexOf(Number(oldUid)) >= 0) continue;
-  await db.prepare("DELETE FROM document_recipients WHERE user_id = ? AND document_id IN (SELECT d.id FROM documents d WHERE d.sender_type = 'office' AND (d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_recipients dr JOIN users u ON u.id = dr.user_id WHERE dr.document_id = d.id AND u.user_group = 'school' AND (u.school_code = ? OR u.workplace LIKE ?))))").run(oldUid, school_code + '%', school_code, school_code + '%');
-};
+    // เดิมเป็น `return` → ออกจาก handler ก่อน res.json() ทำให้ค้าง และข้ามการถอดผู้รับคนที่เหลือ
+    if (ids.indexOf(Number(oldUid)) >= 0) continue;
+    await delOld.run(Number(oldUid), school_code, school_code, school_code + '%');
+  }
   res.json({ ok: true, message: 'บันทึกเจ้าหน้าที่สถานศึกษาเรียบร้อย (' + ids.length + ' คน)' });
 });
 
@@ -1481,7 +1648,12 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   // แทปทะเบียนหนังสือรับ: แสดงเฉพาะรายการที่ลงทะเบียนรับหนังสือแล้วเท่านั้น (is_registered = 1)
   let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE (d.doc_type = 'incoming' OR (d.doc_type = 'outgoing' AND d.sender_type = 'school')) AND d.is_registered = 1`;
   const params = [];
-  if (isSchool) { sql += " AND (d.school_code = ? OR d.to_org LIKE ?)"; params.push(schoolCode, "%" + schoolCode + "%"); }
+  if (isSchool) {
+    // ทะเบียนของโรงเรียน = หนังสือที่ "ส่งถึงโรงเรียนนี้" — ต้องไม่หายเมื่อเปลี่ยนตัวเจ้าหน้าที่สารบัญ
+    // จึงดูจาก document_school_targets (ถาวร) ด้วย ไม่ใช่แค่ school_code/to_org
+    sql += " AND (d.school_code = ? OR d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_school_targets t WHERE t.document_id = d.id AND t.school_code = ?))";
+    params.push(schoolCode, "%" + schoolCode + "%", schoolCode);
+  }
   else {
     // เฉพาะสารบัญเขต (หรือ admin) จะเห็นหนังสือที่สถานศึกษาส่งมา (sender_type = 'school')
     //
