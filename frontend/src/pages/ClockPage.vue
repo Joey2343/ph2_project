@@ -531,14 +531,16 @@ onBeforeUnmount(() => {
       </div>
       <div class="clock-btns">
         <button
-          class="btn btn-primary clock-btn"
+          class="btn clock-btn clock-btn-in"
+          :class="{ 'clock-btn-blink': !checkedIn }"
           :disabled="checkedIn || checking === 'in'"
           @click="doCheck('in')"
         >
           {{ checking === 'in' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '⬡ ลงเวลาเข้างาน' }}
         </button>
         <button
-          class="btn btn-accent clock-btn"
+          class="btn clock-btn clock-btn-out"
+          :class="{ 'clock-btn-blink': checkedIn && !checkedOut }"
           :disabled="!checkedIn || checkedOut || checking === 'out'"
           @click="doCheck('out')"
         >
@@ -876,5 +878,67 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * ปุ่มลงเวลาเข้า/ออกงาน
+ * ─────────────────────
+ * ขยายให้ใหญ่ขึ้นเล็กน้อย (เดิม 150px · 15.5px) เพื่อให้กดง่ายและเห็นชัด
+ * สี: เข้างาน = เขียวอ่อน · ออกงาน = ส้ม
+ * กระพริบช้า ๆ เฉพาะปุ่มที่ "ต้องกดเป็นลำดับถัดไป"
+ *   ยังไม่เข้างาน   → ปุ่มเข้างานกระพริบ
+ *   เข้างานแล้ว     → ปุ่มออกงานกระพริบ (ปุ่มเข้างานถูกปิดใช้งาน)
+ *   ครบทั้งวันแล้ว  → ไม่กระพริบทั้งคู่
+ * ⚠️ ห้ามแก้ theme.css → override เฉพาะใน component นี้
+ */
+.clock-btn {
+  width: auto;
+  min-width: 190px;
+  padding: 18px 26px;
+  font-size: 17px;
+  border-radius: 14px;
+}
+.clock-btn-in {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #15803d;
+}
+.clock-btn-in:hover:not(:disabled) {
+  background: #bbf7d0;
+  box-shadow: 0 4px 12px rgba(21, 128, 61, 0.25);
+}
+.clock-btn-out {
+  background: #f97316;
+  border: 1px solid #ea580c;
+  color: #fff;
+}
+.clock-btn-out:hover:not(:disabled) {
+  background: #ea580c;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+}
+.clock-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  animation: none; /* ปิดใช้งานแล้วต้องไม่กระพริบให้สับสน */
+}
+.clock-btn-blink {
+  animation: clock-blink 1.8s ease-in-out infinite;
+}
+@keyframes clock-blink {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.12);
+  }
+}
+/* ผู้ใช้ที่ตั้งค่าระบบให้ลดการเคลื่อนไหว → ไม่ต้องกระพริบ */
+@media (prefers-reduced-motion: reduce) {
+  .clock-btn-blink {
+    animation: none;
+  }
 }
 </style>
