@@ -1,0 +1,113 @@
+# Watchdog — ตรวจว่า API บน production ยังตอบอยู่ ถ้าไม่ตอบให้ SSH เข้าไปปลุกให้
+#
+# ทำไมต้องมี
+#   ระบบเสิร์ฟหน้าเว็บ static ด้วย Apache/nginx (เปิดได้แม้แอปตาย)
+#   แต่ทุกคำขอ /api/* ต้องผ่าน Node (pm2 ชื่อ ph2-api)
+#   ถ้า process ตาย → ผู้ใช้เห็น "เกิดข้อผิดพลาดในการประมวลผล [HTTP 503]" ตอนล็อกอิน
+#   และไม่มีใครรู้จนกว่าจะมีคนแจ้ง (เจอจริง 25 ต.ค. 2569)
+#
+# ทำงานอย่างไร
+#   ① ยิง GET /api/office จาก runner (นอกเซิร์ฟเวอร์) 4 ครั้ง ห่างกัน 15 วินาที
+#      ต้องล้มติดกันทั้ง 4 ครั้ง (~45 วินาที) ก่อนลงมือ — กันเข้าใจผิดตอน deploy กำลัง reload
+#   ② ถ้าล้ม → SSH เข้าไป: pm2 reload ถ้ามี process อยู่ / pm2 start ถ้าไม่มี
+#   ③ ตรวจซ้ำจากภายนอก ถ้ายังไม่กลับ → job แดง (GitHub จะส่งอีเมลแจ้งเจ้าของ repo)
+#
+# ⚠️ GitHub จะปิด schedule อัตโนมัติถ้า repo ไม่มีความเคลื่อนไหว 60 วัน
+#    ถ้าวันหนึ่ง watchdog เงียบไป ให้เข้ามากด "Run workflow" ในแท็บ Actions
+#    (หรือ commit อะไรก็ได้ลง main) เพื่อปลุก schedule กลับมา
+
+name: Watchdog (production health)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # ทุก 15 นาที (GitHub อาจเลื่อนได้ถึง ~15 นาที)
+  workflow_dispatch: # กดรันเองได้จากแท็บ Actions → Run workflow
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ตรวจ /api/office
+    runs-on: ubuntu-latest
+    outputs:
+      healthy: ${{ steps.check.outputs.healthy }}
+    steps:
+      - name: ยิงตรวจ 4 ครั้ง
+        id: check
+        run: |
+          URL="https://p2-smart.phrae2.go.th/api/office"
+          for i in 1 2 3 4; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL" || echo 000)
+            echo "รอบที่ $i → HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "healthy=yes" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            [ "$i" -lt 4 ] && sleep 15
+          done
+          echo "healthy=no" >> "$GITHUB_OUTPUT"
+          echo "::warning::API ไม่ตอบติดกัน 4 ครั้ง — จะลองปลุก process บนเซิร์ฟเวอร์"
+
+  revive:
+    name: ปลุก pm2 บนเซิร์ฟเวอร์
+    needs: probe
+    if: needs.probe.outputs.healthy != 'yes'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH เข้าไปสั่ง reload/start
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          script_stop: false
+          script: |
+            export HOME="/home/${{ secrets.SERVER_USER }}"
+            export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+            APP="$HOME/domains/p2-smart.phrae2.go.th/app/backend"
+
+            echo "== สถานะก่อนแก้ =="
+            pm2 list || true
+            curl -s -o /dev/null -w 'local /api/office: %{http_code}\n' --max-time 5 http://127.0.0.1:3000/api/office || true
+
+            echo "== ปลุก process =="
+            if pm2 describe ph2-api > /dev/null 2>&1; then
+              pm2 reload ph2-api --update-env || pm2 restart ph2-api --update-env || true
+            else
+              cd "$APP" && pm2 start server.js --name ph2-api --update-env
+            fi
+            pm2 save || true
+
+            echo "== รอให้ตอบ =="
+            CODE=000
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3000/api/office || echo 000)
+              [ "$CODE" = "200" ] && break
+              sleep 3
+            done
+            echo "local /api/office หลังปลุก: $CODE"
+            # ถ้ายังไม่ขึ้น ให้เห็นสาเหตุใน log ของ Actions (เช่น ต่อฐานข้อมูลไม่ได้)
+            if [ "$CODE" != "200" ]; then
+              pm2 logs ph2-api --lines 40 --nostream || true
+            fi
+
+      - name: ตรวจซ้ำจากภายนอก
+        run: |
+          URL="https://p2-smart.phrae2.go.th/api/office"
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL" || echo 000)
+            echo "รอบที่ $i → HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "✅ กลับมาทำงานแล้ว"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::ยังกู้ไม่ได้ — ต้องเข้าเซิร์ฟเวอร์ตรวจด้วยมือ (pm2 logs ph2-api)"
+          exit 1

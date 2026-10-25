@@ -306,6 +306,34 @@ cd backend  && npm start       # Express เสิร์ฟเองที่ ht
   → ขั้น 8.2 ตรวจและ **คืน `.htaccess` เดิมให้อัตโนมัติ** พร้อมทำให้ deploy แดง
   (ถ้าเจอกรณีนี้ ต้องขอผู้ดูแลเซิร์ฟเวอร์เปิด `AllowOverride FileInfo`)
 
+#### 3.7.1 Watchdog — ตรวจสุขภาพ production อัตโนมัติ
+
+`.github/workflows/watchdog.yml` ทำงาน 2 ทาง: **ทุก 15 นาที** (`schedule`) และกดเองได้
+(`workflow_dispatch` → แท็บ Actions → Run workflow)
+
+```
+ยิง GET https://p2-smart.phrae2.go.th/api/office
+  ├─ 200 → จบ (ไม่มีอะไรเกิดขึ้น)
+  └─ ไม่ใช่ 200 ติดกัน 4 ครั้ง (~45 วินาที)
+        → SSH: pm2 reload ph2-api (หรือ pm2 start ถ้า pm2 ไม่รู้จัก)
+        → ตรวจซ้ำจากภายนอก 6 ครั้ง ถ้ายังไม่กลับ = job แดง (GitHub ส่งอีเมล)
+```
+
+**ทำไมต้องมี** — หน้าเว็บ static เปิดได้แม้แอปตาย เพราะ Apache/nginx เสิร์ฟเอง
+แต่ทุก `/api/*` ต้องผ่าน Node → process ตาย = ผู้ใช้เห็น
+`เกิดข้อผิดพลาดในการประมวลผล [POST /api/auth/login · HTTP 503]` ตอนล็อกอิน
+(เจอจริง 25 ต.ค. 2569 เพราะ pm2 ไม่มี process อยู่หลังรีบูต)
+
+**ข้อจำกัดที่ต้องรู้**
+
+- GitHub ปิด `schedule` เองถ้า repo ไม่มีความเคลื่อนไหว 60 วัน → เข้ามากด Run workflow
+  หรือ push อะไรลง `main` เพื่อปลุกกลับมา
+- watchdog เป็น **ตัวช่วย** ไม่ใช่ตัวแทน `pm2 startup` — ถ้าอยากให้แอปขึ้นเองตั้งแต่บูต
+  ต้องให้ผู้ดูแลเซิร์ฟเวอร์รัน (ต้องสิทธิ์ root):
+  `pm2 startup systemd -u admin --hp /home/admin` แล้ว `systemctl enable pm2-admin`
+- deploy ทุกครั้งรัน `pm2 save` ไว้แล้ว → `~/.pm2/dump.pm2` มีรายการ `ph2-api`
+  พร้อมให้ `pm2 resurrect` ใช้
+
 ### 3.8 ตัวแปรแวดล้อม
 
 ไฟล์ `backend/.env` รองรับ:
