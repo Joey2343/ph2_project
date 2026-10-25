@@ -635,6 +635,21 @@ async function migrate() {
 }
 
 // ── Seed ────────────────────────────────────────────────────────────────────
+/**
+ * ข้อมูลตัวอย่าง (โรงเรียน/ยานพาหนะ/ห้องประชุม/งบประมาณ/งานวิชาการ/รายการจอง)
+ * สร้างเฉพาะเมื่อสั่ง `node db.js --seed` (หรือ SEED_SAMPLE=1) เท่านั้น
+ *
+ * ⚠️ ทำไมต้องแยกจาก `--init`
+ *   deploy รัน `node db.js --init` ทุกครั้ง และ server.js เรียก bootstrap() ทุกครั้งที่บูต
+ *   เดิม seed() สร้างข้อมูลตัวอย่างเมื่อ "ตารางว่าง" → ถ้าแอดมินลบข้อมูลตัวอย่างทิ้ง
+ *   มันจะโผล่กลับมาเองในรอบถัดไปพร้อมวันที่ใหม่
+ *   (เจอจริง 25 ต.ค. 2569: ล็อกอินเป็น admin แล้วมี "จองยานพาหนะ/จองห้องประชุม"
+ *    ที่ไม่มีใครสร้าง เพราะ deploy/รีสตาร์ทสร้างให้ — วันที่ = วันที่ deploy)
+ *
+ *   ข้อมูลที่จำเป็นจริง (settings, บัญชี admin, เนื้อหาหน้าสำนักงาน) ยังสร้างเหมือนเดิม
+ */
+const SEED_SAMPLE = process.env.SEED_SAMPLE === '1' || process.argv.includes('--seed');
+
 async function seed() {
   // จำนวนขั้นการอนุมัติของแต่ละระบบ (ห้องประชุม = 2 ขั้น: อนุมัติขั้นต้น → อนุมัติขั้นสุดท้าย)
   //
@@ -725,7 +740,7 @@ async function seed() {
   }
 
   const schoolCount = await db.prepare('SELECT COUNT(*) c FROM schools').get();
-  if (schoolCount.c === 0) {
+  if (SEED_SAMPLE && schoolCount.c === 0) {
     const insert = db.prepare(
       `INSERT INTO schools (code, name, district, address, principal, phone, level, lat, lng, notes)
        VALUES (?,?,?,?,?,?,?,?,?,?)`
@@ -746,7 +761,7 @@ async function seed() {
   }
 
   const vCount = await db.prepare('SELECT COUNT(*) c FROM vehicles').get();
-  if (vCount.c === 0) {
+  if (SEED_SAMPLE && vCount.c === 0) {
     const insert = db.prepare(
       'INSERT INTO vehicles (name, plate, type, capacity, status, notes) VALUES (?,?,?,?,?,?)'
     );
@@ -757,7 +772,7 @@ async function seed() {
   }
 
   const rCount = await db.prepare('SELECT COUNT(*) c FROM rooms').get();
-  if (rCount.c === 0) {
+  if (SEED_SAMPLE && rCount.c === 0) {
     const insert = db.prepare(
       'INSERT INTO rooms (name, capacity, location, equipment, status) VALUES (?,?,?,?,?)'
     );
@@ -768,7 +783,7 @@ async function seed() {
   }
 
   const bCount = await db.prepare('SELECT COUNT(*) c FROM budgets').get();
-  if (bCount.c === 0) {
+  if (SEED_SAMPLE && bCount.c === 0) {
     const insert = db.prepare(
       'INSERT INTO budgets (year, category, plan, note, sort) VALUES (?,?,?,?,?)'
     );
@@ -780,7 +795,7 @@ async function seed() {
   }
 
   const aCount = await db.prepare('SELECT COUNT(*) c FROM academic_projects').get();
-  if (aCount.c === 0) {
+  if (SEED_SAMPLE && aCount.c === 0) {
     const insert = db.prepare(
       `INSERT INTO academic_projects (name, kind, detail, date_from, date_to, status, responsible, budget, result)
        VALUES (?,?,?,?,?,?,?,?,?)`
@@ -792,8 +807,9 @@ async function seed() {
   }
 
   // ── ตัวอย่างรายการจอง (ยานพาหนะ + ห้องประชุม) ─────────────────────────
-  // ตารางจองต้องมีข้อมูลอย่างน้อย 1 แถว ไม่งั้นหน้าจองจะว่างเปล่า
-  // และปุ่ม "รายละเอียด (แบบฟอร์มทางการ)" จะไม่มีให้กด
+  // ⚠️ เป็นข้อมูลตัวอย่างสำหรับ dev เท่านั้น — สร้างเมื่อ `node db.js --seed`
+  //    ห้ามสร้างอัตโนมัติตอนบูต/deploy เพราะผู้ใช้จะเห็น "รายการจองที่ไม่มีใครสร้าง"
+  //    ปรากฏขึ้นเองในหน้าจอง (วันที่ = วันที่ deploy)
   //
   // ⚠️ ช่อง date เก็บเป็น ค.ศ. (YYYY-MM-DD) ไม่ใช่ พ.ศ.
   //    เพราะ applyYearFilter() แปลงปี พ.ศ. → ช่วง ค.ศ. ก่อนเทียบ
@@ -801,7 +817,7 @@ async function seed() {
   const todayISO = new Date().toISOString().slice(0, 10);
 
   const vBooking = await db.prepare('SELECT COUNT(*) c FROM vehicle_bookings').get();
-  if (vBooking.c === 0) {
+  if (SEED_SAMPLE && vBooking.c === 0) {
     const vehicle = await db.prepare('SELECT id FROM vehicles ORDER BY id LIMIT 1').get();
     if (vehicle) {
       await db
@@ -830,7 +846,7 @@ async function seed() {
   }
 
   const rBooking = await db.prepare('SELECT COUNT(*) c FROM room_bookings').get();
-  if (rBooking.c === 0) {
+  if (SEED_SAMPLE && rBooking.c === 0) {
     const room = await db.prepare('SELECT id FROM rooms ORDER BY id LIMIT 1').get();
     if (room) {
       await db
