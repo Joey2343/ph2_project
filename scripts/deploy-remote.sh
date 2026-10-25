@@ -194,7 +194,24 @@ echo "    ✅ บูตผ่าน (HTTP 200)"
 rm -f "$BOOT_LOG"
 
 echo ">>> 6. โหลดโค้ดใหม่เข้า process"
-pm2 reload ph2-api --update-env
+# ⚠️ ถ้า pm2 ไม่รู้จัก process นี้อยู่แล้ว `pm2 reload` จะล้มเหลว
+#    (เช่น เซิร์ฟเวอร์รีบูตแล้วยังไม่มีการ resurrect — ไม่เคย pm2 save ไว้)
+#    อาการที่เห็นจากภายนอก: หน้า static ยังเปิดได้ (Apache/nginx เสิร์ฟเอง)
+#    แต่ทุกคำขอ /api/* ได้ 503 → "ล็อกอินขึ้น เกิดข้อผิดพลาดในการประมวลผล [HTTP 503]"
+#    (เจอจริง 25 ต.ค. 2569) จึงต้องมีทางเริ่มใหม่ให้เสมอ
+if pm2 describe ph2-api > /dev/null 2>&1; then
+  pm2 reload ph2-api --update-env
+else
+  echo "    ⚠️ ไม่พบ process ph2-api ใน pm2 — เริ่มใหม่จาก backend/server.js"
+  echo "    --- pm2 list ---"
+  pm2 list || true
+  echo "    --- error log 20 บรรทัดสุดท้าย (ถ้ามี) ---"
+  tail -n 20 "$HOME/.pm2/logs/ph2-api-error.log" 2>/dev/null || echo "    (ไม่มีไฟล์ log)"
+  pm2 start server.js --name ph2-api --update-env
+fi
+# จำรายการ process ไว้ เพราะถ้าไม่ save ไว้ หลังรีบูต pm2 จะไม่รู้จักแอปนี้
+# (ไม่ใส่ `pm2 startup` เองเพราะต้องใช้สิทธิ์ root — ผู้ให้บริการโฮสต์มักตั้ง hook ไว้แล้ว)
+pm2 save || true
 
 echo ">>> 8. ซิงค์ไฟล์ Build ไปที่ Web Root (public_html)"
 # คัดลอกเฉพาะไฟล์ที่ build ได้ไปวางที่ public_html โดยไม่ลบ .htaccess
