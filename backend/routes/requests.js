@@ -1,9 +1,9 @@
 'use strict';
 const path = require('path');
+const { schoolCodeOf } = require('../lib/school-code');
 function getSchoolPrefix(req) {
-  if (req.user && req.user.school_code) {
-    return req.user.school_code + '/';
-  }
+  const code = schoolCodeOf(req.user);
+  if (code) return code + '/';
   return '';
 }
 
@@ -175,7 +175,7 @@ async function docNoAvailable(table, idCol, no) {
 // เลขที่อัตโนมัติ (ที่) สำหรับบันทึกข้อความถัดไป — แสดงในฟอร์ม แก้ไขไม่ได้
 router.get('/memos/next-no', auth.requireAuth, async (req, res) => {
   const isSchool = req.user.user_group === 'school';
-  const schoolCode = req.user.school_code || '';
+  const schoolCode = schoolCodeOf(req.user);
   if (schoolCode) {
     var rows = await db.prepare("SELECT doc_no FROM memos WHERE user_id IN (SELECT id FROM users WHERE school_code = ?)").all(schoolCode);
     var max = 0;

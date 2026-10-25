@@ -4,6 +4,7 @@ const db = require('../db');
 const auth = require('../lib/auth');
 const { createDynamicUpload, uploadErrorHandler, deleteUploadedFile } = require('../lib/uploads');
 const cleanup = require('../lib/cleanup');
+const { schoolCodeOf } = require('../lib/school-code');
 
 // อัปโหลดแบบแยกโฟลเดอร์ตามรหัสหน่วยงาน (school_code) — ไฟล์รูปภาพความเสียหายจากภัยธรรมชาติ
 const uploadSchoolsDyn = createDynamicUpload('schools', { imageOnly: true });
@@ -11,10 +12,10 @@ const uploadSchoolsDyn = createDynamicUpload('schools', { imageOnly: true });
 const router = express.Router();
 
 // คำนำหน้าพาธไฟล์ตามรหัสหน่วยงาน (school_code) — ต้องตรงกับ path ที่บันทึกใน DB
+// ⚠️ ใช้ schoolCodeOf() เพราะบัญชีสถานศึกษาที่ school_code ว่าง (บั๊กเดิม) จะได้ path ไม่มีรหัสโรงเรียน
 function getSchoolPrefix(req) {
-  if (req.user && req.user.school_code) {
-    return req.user.school_code + '/';
-  }
+  const code = schoolCodeOf(req.user);
+  if (code) return code + '/';
   return '';
 }
 

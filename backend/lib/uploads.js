@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
+const { schoolCodeOf } = require('./school-code');
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -210,10 +211,10 @@ function renameAsCitizen(oldName, citizenId, kind) {
 
 
 // ===== Dynamic Upload (separate folders by school) =====
+// ⚠️ ใช้ schoolCodeOf() — บัญชีสถานศึกษาที่ school_code ว่าง (บั๊กเดิม) ไฟล์จะไปกองที่โฟลเดอร์กลาง
 function getUploadSubdir(req, subfolder) {
-  if (req.user && req.user.school_code) {
-    return req.user.school_code + '/' + subfolder;
-  }
+  const code = schoolCodeOf(req.user);
+  if (code) return code + '/' + subfolder;
   return subfolder;
 }
 

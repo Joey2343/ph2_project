@@ -10,14 +10,16 @@ const { uploadDocuments, uploadStaff, createDynamicUpload, getUploadSubdir, uplo
 const cleanup = require('../lib/cleanup');
 const staffSort = require('../lib/staff-sort');
 const telegram = require('../lib/telegram');
+const { schoolCodeOf } = require('../lib/school-code');
 const uploadDocDynamic = createDynamicUpload('documents');
 
 const router = express.Router();
 // Get school prefix for file paths
+// ⚠️ ใช้ schoolCodeOf() ไม่ใช่ req.user.school_code ตรง ๆ
+//    เพราะบัญชีสถานศึกษาที่ school_code ว่าง (บั๊กเดิม) จะได้ path ไม่มีรหัสโรงเรียน
 function getSchoolPrefix(req) {
-  if (req.user && req.user.school_code) {
-    return req.user.school_code + '/';
-  }
+  const code = schoolCodeOf(req.user);
+  if (code) return code + '/';
   return '';
 }
 
@@ -37,7 +39,7 @@ async function nextDocNo(table, idCol) {
 router.get('/next-doc-no', auth.requireAuth, async (req, res) => {
   const type = req.query.type || '';
   const isSchool = req.user.user_group === 'school';
-  const schoolCode = req.user.school_code || '';
+  const schoolCode = schoolCodeOf(req.user);
   if (type === 'honor') {
     res.json({ next: await nextHonorDocNo() });
   } else if (type === 'certificate') {
@@ -553,7 +555,10 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
       }
     }
   }
-  const docSchoolCode = (req.user.school_code || '').trim();
+  // ⚠️ ใช้ schoolCodeOf() ไม่ใช่ req.user.school_code ตรง ๆ — บัญชีสถานศึกษาที่ school_code
+  //    ว่าง (บั๊ก regex เดิม) จะทำให้หนังสือทุกฉบับถูกบันทึกโดยไม่มีรหัสโรงเรียน
+  //    → ทะเบียนหนังสือส่งของโรงเรียนหายทั้งกระดานเมื่อเปลี่ยนเจ้าหน้าที่สารบัญ
+  const docSchoolCode = schoolCodeOf(req.user);
   const isRegisteredVal = Number(b.is_registered) ? 1 : 0;
   // หนังสือลับ: ต้องมีรหัสอย่างน้อย 4 ตัวอักษร — เก็บเฉพาะ hash (bcrypt) ไม่เก็บรหัสจริง
   const isSecretVal = Number(b.is_secret) ? 1 : 0;
@@ -817,7 +822,7 @@ router.delete('/documents/:id', auth.requireAuth, async (req, res) => {
 router.get('/document-staff/me', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
   const isOffice = await db.prepare('SELECT id FROM document_staff WHERE staff_type = ? AND user_id = ?').get('office', userId);
-  const schoolRow = await db.prepare('SELECT school_code FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?').get('school', userId, req.user.school_code || '');
+  const schoolRow = await db.prepare('SELECT school_code FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?').get('school', userId, schoolCodeOf(req.user));
   res.json({
     isOfficeDocStaff: !!isOffice,
     schoolCode: schoolRow ? schoolRow.school_code : null
@@ -837,7 +842,7 @@ router.get('/document-staff/me', auth.requireAuth, async (req, res) => {
  */
 router.get('/document-staff/school-prefix', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
-  const myCode = String(req.user.school_code || '').trim();
+  const myCode = schoolCodeOf(req.user);
   if (!myCode) return res.json({ doc_prefix: '', school_code: '' });
   // ต้องเป็นเจ้าหน้าที่สารบัญของสถานศึกษานี้เท่านั้น (เหมือนเดิม)
   const isClerk = await db
@@ -865,7 +870,7 @@ router.get('/document-staff/school-prefix', auth.requireAuth, async (req, res) =
 
 router.put('/document-staff/school-prefix', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
-  const myCode = String(req.user.school_code || '').trim();
+  const myCode = schoolCodeOf(req.user);
   const { doc_prefix } = req.body || {};
   if (!myCode) return res.status(400).json({ error: 'ไม่พบสถานศึกษาของผู้ใช้' });
   const row = await db
@@ -1335,7 +1340,12 @@ router.put('/staff/:id', auth.requireAdmin, uploadStaff.fields([
       (b.role !== undefined ? b.role : u.role),
       (b.can_approve !== undefined ? (b.can_approve ? 1 : 0) : u.can_approve),
       newPhoto, newSignature,
-      (b.user_group === 'school' || u.user_group === 'school') ? ((b.workplace || u.workplace || '').match(/^d{8}/) || [])[0] || u.school_code || '' : (u.school_code || ''),
+      // ⚠️ เดิมเขียน /^d{8}/ (ขาด backslash) → ไม่มีวัน match → school_code หาย
+      //    ตอนนี้ใช้ schoolCodeOf(): workplace ก่อน (ถ้าแอดมินย้ายโรงเรียน รหัสต้องตามไปด้วย)
+      //    แล้วค่อย fallback เป็นรหัสเดิมของผู้ใช้
+      (b.user_group === 'school' || u.user_group === 'school')
+        ? (schoolCodeOf({ workplace: b.workplace || u.workplace }) || schoolCodeOf(u) || '')
+        : (u.school_code || ''),
       id);
 
   // ลบไฟล์เก่าหลังอัปเดตสำเร็จ (เฉพาะเมื่อเปลี่ยนไฟล์ใหม่)
@@ -1643,7 +1653,7 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
 router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
   const isSchool = req.user.user_group === 'school';
-  const schoolCode = req.user.school_code || '';
+  const schoolCode = schoolCodeOf(req.user);
   const q = req.query.q || '';
   // แทปทะเบียนหนังสือรับ: แสดงเฉพาะรายการที่ลงทะเบียนรับหนังสือแล้วเท่านั้น (is_registered = 1)
   let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE (d.doc_type = 'incoming' OR (d.doc_type = 'outgoing' AND d.sender_type = 'school')) AND d.is_registered = 1`;
@@ -1651,8 +1661,16 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   if (isSchool) {
     // ทะเบียนของโรงเรียน = หนังสือที่ "ส่งถึงโรงเรียนนี้" — ต้องไม่หายเมื่อเปลี่ยนตัวเจ้าหน้าที่สารบัญ
     // จึงดูจาก document_school_targets (ถาวร) ด้วย ไม่ใช่แค่ school_code/to_org
-    sql += " AND (d.school_code = ? OR d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_school_targets t WHERE t.document_id = d.id AND t.school_code = ?))";
-    params.push(schoolCode, "%" + schoolCode + "%", schoolCode);
+    if (schoolCode) {
+      sql += " AND (d.school_code = ? OR d.to_org LIKE ? OR EXISTS (SELECT 1 FROM document_school_targets t WHERE t.document_id = d.id AND t.school_code = ?))";
+      params.push(schoolCode, "%" + schoolCode + "%", schoolCode);
+    } else {
+      // ⚠️ ไม่รู้รหัสโรงเรียน (school_code + workplace + current_school ว่างหมด)
+      //    เดิมปล่อยเป็น to_org LIKE '%%' → เห็นทะเบียนหนังสือรับของ *ทุกโรงเรียน* ในประเทศ
+      //    ปลอดภัยกว่า: เห็นเฉพาะฉบับที่ตัวเองเป็นผู้รับ
+      sql += ' AND EXISTS (SELECT 1 FROM document_recipients r WHERE r.document_id = d.id AND r.user_id = ?)';
+      params.push(userId);
+    }
   }
   else {
     // เฉพาะสารบัญเขต (หรือ admin) จะเห็นหนังสือที่สถานศึกษาส่งมา (sender_type = 'school')
@@ -1679,14 +1697,48 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
   const isSchool = req.user.user_group === 'school';
   const q = req.query.q || '';
-  const schoolCode = req.user.school_code || '';
+  const schoolCode = schoolCodeOf(req.user);
   let sql = "SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'outgoing' AND d.sender_type = 'registered'";
   const params = [];
-  if (isSchool) { sql += " AND d.school_code = ?"; params.push(schoolCode || ''); }
-  // ฝั่งสำนักงานเขต: หนังสือของตัวเอง = ผู้สร้างไม่ใช่เจ้าหน้าที่สถานศึกษา
+  if (isSchool) {
+    /*
+     * ทะเบียนหนังสือส่งเป็นของ "โรงเรียน" ไม่ใช่ของบัญชีเจ้าหน้าที่สารบัญ
+     * ────────────────────────────────────────────────────────────────
+     * เดิมกรอง d.school_code = req.user.school_code ตรง ๆ ซึ่งพังได้ 2 ทาง
+     *   ① บัญชีใหม่มี school_code = '' (บั๊ก regex /^d{8}/ ตอนสมัคร/อนุมัติ)
+     *      → กรองด้วย '' = ไม่เห็นอะไรเลย
+     *   ② รายการเก่าที่ลงทะเบียนตอน school_code ยังว่าง → school_code = ''
+     *      → ไม่มีใครที่มีรหัสถูกต้องเห็นอีกเลย
+     * จึงต้องมีทางสำรอง: แถวที่ไม่มีรหัสโรงเรียนให้ดูจาก "ผู้สร้างว่าเป็นคนของโรงเรียนนี้ไหม"
+     * (created_by ไม่มี FK → แถวไม่หายเมื่อลบผู้ใช้
+     *  ส่วนแถวที่ผู้สร้างถูกลบไปแล้ว migrate() กู้รหัสจากช่อง "จาก" ให้ตอนบูต)
+     */
+    if (schoolCode) {
+      // คนของโรงเรียนนี้ (ใช้ตามหาหนังสือเก่าที่ยังไม่มีรหัสโรงเรียน)
+      // ทำเป็นรายการ id ก่อน ไม่เขียน subquery ซ้อนใน SQL หลัก
+      // — subquery ที่มีวงเล็บซ้อนทำให้ตัวตรวจ schema อ่านผิด และอ่านยาก
+      const mates = await db
+        .prepare("SELECT id FROM users WHERE user_group = 'school' AND (school_code = ? OR workplace LIKE ? OR current_school LIKE ?)")
+        .all(schoolCode, schoolCode + '%', schoolCode + '%');
+      const mateIds = mates.map((r) => Number(r.id)).filter((n) => n > 0);
+      if (mateIds.length) {
+        sql += " AND (d.school_code = ? OR ((d.school_code IS NULL OR d.school_code = '') AND d.created_by IN (" + mateIds.map(() => '?').join(',') + ")))";
+        params.push(schoolCode, ...mateIds);
+      } else {
+        sql += ' AND d.school_code = ?';
+        params.push(schoolCode);
+      }
+    } else {
+      // ไม่รู้รหัสโรงเรียน → เห็นเฉพาะที่ตัวเองลงทะเบียน (ไม่เห็นของโรงเรียนอื่น)
+      sql += ' AND d.created_by = ?';
+      params.push(userId);
+    }
+  }
+  // ฝั่งสำนักงานเขต: เฉพาะรายการที่ไม่มีรหัสโรงเรียน (ของโรงเรียนเป็นของโรงเรียน)
   // (เดิมคัดด้วย d.school_code = '54020000' ซึ่งไม่มีผล เพราะรหัสนี้ถูกถอดจาก schools แล้ว
   //  และผู้ใช้ฝั่งสำนักงานไม่มี school_code → ทำให้ลงทะเบียนแล้วไม่โผล่ในทะเบียนเลย)
-  else { sql += " AND COALESCE(u.user_group, 'office') != 'school'"; }
+  // + กันรายการของโรงเรียนที่ผู้สร้างถูกลบไปแล้วหลุดมาอยู่ทะเบียนของสำนักงานเขต
+  else { sql += " AND (d.school_code IS NULL OR d.school_code = '') AND COALESCE(u.user_group, 'office') != 'school'"; }
   const yc3 = docYearClause(req.query.year); if (yc3) { sql += yc3.clause; params.push(yc3.arg); }
   // ตัวกรองกลุ่มปฏิบัติ
   const wg2 = (req.query.workgroup || '').trim();

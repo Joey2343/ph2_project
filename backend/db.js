@@ -656,6 +656,65 @@ async function backfillDocumentSchoolTargets() {
   }
 }
 
+/**
+ * เติม `school_code` ให้บัญชีสถานศึกษาและหนังสือที่ลงทะเบียนไว้ก่อนแก้บั๊ก
+ *
+ * ทำไมต้องมี
+ * ──────────
+ * เดิม regex ที่ดึง 8 หลักจาก workplace เขียนผิดเป็น /^d{8}/ (ขาด backslash)
+ * → บัญชีสถานศึกษาที่สมัคร/ถูกแก้ไขในช่วงนั้นได้ school_code = ''
+ * → หนังสือที่บัญชีนั้นลงทะเบียนก็ได้ school_code = '' ตามไปด้วย
+ * → ทะเบียนหนังสือส่งของโรงเรียน (กรองด้วยรหัสโรงเรียน) ไม่แสดงรายการเหล่านั้นเลย
+ *
+ * รันซ้ำได้ทุกครั้งที่บูต (UPDATE เฉพาะแถวที่ยังว่าง) — ไม่แตะแถวที่ตั้งรหัสไว้แล้ว
+ */
+async function backfillSchoolCodes() {
+  try {
+    const u = await db
+      .prepare(
+        `UPDATE users SET school_code = LEFT(TRIM(workplace), 8)
+         WHERE user_group = 'school'
+           AND (school_code IS NULL OR TRIM(school_code) = '')
+           AND TRIM(workplace) REGEXP '^[0-9]{8}'`
+      )
+      .run();
+    if (u && u.changes) console.log(`[migrate] เติมรหัสสถานศึกษาให้บัญชี ${u.changes} ราย`);
+
+    // หนังสือ: เอารหัสจากผู้สร้าง (created_by ไม่มี FK → ยังอ้างถึงได้แม้บัญชีถูกลบ)
+    const d = await db
+      .prepare(
+        `UPDATE documents d
+           JOIN users u ON u.id = d.created_by
+            SET d.school_code = u.school_code
+          WHERE (d.school_code IS NULL OR TRIM(d.school_code) = '')
+            AND u.user_group = 'school'
+            AND u.school_code IS NOT NULL AND TRIM(u.school_code) <> ''`
+      )
+      .run();
+    if (d && d.changes) console.log(`[migrate] เติมรหัสสถานศึกษาให้หนังสือ ${d.changes} ฉบับ`);
+
+    /*
+     * ทางสุดท้าย: ผู้สร้างถูกลบออกจากระบบไปแล้ว (created_by ชี้ไปที่ id ที่ไม่มีอยู่)
+     * → กู้จากช่อง "จาก" ซึ่งระบบกรอกให้อัตโนมัติเป็น "รหัสโรงเรียน + ชื่อโรงเรียน"
+     *   (ดู DocumentsOutgoingFormModal.vue: from_org = current_school || workplace)
+     *   เฉพาะหนังสือที่มาจากฝั่งสถานศึกษาเท่านั้น — หนังสือของสำนักงานเขต
+     *   มี from_org = "สพป.แพร่ เขต 2" (ไม่มีตัวเลข) จึงไม่ถูกแตะ
+     */
+    const f = await db
+      .prepare(
+        `UPDATE documents SET school_code = LEFT(TRIM(from_org), 8)
+          WHERE (school_code IS NULL OR TRIM(school_code) = '')
+            AND sender_type IN ('registered','school','school_to_school')
+            AND TRIM(from_org) REGEXP '^[0-9]{8}'`
+      )
+      .run();
+    if (f && f.changes) console.log(`[migrate] เติมรหัสสถานศึกษาให้หนังสือ (จากช่อง "จาก") ${f.changes} ฉบับ`);
+  } catch (e) {
+    // เติมย้อนหลังไม่สำเร็จไม่ควรทำให้ระบบบูตไม่ขึ้น — รอบถัดไปลองใหม่
+    console.error('[migrate] เติมรหัสสถานศึกษาไม่สำเร็จ:', e.message);
+  }
+}
+
 async function migrate() {
   for (const [table, col, ddl] of COLUMN_MIGRATIONS) {
     await ensureColumn(table, col, ddl);
@@ -663,6 +722,9 @@ async function migrate() {
 
   // ผูก "สถานศึกษาปลายทาง" ของหนังสือเก่าเข้าตารางถาวร (รันซ้ำได้ ไม่สร้างแถวซ้ำ)
   await backfillDocumentSchoolTargets();
+
+  // เติมรหัสโรงเรียนที่หายไปเพราะบั๊ก regex (ต้องรันหลัง COLUMN_MIGRATIONS)
+  await backfillSchoolCodes();
 
   /*
    * แก้ไข charset ของคอลัมน์ revision_note ที่สร้างไว้ก่อนหน้านี้

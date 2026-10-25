@@ -5,6 +5,7 @@ const auth = require('../lib/auth');
 const { uploadProfile, uploadErrorHandler, deleteUploadedFile, renameAsCitizen } = require('../lib/uploads');
 const { sendTelegram } = require('../lib/telegram');
 const approvals = require('../lib/approvals');
+const { schoolCodeOf } = require('../lib/school-code');
 
 const router = express.Router();
 
@@ -46,7 +47,9 @@ router.post('/register', uploadProfile.fields([
   const photo = renameAsCitizen(rawPhoto, citizen_id, 'photo');
   const signature = renameAsCitizen(rawSig, citizen_id, 'signature');  const userGroup = (b.user_group === 'school' || b.user_group === 'office') ? b.user_group : 'office';
   const workplaceSecondary = (b.workplace_secondary && b.user_group === 'school') ? b.workplace_secondary : '[]';
-  const schoolCode = (b.user_group === 'school' && b.workplace) ? (b.workplace.match(/^(d{8})/) || [])[1] || '' : '';
+  // ⚠️ เดิมเขียน /^(d{8})/ (ขาด backslash) → ไม่มีวัน match → school_code = ''
+  //    ทำให้บัญชีสถานศึกษาใหม่มองไม่เห็นทะเบียนหนังสือของโรงเรียน (เจอจริง 25 ต.ค. 2569)
+  const schoolCode = (b.user_group === 'school') ? schoolCodeOf({ workplace: b.workplace }) : '';
   const info = await db.prepare(`INSERT INTO users
     (username, password_hash, title, full_name, first_name, last_name, nickname, blood_type,
      academic_rank, highest_education, birth_date, citizen_id, position, workplace, phone, email,

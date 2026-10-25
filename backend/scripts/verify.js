@@ -184,6 +184,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบทะเบียนหนังสือส่งของสถานศึกษา — ต้องเป็นของโรงเรียน ไม่ใช่ของบัญชีผู้ใช้]');
+  results.push(run('test-school-outgoing-register', [path.join(__dirname, 'test-school-outgoing-register.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
