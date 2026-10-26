@@ -1226,11 +1226,19 @@ function canCancelRow(r) {
 
       <div class="form-group full">
         <label>เลือกพนักงานขับรถ</label>
-        <select id="vb-driver" v-model="l1Driver" class="vb-driver-select">
-          <option value="">— เลือกพนักงานขับรถ —</option>
-          <option v-for="u in l1Users" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
-        </select>
-        <div class="hint">เลือกรายชื่อบุคลากรที่จะเป็นพนักงานขับรถสำหรับคำขอนี้ (ปล่อยว่าง = เจ้าหน้าที่จัดให้)</div>
+        <input
+          id="vb-driver"
+          v-model="l1Driver"
+          type="text"
+          list="vb-driver-list"
+          class="vb-driver-select"
+          placeholder="พิมพ์ชื่อเพื่อค้นหา หรือเลือกจากรายการ"
+          autocomplete="off"
+        />
+        <datalist id="vb-driver-list">
+          <option v-for="u in l1Users" :key="u.id" :value="UI.personName(u)" />
+        </datalist>
+        <div class="hint">พิมพ์ชื่อเพื่อกรองรายชื่อ หรือเลือกจากรายการ (ปล่อยว่าง = เจ้าหน้าที่จัดให้)</div>
       </div>
 
       <div class="form-group full">
@@ -1381,10 +1389,17 @@ function canCancelRow(r) {
 
       <div class="form-group full">
         <label>พนักงานขับรถ</label>
-        <select id="vb-edit-driver" v-model="eb.driver_name">
-          <option value="">— เลือกพนักงานขับรถ —</option>
-          <option v-for="u in editUsers" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
-        </select>
+        <input
+          id="vb-edit-driver"
+          v-model="eb.driver_name"
+          type="text"
+          list="vb-edit-driver-list"
+          placeholder="พิมพ์ชื่อเพื่อค้นหา หรือเลือกจากรายการ"
+          autocomplete="off"
+        />
+        <datalist id="vb-edit-driver-list">
+          <option v-for="u in editUsers" :key="u.id" :value="UI.personName(u)" />
+        </datalist>
         <div class="hint">เปลี่ยนพนักงานขับรถได้ — ระบบจะแจ้งเตือนพนักงานขับรถเดิมและคนใหม่</div>
       </div>
 
