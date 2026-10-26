@@ -666,6 +666,33 @@ ph2_project/
 
 ## 8. ข้อควรรู้เรื่องข้อมูล
 
+- **การลงเวลาตรวจตำแหน่งด้วย GPS เท่านั้น (ไม่ใช้ IP แล้ว)**
+  ที่ทำงานมี **2 แห่ง** ตั้งชื่อตายตัวใน `backend/routes/ops.js` (`CLOCK_SITES`)
+
+  | key | ชื่อที่แสดง | ตั้งได้ |
+  |---|---|---|
+  | `office` | สพป.แพร่ เขต 2 อ.ลอง | ละติจูด · ลองติจูด · รัศมี |
+  | `center` | ศูนย์พัฒนาวิชาการ ร่องกาศ | ละติจูด · ลองติจูด · รัศมี |
+
+  - เก็บเป็น JSON ใน `settings` คีย์ `clock_sites` = `[{key,lat,lng,radius}]`
+    (เพิ่มสถานที่ที่ 3 ได้โดยไม่ต้องเพิ่มคอลัมน์) · รัศมีเริ่มต้น 200 เมตร
+  - `clock_geo_enabled` = สวิตช์เปิด/ปิดการตรวจทั้งหมด
+  - **ค่าเดิม `clock_lat` / `clock_lng` / `clock_radius` ยังอ่านเป็น fallback**
+    ของสถานที่แรก เพื่อไม่ให้พิกัดที่แอดมินตั้งไว้แล้วหายตอนอัปเดตระบบ
+  - ผ่านได้เมื่ออยู่ในรัศมีของสถานที่ **ใดสถานที่หนึ่ง**
+    (ถ้าอยู่ในรัศมีหลายแห่ง ใช้แห่งที่ใกล้ที่สุดเป็นชื่อใน src)
+    · `clock_in_src` / `clock_out_src` บันทึกเป็น `GPS (lat, lng) · <ชื่อสถานที่> (xx ม.)`
+  - ⚠️ **ห้ามเอาการตรวจ IP กลับมา** (`clientIp` · `getMachineIps` · `ipAllowed` · `clock_ips`
+    ถูกลบออกตามที่ผู้ใช้สั่ง) และ `GET /time/location-settings` ต้องไม่คืน `ips`
+  - ถ้า **ยังไม่ได้ตั้งพิกัดเลย** → เตือนแต่ยอมให้ลงเวลา (ไม่บล็อก)
+    เพราะ `backend/test/smoke.js` ยิง `/api/time/check` โดยไม่ส่ง lat/lng
+    แต่ถ้าตั้งพิกัดแล้วไม่ส่ง lat/lng มา → **400**
+  - หน้าเว็บขอ GPS **ทุกอุปกรณ์** (มือถือ/แท็บเล็ต/คอมพิวเตอร์) ด้วย `getPosition()`
+    (timeout 15 วินาที) — ไม่มี `isMobileDevice()` อีกแล้ว
+  - ⚠️ `verify:pages` ต้องจำลองตำแหน่ง GPS (`Browser.grantPermissions` +
+    `Emulation.setGeolocationOverride`) ไม่งั้น headless Chrome ระบุตำแหน่งไม่ได้
+    → เทสต์ "ลงเวลาเข้างานสำเร็จ" พังทั้งที่โค้ดถูก
+  - เทสต์กันไว้ที่ `backend/scripts/test-clock-geo-sites.js` (อยู่ใน `npm run verify`)
 - **ปี พ.ศ.** — ทุก endpoint ที่มีตัวกรองปีรับ `year` เป็น พ.ศ. และกรองด้วยช่วงวันที่จริง
   (เคยพบบั๊กที่ใช้ `doc_no LIKE '%/2569%'` ซึ่งผิด เพราะเลขที่หนังสือไม่ได้ผูกกับปีเสมอ)
   ใช้ `backend/lib/year-filter.js` เสมอ
@@ -767,6 +794,8 @@ ph2_project/
 | ย้าย `DocumentsView.openForm` + `saveForm` | เสร็จ (3 component) |
 | ลบ `stamp-editor-bridge.js` | เสร็จ (ไม่ต้องมีสะพานอีก) |
 | ปรับ `npm run port` ไม่ให้สร้างไฟล์ตายใน `src/` | เสร็จ (เขียนไป `docs/legacy/ported-views/`) |
+| ลงเวลาด้วย GPS เทียบพิกัด **2 สถานที่** + เอา IP ออก | เสร็จ (ดู §8) |
+| ปุ่มลงเวลาใหญ่ขึ้น + กะพริบสีเขียว/ส้ม (หน้า clock + การ์ดหน้าแรก) | เสร็จ |
 | `DocumentsView.openSendForm` / `openPostalForm` | **ยังไม่ย้าย** — เหตุผลด้านล่าง |
 
 **ทำไม 2 ฟอร์มสุดท้ายยังไม่ย้าย**
@@ -809,11 +838,11 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **184** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **197** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 15/15 (MariaDB 11.4) |
-| `backend: npm run check:returns` | ผ่าน (98 ไฟล์) |
+| `backend: npm run verify` | ผ่าน 39/39 (MariaDB 11.4) |
+| `backend: npm run check:returns` | ผ่าน (103 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
 ให้เพิ่ม `--dump <keys>` เพื่อดู DOM/runtime จริง:

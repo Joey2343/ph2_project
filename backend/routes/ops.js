@@ -82,42 +82,30 @@ async function getTimeEditorUsers() {
   return await db.prepare(`SELECT id, username, full_name, position, workplace FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
 }
 
-// ---------- การตรวจตำแหน่งการลงเวลา (GPS มือถือ/แท็บเล็ต, IP คอมพิวเตอร์/แล็ปท็อป) ----------
-function clientIp(req) {
-  // ตรวจสอบ X-Forwarded-For ก่อน (ถ้ามี reverse proxy)
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) {
-    const first = String(xff).split(',')[0].trim();
-    if (first && first !== '::1' && first !== '127.0.0.1') return first;
-  }
-  // req.ip อาจเป็น ::ffff:192.168.1.5 หรือ ::1 → ปรับเป็น IPv4 ธรรมดา
-  let ip = String(req.ip || '').trim();
-  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-  if (ip === '::1') ip = '127.0.0.1';
-  return ip;
-}
+// ---------- การตรวจตำแหน่งการลงเวลา (GPS ของอุปกรณ์ เทียบกับพิกัดที่ทำงาน) ----------
+/**
+ * สถานที่ทำงานที่ใช้ตรวจตำแหน่ง — มี 2 แห่ง (ชื่อคงที่ ตั้งได้แค่พิกัด/รัศมี)
+ *
+ * ทำไมต้องมีหลายสถานที่
+ * ─────────────────────
+ * เจ้าหน้าที่ทำงานอยู่ 2 ที่ คือสำนักงานเขต (อ.ลอง) และศูนย์พัฒนาวิชาการ (ร่องกาศ)
+ * เดิมตั้งพิกัดได้ชุดเดียว → ลงเวลาได้ที่เดียว อีกที่หนึ่งขึ้น "อยู่นอกพื้นที่"
+ *
+ * key ใช้ผูกกับค่าที่บันทึกไว้ — ห้ามเปลี่ยน key ของเดิม (ค่าที่ตั้งไว้จะหาย)
+ */
+const CLOCK_SITES = [
+  { key: 'office', name: 'สพป.แพร่ เขต 2 อ.ลอง' },
+  { key: 'center', name: 'ศูนย์พัฒนาวิชาการ ร่องกาศ' },
+];
 
-/** ดึง IP จริงของเครื่อง (จาก network interfaces) */
-function getMachineIps() {
-  const os = require('os');
-  const ifaces = os.networkInterfaces();
-  const ips = [];
-  for (const name of Object.keys(ifaces)) {
-    for (const iface of ifaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        ips.push(iface.address);
-      }
-    }
-  }
-  return ips;
-}
+/** รัศมีเริ่มต้น (เมตร) เมื่อยังไม่เคยตั้งค่า */
+const DEFAULT_CLOCK_RADIUS = 200;
 
-/** ตรวจว่า IP อยู่ในรายการที่กำหนดหรือไม่ (รองรับ prefix เช่น "192.168.1.") */
-function ipAllowed(ip, list) {
-  if (!ip) return false;
-  const items = String(list || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!items.length) return false;
-  return items.some((it) => it === '*' || ip === it || ip.startsWith(it));
+/** แปลงค่าเป็นตัวเลข หรือ null ถ้าไม่ได้กรอก/ไม่ใช่ตัวเลข */
+function numOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** ระยะทางระหว่าง 2 พิกัด (เมตร) โดยใช้สูตร Haversine */
@@ -133,6 +121,12 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 /**
  * อ่านค่าตั้งค่าการลงเวลาตามตำแหน่งจากตาราง settings
  *
+ * เก็บเป็น JSON ในคีย์ `clock_sites` = [{ key, lat, lng, radius }, ...]
+ *   → เพิ่มสถานที่ที่ 3 ภายหลังได้โดยไม่ต้องเพิ่มคีย์/คอลัมน์ใหม่
+ *
+ * ⚠️ ค่าเดิม (clock_lat · clock_lng · clock_radius) ยังอ่านเป็น fallback
+ *    เพื่อไม่ให้พิกัดที่แอดมินตั้งไว้แล้วหายตอนอัปเดตระบบ
+ *
  * ทุกค่าต้อง await เพราะ db adapter เป็น async
  * การไม่ await จะได้ Promise แทนค่าจริง → .trim() ไม่ใช่ฟังก์ชัน
  */
@@ -141,20 +135,44 @@ async function getClockGeoConfig() {
     const r = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(key);
     return r ? r.value : null;
   };
-  const [enabled, lat, lng, radius, ips] = await Promise.all([
+  const [enabled, sitesRaw, legacyLat, legacyLng, legacyRadius] = await Promise.all([
     row('clock_geo_enabled'),
+    row('clock_sites'),
     row('clock_lat'),
     row('clock_lng'),
     row('clock_radius'),
-    row('clock_ips'),
   ]);
-  return {
-    enabled: enabled !== '0', // เปิดใช้โดยค่าเริ่มต้น
-    lat: lat !== null && lat !== '' ? Number(lat) : null,
-    lng: lng !== null && lng !== '' ? Number(lng) : null,
-    radius: radius !== null && radius !== '' ? Number(radius) : 200,
-    ips: typeof ips === 'string' ? ips : '',
+
+  let saved = [];
+  if (sitesRaw) {
+    try {
+      const parsed = JSON.parse(sitesRaw);
+      if (Array.isArray(parsed)) saved = parsed;
+    } catch (e) {
+      saved = [];
+    }
+  }
+
+  const legacy = {
+    lat: numOrNull(legacyLat),
+    lng: numOrNull(legacyLng),
+    radius: numOrNull(legacyRadius) || DEFAULT_CLOCK_RADIUS,
   };
+
+  const sites = CLOCK_SITES.map((def, i) => {
+    const found = saved.find((s) => s && String(s.key) === def.key);
+    // ยังไม่เคยบันทึกแบบหลายสถานที่ → ยกพิกัดเดิม (ช่องเดียว) มาเป็นสถานที่แรก
+    const f = found || (i === 0 ? legacy : {});
+    return {
+      key: def.key,
+      name: def.name,
+      lat: numOrNull(f.lat),
+      lng: numOrNull(f.lng),
+      radius: numOrNull(f.radius) || DEFAULT_CLOCK_RADIUS,
+    };
+  });
+
+  return { enabled: enabled !== '0', sites };
 }
 
 // admin อ่านค่าตั้งค่าตำแหน่งที่ทำงาน
@@ -162,28 +180,58 @@ router.get('/time/location-settings', auth.requireAdmin, async (req, res) => {
   res.json(await getClockGeoConfig());
 });
 
-// admin ตั้งค่าตำแหน่งที่ทำงาน (ละติจูด/ลองติจูด/รัศมี/IP อินเทอร์เน็ต)
-router.put('/time/location-settings', auth.requireAdmin, (req, res) => {
-  const { enabled, lat, lng, radius, ips } = req.body || {};
-  const set = async (key, value) => { return 
-    await db.prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value = VALUES(value)').run(key, String(value)) };
-  if (enabled !== undefined) set('clock_geo_enabled', enabled ? '1' : '0');
-  if (lat !== undefined && lat !== null && lat !== '') {
-    const n = Number(lat);
-    if (!Number.isFinite(n) || n < -90 || n > 90) return res.status(400).json({ error: 'ละติจูดไม่ถูกต้อง' });
-    set('clock_lat', n);
+/**
+ * ตรวจ/แปลงค่าสถานที่ทำงาน 1 แห่งจากที่หน้าเว็บส่งมา
+ *
+ * คืน { site } เมื่อถูกต้อง หรือ { error } เมื่อไม่ถูกต้อง
+ * (แยกออกมาเป็นฟังก์ชันเพราะ `return` ในลูปจะออกจาก handler ทั้งตัว
+ *  → บรรทัด res.json ด้านล่างไม่เคยถูกเรียก แล้วเบราว์เซอร์รอจน timeout)
+ */
+function normalizeClockSite(s) {
+  const key = String((s && s.key) || '').trim();
+  if (!key) return { error: 'ไม่พบรหัสสถานที่ทำงาน' };
+  if (!CLOCK_SITES.some((d) => d.key === key)) return { error: 'ไม่รู้จักสถานที่ทำงานที่ส่งมา' };
+
+  const lat = numOrNull(s.lat);
+  const lng = numOrNull(s.lng);
+  const radius = numOrNull(s.radius);
+  if ((lat === null) !== (lng === null)) return { error: 'กรุณากรอกละติจูดและลองติจูดให้ครบทั้งคู่' };
+  if (lat !== null && (lat < -90 || lat > 90)) return { error: 'ละติจูดไม่ถูกต้อง' };
+  if (lng !== null && (lng < -180 || lng > 180)) return { error: 'ลองติจูดไม่ถูกต้อง' };
+  if (radius !== null && radius <= 0) return { error: 'รัศมีไม่ถูกต้อง' };
+
+  return { site: { key, lat, lng, radius: radius || DEFAULT_CLOCK_RADIUS } };
+}
+
+// admin ตั้งค่าตำแหน่งที่ทำงาน (ละติจูด/ลองติจูด/รัศมี ของแต่ละสถานที่)
+router.put('/time/location-settings', auth.requireAdmin, async (req, res) => {
+  const { enabled, sites } = req.body || {};
+  const set = async (key, value) => {
+    await db
+      .prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value = VALUES(value)')
+      .run(key, String(value));
+  };
+
+  if (enabled !== undefined) await set('clock_geo_enabled', enabled ? '1' : '0');
+
+  if (sites !== undefined) {
+    if (!Array.isArray(sites)) return res.status(400).json({ error: 'รูปแบบข้อมูลสถานที่ทำงานไม่ถูกต้อง' });
+
+    const clean = [];
+    let bad = '';
+    for (const s of sites) {
+      const r = normalizeClockSite(s);
+      if (r.error) {
+        bad = r.error;
+        break;
+      }
+      clean.push(r.site);
+    }
+    if (bad) return res.status(400).json({ error: bad });
+
+    await set('clock_sites', JSON.stringify(clean));
   }
-  if (lng !== undefined && lng !== null && lng !== '') {
-    const n = Number(lng);
-    if (!Number.isFinite(n) || n < -180 || n > 180) return res.status(400).json({ error: 'ลองติจูดไม่ถูกต้อง' });
-    set('clock_lng', n);
-  }
-  if (radius !== undefined && radius !== null && radius !== '') {
-    const n = Number(radius);
-    if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'รัศมีไม่ถูกต้อง' });
-    set('clock_radius', n);
-  }
-  if (ips !== undefined) set('clock_ips', String(ips || '').trim());
+
   res.json({ ok: true, message: 'บันทึกค่าตำแหน่งที่ทำงานเรียบร้อย' });
 });
 
@@ -489,51 +537,45 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   }
   const today = simdate.todayISO();
   const t = new Date().toTimeString().slice(0, 8); // เวลาบนนาฬิกาของระบบ (จำลองตามวันที่ sim_today เมื่อเปิดใช้)
-  const { type, device, lat, lng } = req.body || {};
+  const { type, lat, lng } = req.body || {};
   const cfg = await getClockGeoConfig();
   let rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
 
-  // ---- ตรวจตำแหน่งตามประเภทอุปกรณ์ ----
-  // มือถือ/แท็บเล็ต → ใช้ GPS ของอุปกรณ์; คอมพิวเตอร์/แล็ปท็อป → ใช้ IP อินเทอร์เน็ตของที่ทำงาน
+  // ---- ตรวจตำแหน่งด้วย GPS ของอุปกรณ์ เทียบกับพิกัดสถานที่ทำงาน ----
+  // ใช้ GPS ทุกอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) — ไม่ตรวจจาก IP อีกแล้ว
+  // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ใดสถานที่หนึ่ง (มี 2 แห่ง)
   let src = '';
   const warn = [];
   if (cfg.enabled) {
-    if (device === 'mobile') {
-      const la = Number(lat), lo = Number(lng);
-      if (Number.isFinite(la) && Number.isFinite(lo)) {
-        if (cfg.lat !== null && cfg.lng !== null) {
-          const dist = haversineMeters(la, lo, cfg.lat, cfg.lng);
-          if (dist > cfg.radius) {
-            return res.status(403).json({ error: `คุณอยู่นอกพื้นที่ที่กำหนด (ระยะ ${Math.round(dist)} ม. จากที่ทำงาน) — ต้องลงเวลาภายในรัศมี ${cfg.radius} เมตร` });
-          }
-          src = `GPS (${la.toFixed(6)}, ${lo.toFixed(6)})`;
-        } else {
-          warn.push('ยังไม่ได้ตั้งค่าพิกัด (ละติจูด/ลองติจูด) ของที่ทำงาน');
-        }
-      } else {
-        return res.status(400).json({ error: 'ไม่ได้รับตำแหน่ง GPS ของอุปกรณ์ — ไม่อนุญาตให้ลงเวลาจากมือถือ/แท็บเล็ต' });
-      }
+    const sites = (cfg.sites || []).filter((s) => s.lat !== null && s.lng !== null);
+    if (!sites.length) {
+      warn.push('ยังไม่ได้ตั้งค่าพิกัด (ละติจูด/ลองติจูด) ของสถานที่ทำงาน');
     } else {
-      // คอมพิวเตอร์/แล็ปท็อป → ตรวจ IP อินเทอร์เน็ตของที่ทำงาน
-      const ip = clientIp(req);
-      const hasIps = !!(cfg.ips && cfg.ips.trim());
-      if (hasIps) {
-        // ถ้า IP เป็น localhost ให้ตรวจ IP จริงของเครื่องด้วย
-        let ipToCheck = ip;
-        if (ip === '127.0.0.1' || ip === '::1') {
-          const machineIps = getMachineIps();
-          const matchedIp = machineIps.find(mip => ipAllowed(mip, cfg.ips));
-          if (matchedIp) {
-            ipToCheck = matchedIp;
-          }
-        }
-        if (!ipAllowed(ipToCheck, cfg.ips)) {
-          return res.status(403).json({ error: `คุณไม่ได้เชื่อมต่ออินเทอร์เน็ตของที่ทำงาน (IP: ${ip}) — ไม่อนุญาตให้ลงเวลาจากคอมพิวเตอร์/แล็ปท็อป` });
-        }
-        src = `IP ${ipToCheck}`;
-      } else {
-        warn.push('ยังไม่ได้ตั้งค่า IP อินเทอร์เน็ตของที่ทำงาน');
+      const la = Number(lat);
+      const lo = Number(lng);
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        return res.status(400).json({
+          error: 'ไม่ได้รับตำแหน่ง GPS ของอุปกรณ์ — กรุณาอนุญาตให้เบราว์เซอร์เข้าถึงตำแหน่งแล้วลองใหม่',
+        });
       }
+      // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ "ใดสถานที่หนึ่ง"
+      //   best = สถานที่ที่ใกล้ที่สุด (ใช้บอกระยะในข้อความเมื่อไม่ผ่าน)
+      //   hit  = สถานที่ที่อยู่ในรัศมี (ถ้ามีหลายแห่ง ใช้แห่งที่ใกล้ที่สุดเป็นชื่อใน src)
+      let best = null;
+      let hit = null;
+      for (const s of sites) {
+        const d = haversineMeters(la, lo, s.lat, s.lng);
+        if (!best || d < best.dist) best = { site: s, dist: d };
+        if (d <= s.radius && (!hit || d < hit.dist)) hit = { site: s, dist: d };
+      }
+      if (!hit) {
+        return res.status(403).json({
+          error:
+            `คุณอยู่นอกพื้นที่ที่กำหนด — ห่างจาก ${best.site.name} ${Math.round(best.dist)} เมตร` +
+            ` (ต้องอยู่ในรัศมี ${best.site.radius} เมตร)`,
+        });
+      }
+      src = `GPS (${la.toFixed(6)}, ${lo.toFixed(6)}) · ${hit.site.name} (${Math.round(hit.dist)} ม.)`;
     }
   }
 

@@ -210,6 +210,12 @@ async function main() {
   console.log('\n[ทดสอบลำดับรายชื่อเจ้าหน้าที่ทุกจุดที่ให้เลือก]');
   results.push(run('test-staff-list-order', [path.join(__dirname, 'test-staff-list-order.js')]));
 
+  // ผู้ใช้สั่ง: ลงเวลาด้วย GPS ของอุปกรณ์ เทียบกับพิกัดที่ทำงาน 2 แห่ง และเอา IP ออก
+  console.log('\n[ทดสอบตั้งค่าตำแหน่งที่ทำงาน 2 แห่ง + ลงเวลาด้วย GPS เท่านั้น]');
+  results.push(run('test-clock-geo-sites', [path.join(__dirname, 'test-clock-geo-sites.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
 

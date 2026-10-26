@@ -78,6 +78,31 @@ const VUE_PAGES = {
         name: 'ปุ่มลงเวลาออกงานถูกเปิดใช้งาน',
         check: `!document.querySelectorAll('.clock-btn')[1].disabled`,
       },
+      {
+        /* ผู้ใช้สั่ง: ตั้งค่าตำแหน่งที่ทำงานเป็น 2 สถานที่ + เอา IP ออก
+         * ต้องเห็นช่องพิกัด/รัศมีของทั้ง 2 แห่ง และต้องไม่มีช่อง IP อีก */
+        name: 'dialog ตั้งค่าตำแหน่งที่ทำงาน: มี 2 สถานที่ (สพป. อ.ลอง · ศูนย์ฯ ร่องกาศ) และไม่มีช่อง IP',
+        check: `(async () => {
+          const btn = [...document.querySelectorAll('button')].find(b => (b.innerText || '').includes('ตั้งค่าตำแหน่งที่ทำงาน'));
+          if (!btn) throw new Error('ไม่พบปุ่ม "ตั้งค่าตำแหน่งที่ทำงาน" (เฉพาะ admin)');
+          btn.click();
+          await new Promise(r => setTimeout(r, 1600));
+          const need = ['cg-site-office-lat','cg-site-office-lng','cg-site-office-radius',
+                        'cg-site-center-lat','cg-site-center-lng','cg-site-center-radius'];
+          const miss = need.filter(id => !document.getElementById(id));
+          if (miss.length) throw new Error('ไม่พบช่อง: ' + miss.join(', '));
+          const cards = document.querySelectorAll('.site-card').length;
+          if (cards !== 2) throw new Error('มีการ์ดสถานที่ทำงาน ' + cards + ' ใบ (ต้องเป็น 2)');
+          if (document.getElementById('cg-ips')) throw new Error('ยังมีช่อง IP อินเทอร์เน็ตอยู่ (ผู้ใช้สั่งให้เอาออก)');
+          const txt = document.body.innerText;
+          if (!txt.includes('สพป.แพร่ เขต 2 อ.ลอง')) throw new Error('ไม่พบชื่อ "สพป.แพร่ เขต 2 อ.ลอง"');
+          if (!txt.includes('ศูนย์พัฒนาวิชาการ ร่องกาศ')) throw new Error('ไม่พบชื่อ "ศูนย์พัฒนาวิชาการ ร่องกาศ"');
+          const cancel = [...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === 'ยกเลิก');
+          if (cancel) cancel.click();
+          await new Promise(r => setTimeout(r, 400));
+          return true;
+        })()`,
+      },
     ],
   },
   rooms: {
@@ -1256,6 +1281,43 @@ async function login() {
 }
 
 /**
+ * จำลองตำแหน่ง GPS ให้เบราว์เซอร์ที่ใช้ตรวจ
+ *
+ * ทำไมต้องมี
+ * ──────────
+ * การลงเวลาตรวจตำแหน่งด้วย GPS ของอุปกรณ์ "ทุกอุปกรณ์" (เอา IP ออกแล้ว)
+ * headless Chrome ไม่มี GPS จริง → getCurrentPosition ล้มเหลว (PERMISSION_DENIED)
+ * → กดลงเวลาไม่ได้ → เทสต์ "ลงเวลาเข้างานสำเร็จ" พังทั้งที่โค้ดถูก
+ *
+ * ใช้พิกัดของสถานที่ทำงานที่ตั้งไว้จริง (อ่านผ่าน API ด้วยสิทธิ์ admin)
+ * ถ้ายังไม่ได้ตั้งพิกัด ใช้พิกัดสมมติ — เซิร์ฟเวอร์จะเตือนแต่ยอมให้ลงเวลา
+ */
+async function emulateGeolocation(sid) {
+  let lat = 18.1;
+  let lng = 100.1;
+  let source = 'พิกัดสมมติ (ยังไม่ได้ตั้งค่าที่ทำงาน)';
+  try {
+    const r = await fetch(SERVER + '/api/time/location-settings', { headers: { cookie: 'sid=' + sid } });
+    const cfg = await r.json();
+    const site = (cfg.sites || []).find((s) => s.lat !== null && s.lng !== null && s.lat !== undefined);
+    if (site) {
+      lat = Number(site.lat);
+      lng = Number(site.lng);
+      source = `พิกัด "${site.name}"`;
+    }
+  } catch (e) {
+    /* ใช้พิกัดสมมติ */
+  }
+  try {
+    await send('Browser.grantPermissions', { origin: SERVER, permissions: ['geolocation'] });
+    await send('Emulation.setGeolocationOverride', { latitude: lat, longitude: lng, accuracy: 20 });
+  } catch (e) {
+    source += ' — ตั้ง GPS จำลองไม่สำเร็จ: ' + e.message;
+  }
+  return { lat, lng, source };
+}
+
+/**
  * รอจนกว่าหน้าปลายทางจะวาดเสร็จจริง
  *
  * ต้องรอ 3 เงื่อนไขพร้อมกัน มิฉะนั้นจะเดาผิด:
@@ -1334,6 +1396,9 @@ if (ws) {
   try {
     sid = await login();
     await send('Network.setCookie', { name: 'sid', value: sid, domain: '127.0.0.1', path: '/' });
+    // ต้องตั้ง GPS จำลองก่อนเข้าหน้า clock ไม่งั้นกดลงเวลาไม่ได้ (ตรวจ GPS ทุกอุปกรณ์)
+    const geo = await emulateGeolocation(sid);
+    ok(`จำลองตำแหน่ง GPS ที่ ${geo.lat}, ${geo.lng} (${geo.source})`);
     await send('Page.navigate', { url: SERVER + '/#/' });
     await sleep(3500);
     ok('ล็อกอินผ่าน API ได้');

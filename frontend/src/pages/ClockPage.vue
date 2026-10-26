@@ -7,12 +7,12 @@
  *
  * ฟีเจอร์เท่าเดิมทุกอย่าง:
  *   - นาฬิกาเรียงเวลาจริง + สถานะวันนี้ + ปุ่มลงเวลาเข้า/ออก
- *   - ตรวจตำแหน่ง: มือถือ/แท็บเล็ต → GPS · คอมพิวเตอร์/แล็ปท็อป → IP
+ *   - ตรวจตำแหน่ง: ใช้ GPS ของอุปกรณ์เทียบกับพิกัดสถานที่ทำงาน (2 แห่ง)
  *     พร้อมข้อความแจ้งเตือนแยกตามสาเหตุที่ระบุตำแหน่งไม่ได้
  *   - สิทธิ์ดูทั้งหมด: admin หรือผู้ได้รับสิทธิ์ (is_time_editor)
  *   - ภาพรวมวันนี้ 3 ช่อง · ตัวกรองวันที่ (ปฏิทิน พ.ศ.) แสดงทีละวัน · แก้ไข/ลบบันทึก
  *   - รายงาน cascade ปี→เดือน→สัปดาห์→วัน + ดาวน์โหลด .xlsx + พิมพ์
- *   - admin: ตั้งค่าตำแหน่ง (GPS/IP) + เลือกผู้มีสิทธิ์แก้ไขเวลา
+ *   - admin: ตั้งค่าตำแหน่ง (พิกัด/รัศมี ของ 2 สถานที่) + เลือกผู้มีสิทธิ์แก้ไขเวลา
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import api from '../api/client.js';
@@ -20,6 +20,8 @@ import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import AppModal from '../components/ui/AppModal.vue';
 import ThaiDateField from '../components/ui/ThaiDateField.vue';
+// ขอตำแหน่ง GPS — ใช้ร่วมกับการ์ดลงเวลาหน้าแรก (src/lib/clock-geo.js)
+import { getPosition, geoErrorMessage } from '../lib/clock-geo.js';
 
 /* ---------- สิทธิ์ ---------- */
 const canViewAll = computed(() => Auth.isAdmin() || !!(Auth.user && Auth.user.is_time_editor));
@@ -61,49 +63,18 @@ async function loadToday() {
   }
 }
 
-/** ตรวจว่าอุปกรณ์ปัจจุบันเป็นมือถือ/แท็บเล็ต (ใช้ GPS) หรือคอมพิวเตอร์/แล็ปท็อป (ใช้ IP) */
-function isMobileDevice() {
-  const ua = navigator.userAgent;
-  if (/Android|iPhone|iPad|iPod|Mobile|Tablet|Opera Mini|IEMobile|Silk/i.test(ua)) return true;
-  return (
-    typeof navigator.maxTouchPoints === 'number' &&
-    navigator.maxTouchPoints > 0 &&
-    window.matchMedia('(max-width: 1024px)').matches
-  );
-}
-
-/** ข้อความแจ้งเตือนตามสาเหตุที่ระบุตำแหน่งไม่ได้ (ตามของเดิมทุกกรณี) */
-function geoErrorMessage(e) {
-  const code = e && e.code;
-  if (e && e.message === 'NO_GEO') return 'เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง GPS';
-  if (code === 1) return 'คุณไม่อนุญาตให้ระบบใช้ตำแหน่ง GPS — กรุณาอนุญาตตำแหน่งในเบราว์เซอร์';
-  if (code === 2) return 'ไม่สามารถระบุตำแหน่ง GPS ได้ (สัญญาณดาวเทียมไม่ดี) — กรุณาลองใหม่';
-  if (code === 3) return 'การระบุตำแหน่งใช้เวลานานเกินไป — กรุณาลองใหม่';
-  return 'ไม่สามารถระบุตำแหน่ง GPS ได้ — กรุณาลองใหม่';
-}
-
-/** ลงเวลาพร้อมตรวจตำแหน่ง */
+/** ลงเวลาพร้อมตรวจตำแหน่ง (GPS ทุกอุปกรณ์) */
 async function doCheck(type) {
   if (checking.value) return;
   checking.value = type;
   try {
-    const device = isMobileDevice() ? 'mobile' : 'desktop';
-    const payload = { type, device };
-    if (device === 'mobile') {
-      try {
-        const pos = await new Promise((resolve, reject) => {
-          if (!navigator.geolocation) return reject(new Error('NO_GEO'));
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 30000,
-          });
-        });
-        payload.lat = pos.coords.latitude;
-        payload.lng = pos.coords.longitude;
-      } catch (e) {
-        return UI.toast(geoErrorMessage(e), 'error');
-      }
+    const payload = { type };
+    try {
+      const pos = await getPosition();
+      payload.lat = pos.coords.latitude;
+      payload.lng = pos.coords.longitude;
+    } catch (e) {
+      return UI.toast(geoErrorMessage(e), 'error');
     }
     const res = await api.post('/time/check', payload);
     const hasWarn = res.warning && res.warning.length;
@@ -372,47 +343,90 @@ function downloadXlsx() {
 /* ---------- admin: ตั้งค่าตำแหน่งที่ทำงาน ---------- */
 const locOpen = ref(false);
 const locSaving = ref(false);
-const locBusy = ref(false);
-const loc = ref({ enabled: true, lat: null, lng: null, radius: 200, ips: '' });
+const locBusy = ref('');
+/** ตำแหน่ง GPS ล่าสุดที่แอดมินกดดึงมา — ใช้แสดงระยะห่างจากแต่ละสถานที่ */
+const locProbe = ref(null);
+/**
+ * สถานที่ทำงาน 2 แห่ง (ชื่อคงที่จาก backend)
+ * แอดมินตั้งได้เฉพาะ ละติจูด · ลองติจูด · รัศมี
+ */
+const loc = ref({ enabled: true, sites: [] });
 
 async function openLocationSettings() {
   try {
     const cfg = await api.get('/time/location-settings');
-    loc.value = { enabled: cfg.enabled !== false, lat: cfg.lat ?? null, lng: cfg.lng ?? null, radius: cfg.radius ?? 200, ips: cfg.ips || '' };
+    loc.value = {
+      enabled: cfg.enabled !== false,
+      sites: (cfg.sites || []).map((s) => ({
+        key: s.key,
+        name: s.name,
+        lat: s.lat ?? null,
+        lng: s.lng ?? null,
+        radius: s.radius ?? 200,
+      })),
+    };
   } catch (e) {
     return UI.toast(e.message, 'error');
   }
+  locProbe.value = null;
   locOpen.value = true;
 }
 
-/** ดึงตำแหน่งปัจจุบันมาใส่ช่อง (ตามของเดิม) */
-function useMyPosition() {
-  if (!navigator.geolocation) return UI.toast('เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง GPS', 'error');
-  locBusy.value = true;
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      loc.value.lat = pos.coords.latitude;
-      loc.value.lng = pos.coords.longitude;
-      locBusy.value = false;
-      UI.toast('ดึงตำแหน่งปัจจุบันมาใส่แล้ว — กดบันทึกเพื่อใช้งาน');
-    },
-    (e) => {
-      locBusy.value = false;
-      UI.toast(e && e.code === 1 ? 'คุณไม่อนุญาตให้ใช้ตำแหน่ง GPS' : 'ไม่สามารถระบุตำแหน่ง GPS ได้ — กรุณาใส่พิกัดเอง', 'error');
-    },
-    { enableHighAccuracy: true, timeout: 10000 },
-  );
+/** ระยะทาง (เมตร) ระหว่างพิกัด 2 จุด — ใช้สูตร Haversine เหมือนฝั่งเซิร์ฟเวอร์ */
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** ระยะจากตำแหน่ง GPS ล่าสุดถึงสถานที่นี้ (null ถ้ายังไม่ได้ดึงตำแหน่ง/ยังไม่กรอกพิกัด) */
+function siteDistance(site) {
+  const p = locProbe.value;
+  if (!p || site.lat === null || site.lng === null) return null;
+  return Math.round(distanceMeters(p.lat, p.lng, Number(site.lat), Number(site.lng)));
+}
+
+/** ดึงตำแหน่งปัจจุบันมาใส่ช่องของสถานที่นั้น */
+async function useMyPosition(site) {
+  locBusy.value = site.key;
+  try {
+    const pos = await getPosition();
+    site.lat = Number(pos.coords.latitude.toFixed(6));
+    site.lng = Number(pos.coords.longitude.toFixed(6));
+    locProbe.value = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    UI.toast(`ดึงตำแหน่งปัจจุบันมาใส่ "${site.name}" แล้ว — กดบันทึกเพื่อใช้งาน`);
+  } catch (e) {
+    UI.toast(geoErrorMessage(e), 'error');
+  } finally {
+    locBusy.value = '';
+  }
 }
 
 async function saveLocationSettings() {
+  // ตรวจฝั่งหน้าเว็บก่อน เพื่อให้เห็นข้อความตรงช่องที่ผิด
+  // (ใช้ .find() ไม่ใช่ return ในลูป — return ในลูปจะออกจากฟังก์ชันทั้งตัว)
+  const halfFilled = loc.value.sites.find((s) => {
+    const hasLat = s.lat !== null && s.lat !== '';
+    const hasLng = s.lng !== null && s.lng !== '';
+    return hasLat !== hasLng;
+  });
+  if (halfFilled) {
+    return UI.toast(`กรุณากรอกละติจูดและลองติจูดของ "${halfFilled.name}" ให้ครบทั้งคู่`, 'error');
+  }
   locSaving.value = true;
   try {
     const res = await api.put('/time/location-settings', {
       enabled: loc.value.enabled,
-      lat: loc.value.lat,
-      lng: loc.value.lng,
-      radius: loc.value.radius,
-      ips: loc.value.ips,
+      sites: loc.value.sites.map((s) => ({
+        key: s.key,
+        lat: s.lat === '' ? null : s.lat,
+        lng: s.lng === '' ? null : s.lng,
+        radius: s.radius,
+      })),
     });
     UI.toast(res.message);
     locOpen.value = false;
@@ -740,8 +754,8 @@ onBeforeUnmount(() => {
   <!-- ---------- ตั้งค่าตำแหน่งที่ทำงาน ---------- -->
   <AppModal v-if="locOpen" title="📍 ตั้งค่าตำแหน่งที่ทำงาน (การลงเวลา)" size="lg" footer @close="locOpen = false">
     <p class="hint" style="margin-bottom: 12px">
-      มือถือ/แท็บเล็ต ตรวจด้วย GPS ของอุปกรณ์ว่าอยู่ในรัศมีที่กำหนด ส่วนคอมพิวเตอร์/แล็ปท็อป
-      ตรวจด้วย IP อินเทอร์เน็ตของที่ทำงาน — หากไม่อยู่ในพื้นที่/IP ที่กำหนดจะลงเวลาไม่ได้
+      ใช้ตำแหน่ง GPS ของอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) เทียบกับพิกัดของสถานที่ทำงาน
+      — ลงเวลาได้เมื่ออยู่ในรัศมีของสถานที่ใดสถานที่หนึ่งที่กำหนดไว้ด้านล่าง
     </p>
 
     <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; cursor: pointer; width: fit-content">
@@ -749,30 +763,57 @@ onBeforeUnmount(() => {
       <span style="white-space: nowrap">เปิดใช้การตรวจสอบตำแหน่งการลงเวลา (ถ้าปิด จะไม่ตรวจตำแหน่งใด ๆ)</span>
     </label>
 
-    <div class="form-row" style="align-items: flex-end">
-      <div class="form-group" style="flex: 1">
-        <label>ละติจูด (Latitude)</label>
-        <input id="cg-lat" v-model.number="loc.lat" type="number" step="any" placeholder="เช่น 18.1442" />
+    <div v-for="(site, i) in loc.sites" :key="site.key" class="site-card">
+      <div class="site-head">
+        <span class="site-no">{{ i + 1 }}</span>
+        <span class="site-name">{{ site.name }}</span>
+        <span v-if="site.lat !== null && site.lng !== null" class="site-ok">✓ ตั้งพิกัดแล้ว</span>
+        <span v-else class="site-todo">ยังไม่ได้ตั้งพิกัด</span>
       </div>
-      <div class="form-group" style="flex: 1">
-        <label>ลองติจูด (Longitude)</label>
-        <input id="cg-lng" v-model.number="loc.lng" type="number" step="any" placeholder="เช่น 100.1526" />
+
+      <div class="form-row" style="align-items: flex-end">
+        <div class="form-group" style="flex: 1">
+          <label>ละติจูด (Latitude)</label>
+          <input
+            :id="'cg-site-' + site.key + '-lat'"
+            v-model.number="site.lat"
+            type="number"
+            step="any"
+            placeholder="เช่น 18.144200"
+          />
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>ลองติจูด (Longitude)</label>
+          <input
+            :id="'cg-site-' + site.key + '-lng'"
+            v-model.number="site.lng"
+            type="number"
+            step="any"
+            placeholder="เช่น 100.152600"
+          />
+        </div>
+        <div class="form-group" style="width: 130px">
+          <label>รัศมี (เมตร)</label>
+          <input :id="'cg-site-' + site.key + '-radius'" v-model.number="site.radius" type="number" min="1" />
+        </div>
+        <div style="padding-bottom: 2px">
+          <button class="btn btn-outline btn-sm" :disabled="!!locBusy" @click="useMyPosition(site)">
+            {{ locBusy === site.key ? '📡 กำลังระบุตำแหน่ง...' : '📡 ใช้ตำแหน่งปัจจุบัน' }}
+          </button>
+        </div>
       </div>
-      <div class="form-group" style="width: 130px">
-        <label>รัศมี (เมตร)</label>
-        <input id="cg-radius" v-model.number="loc.radius" type="number" min="1" />
-      </div>
-      <div style="padding-bottom: 2px">
-        <button class="btn btn-outline btn-sm" :disabled="locBusy" @click="useMyPosition">
-          {{ locBusy ? '📡 กำลังระบุตำแหน่ง...' : '📡 ใช้ตำแหน่งปัจจุบันของฉัน' }}
-        </button>
+
+      <div v-if="siteDistance(site) !== null" class="site-dist">
+        ตำแหน่ง GPS ล่าสุดอยู่ห่างจากจุดนี้ <b>{{ siteDistance(site) }} เมตร</b>
+        <template v-if="siteDistance(site) <= (site.radius || 0)"> — อยู่ในรัศมีที่ลงเวลาได้</template>
+        <template v-else> — อยู่นอกรัศมี ({{ site.radius }} เมตร)</template>
       </div>
     </div>
 
-    <div class="form-group" style="margin-top: 12px">
-      <label>IP อินเทอร์เน็ตของที่ทำงาน (คอมพิวเตอร์/แล็ปท็อป) — คั่นด้วยเครื่องหมายจุลภาค , รองรับ prefix เช่น 192.168.1.</label>
-      <input id="cg-ips" v-model="loc.ips" type="text" placeholder="เช่น 192.168.1.0, 10.0.0." />
-    </div>
+    <p class="hint" style="margin-top: 10px">
+      เคล็ดลับ: ไปยืนที่สถานที่นั้นแล้วกด "📡 ใช้ตำแหน่งปัจจุบัน" เพื่อให้พิกัดตรงที่สุด
+      (GPS ในอาคารอาจคลาดเคลื่อนได้ 10–30 เมตร ควรตั้งรัศมีเผื่อไว้)
+    </p>
 
     <template #footer>
       <button class="btn btn-outline" :disabled="locSaving" @click="locOpen = false">ยกเลิก</button>
@@ -878,6 +919,65 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * การ์ดสถานที่ทำงาน (กล่อง "ตั้งค่าตำแหน่งที่ทำงาน")
+ * ────────────────────────────────────────────────
+ * แยกเป็นการ์ดละสถานที่ เพื่อให้เห็นชัดว่าพิกัด/รัศมีชุดไหนเป็นของที่ไหน
+ * (เดิมมีช่องเดียว ใส่ได้ชุดเดียว → ลงเวลาได้ที่ทำงานที่เดียว)
+ */
+.site-card {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  padding: 12px 14px 10px;
+  margin-bottom: 10px;
+  background: var(--surface-2, #f8fafc);
+}
+.site-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.site-no {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--primary, #0f766e);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.site-name {
+  font-weight: 700;
+  line-height: 1.4;
+}
+.site-ok,
+.site-todo {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.site-ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+.site-todo {
+  background: #fef3c7;
+  color: #b45309;
+}
+.site-dist {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted, #6b7280);
 }
 
 /*

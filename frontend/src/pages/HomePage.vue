@@ -18,6 +18,8 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { MENUS, canAccess } from '../router/menus.js';
+// ขอตำแหน่ง GPS — ใช้ร่วมกับหน้า #/clock (src/lib/clock-geo.js)
+import { getPosition, geoErrorMessage } from '../lib/clock-geo.js';
 import AppModal from '../components/ui/AppModal.vue';
 
 /* ---------- กล่องลงเวลา ---------- */
@@ -66,8 +68,19 @@ async function checkTime(type) {
   if (checking.value) return;
   checking.value = true;
   try {
-    const res = await api.post('/time/check', { type });
-    UI.toast(res.message);
+    // ตรวจตำแหน่งด้วย GPS ทุกอุปกรณ์ (ไม่ตรวจ IP แล้ว) — ต้องส่ง lat/lng ไปด้วย
+    // ไม่งั้นเซิร์ฟเวอร์ตอบ 400 "ไม่ได้รับตำแหน่ง GPS" เมื่อตั้งพิกัดที่ทำงานไว้แล้ว
+    const payload = { type };
+    try {
+      const pos = await getPosition();
+      payload.lat = pos.coords.latitude;
+      payload.lng = pos.coords.longitude;
+    } catch (e) {
+      return UI.toast(geoErrorMessage(e), 'error');
+    }
+    const res = await api.post('/time/check', payload);
+    const hasWarn = res.warning && res.warning.length;
+    UI.toast(hasWarn ? res.message + ' — ' + res.warning.join('; ') : res.message, hasWarn ? 'warning' : 'success');
     await loadClock();
   } catch (e) {
     UI.toast(e.message, 'error');
