@@ -202,6 +202,15 @@ async function sessionOf(userId) {
       `clock_in_src บอกสถานที่ที่ใช้ตรวจ ("${NAME_OFFICE}")`,
       `ได้ "${recA.clock_in_src}"`);
     check(/GPS/.test(String(recA.clock_in_src || '')), 'clock_in_src ระบุว่าใช้ GPS', `ได้ "${recA.clock_in_src}"`);
+    check(recA.work_site === NAME_OFFICE,
+      `/time/today คืน work_site = "${NAME_OFFICE}"`,
+      `ได้ "${recA.work_site}"`);
+
+    const sumA = (await jget('/api/today-summary', userA)).body || {};
+    const workedA = (sumA.worked || []).find((w) => w.id === madeUsers[0]) || {};
+    check(workedA.work_site === NAME_OFFICE,
+      `รายการ "มาทำงานวันนี้" (/today-summary) แสดง work_site = "${NAME_OFFICE}"`,
+      `ได้ "${workedA.work_site}"`);
 
     /* ── ④ อยู่นอกพื้นที่ ────────────────────────────────────────────── */
     console.log('');
@@ -211,6 +220,15 @@ async function sessionOf(userId) {
     check(farB.status === 403, 'ลงเวลานอกพื้นที่ → 403', `ได้ ${farB.status} ${JSON.stringify(farB.body)}`);
     const todayB = (await jget('/api/time/today', userB)).body || {};
     check(!todayB.record, 'ไม่มีบันทึกการลงเวลาถูกสร้างตอนถูกปฏิเสธ');
+
+    // userB เข้างานที่สถานที่ 2 ("ศูนย์พัฒนาวิชาการ ร่องกาศ") → ต้องปรากฏในรายการมาทำงานวันนี้ด้วยชื่อสถานที่ 2
+    const inB = await jpost('/api/time/check', userB, { type: 'in', lat: NEAR_CENTER.lat, lng: NEAR_CENTER.lng });
+    check(inB.status === 200, `ลงเวลาเข้าที่สถานที่ 2 ("${NAME_CENTER}") → 200`, `ได้ ${inB.status}`);
+    const sumB = (await jget('/api/today-summary', userB)).body || {};
+    const workedB = (sumB.worked || []).find((w) => w.id === madeUsers[1]) || {};
+    check(workedB.work_site === NAME_CENTER,
+      `รายการ "มาทำงานวันนี้" (/today-summary) แสดง work_site = "${NAME_CENTER}"`,
+      `ได้ "${workedB.work_site}"`);
 
     /* ── ⑤ ลงเวลาออกที่สถานที่ 2 ──────────────────────────────────────── */
     console.log('');

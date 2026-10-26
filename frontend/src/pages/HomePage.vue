@@ -18,8 +18,8 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { MENUS, canAccess } from '../router/menus.js';
-// ขอตำแหน่ง GPS — ใช้ร่วมกับหน้า #/clock (src/lib/clock-geo.js)
-import { getPosition, geoErrorMessage } from '../lib/clock-geo.js';
+// ขอตำแหน่ง GPS + แปลงชื่อสถานที่ทำงาน — ใช้ร่วมกับหน้า #/clock (src/lib/clock-geo.js)
+import { getPosition, geoErrorMessage, workSiteLabel } from '../lib/clock-geo.js';
 import AppModal from '../components/ui/AppModal.vue';
 
 /* ---------- กล่องลงเวลา ---------- */
@@ -81,7 +81,7 @@ async function checkTime(type) {
     const res = await api.post('/time/check', payload);
     const hasWarn = res.warning && res.warning.length;
     UI.toast(hasWarn ? res.message + ' — ' + res.warning.join('; ') : res.message, hasWarn ? 'warning' : 'success');
-    await loadClock();
+    await Promise.all([loadClock(), loadTodaySummary()]);
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {
@@ -115,12 +115,41 @@ const pendingStats = computed(() => {
 /* ---------- การ์ดสถานะวันนี้ ---------- */
 const todaySummary = ref(null);
 
+async function loadTodaySummary() {
+  if (isSchoolUser.value) return;
+  try {
+    const summary = await api.get('/today-summary');
+    /*
+     * การ์ด "มาทำงานวันนี้" ให้คนที่ลงเวลาเข้าล่าสุดอยู่บนสุด
+     * (backend เรียงตามชื่อ — เรียงใหม่ที่นี่ที่เดียว ไม่ต้องแตะ API)
+     * clock_in เป็น string 'HH:MM:SS' เพราะ connection ตั้ง dateStrings: true
+     */
+    if (summary && Array.isArray(summary.worked)) {
+      summary.worked = summary.worked.slice().sort((a, b) => {
+        const t1 = String(a.clock_in || '');
+        const t2 = String(b.clock_in || '');
+        if (!t1 && !t2) return 0;
+        if (!t1) return 1;
+        if (!t2) return -1;
+        return t2.localeCompare(t1);
+      });
+    }
+    todaySummary.value = summary;
+    if (listOpen.value && listTitle.value.includes('มาทำงานวันนี้') && summary) {
+      listRows.value = summary.worked || [];
+    }
+  } catch {
+    /* ไม่แสดง */
+  }
+}
+
 /** คอลัมน์ของแต่ละการ์ดสถานะวันนี้ — ใช้ร่วมกันกับหน้าต่างรายชื่อ */
 const TODAY_COLS = {
   worked: [
     { key: 'full_name', label: 'ชื่อ-นามสกุล', cell: (p) => ({ text: UI.personName(p) }) },
     { key: 'position', label: 'ตำแหน่ง' },
     { key: 'workplace', label: 'กลุ่มงาน' },
+    { key: 'work_site', label: 'สถานที่ทำงาน', cell: (p) => ({ text: workSiteLabel(p) }) },
     { key: 'clock_in', label: 'เวลาเข้า', cell: (p) => ({ text: UI.time(p.clock_in) }) },
     { key: 'clock_out', label: 'เวลาออก', cell: (p) => ({ text: UI.time(p.clock_out) }) },
   ],
@@ -335,29 +364,7 @@ onMounted(async () => {
   }
 
   // การ์ดสถานะวันนี้ — ทุกคนฝั่งสำนักงาน
-  if (!isSchoolUser.value) {
-    try {
-      const summary = await api.get('/today-summary');
-      /*
-       * การ์ด "มาทำงานวันนี้" ให้คนที่ลงเวลาเข้าล่าสุดอยู่บนสุด
-       * (backend เรียงตามชื่อ — เรียงใหม่ที่นี่ที่เดียว ไม่ต้องแตะ API)
-       * clock_in เป็น string 'HH:MM:SS' เพราะ connection ตั้ง dateStrings: true
-       */
-      if (summary && Array.isArray(summary.worked)) {
-        summary.worked = summary.worked.slice().sort((a, b) => {
-          const t1 = String(a.clock_in || '');
-          const t2 = String(b.clock_in || '');
-          if (!t1 && !t2) return 0;
-          if (!t1) return 1;
-          if (!t2) return -1;
-          return t2.localeCompare(t1);
-        });
-      }
-      todaySummary.value = summary;
-    } catch {
-      /* ไม่แสดง */
-    }
-  }
+  await loadTodaySummary();
 
   // งานที่ค้างของฉัน — ทุกคนที่ล็อกอิน (รวมสถานศึกษา)
   if (Auth.isLoggedIn()) {

@@ -98,6 +98,25 @@ const CLOCK_SITES = [
   { key: 'center', name: 'ศูนย์พัฒนาวิชาการ ร่องกาศ' },
 ];
 
+/**
+ * ดึงชื่อสถานที่ทำงานจาก clock_in_src / clock_out_src
+ * รูปแบบที่ระบบบันทึก: "GPS (lat, lng) · <ชื่อสถานที่> (xx ม.)"
+ * คืน '' ถ้ายังไม่ได้ระบุตำแหน่ง / ลงเวลาสมัยยังไม่ได้ตั้งพิกัด
+ */
+function siteNameFromSrc(src) {
+  const s = String(src || '').trim();
+  if (!s) return '';
+  const hit = CLOCK_SITES.find((d) => s.includes(d.name));
+  if (hit) return hit.name;
+  const m = s.match(/·\s*(.+?)(?:\s*\(\d+\s*ม\.\))?$/);
+  return m ? m[1].trim() : '';
+}
+
+function withWorkSite(row) {
+  if (!row) return row;
+  return { ...row, work_site: siteNameFromSrc(row.clock_in_src) };
+}
+
 /** รัศมีเริ่มต้น (เมตร) เมื่อยังไม่เคยตั้งค่า */
 const DEFAULT_CLOCK_RADIUS = 200;
 
@@ -311,11 +330,12 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
   const md = today.slice(5); // MM-DD
   const year = parseInt(today.slice(0, 4), 10);
 
-  // ผู้ที่ลงเวลาเข้างานวันนี้
-  const worked = await db.prepare(`SELECT u.id, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace, t.clock_in, t.clock_out
+  // ผู้ที่ลงเวลาเข้างานวันนี้ (พร้อมสถานที่ทำงานที่ตรวจจากพิกัด GPS ตอนลงเวลาเข้า)
+  const workedRows = await db.prepare(`SELECT u.id, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace, t.clock_in, t.clock_out, t.clock_in_src
     FROM time_records t JOIN users u ON u.id = t.user_id
     WHERE t.date = ? AND t.clock_in IS NOT NULL AND u.status = 'active'
     ORDER BY u.full_name`).all(today);
+  const worked = workedRows.map(withWorkSite);
 
   // ผู้ที่เกิดวันนี้ (พร้อมอายุ)
   const birthdays = (await db.prepare(`SELECT id, title, full_name, first_name, last_name, birth_date, position, workplace
@@ -527,7 +547,7 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
 router.get('/time/today', auth.requireAuth, async (req, res) => {
   const today = simdate.todayISO();
   const rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
-  res.json({ today, record: rec || null });
+  res.json({ today, record: rec ? withWorkSite(rec) : null });
 });
 
 router.post('/time/check', auth.requireAuth, async (req, res) => {
@@ -545,6 +565,7 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   // ใช้ GPS ทุกอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) — ไม่ตรวจจาก IP อีกแล้ว
   // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ใดสถานที่หนึ่ง (มี 2 แห่ง)
   let src = '';
+  let siteName = '';
   const warn = [];
   if (cfg.enabled) {
     const sites = (cfg.sites || []).filter((s) => s.lat !== null && s.lng !== null);
@@ -575,16 +596,18 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
             ` (ต้องอยู่ในรัศมี ${best.site.radius} เมตร)`,
         });
       }
-      src = `GPS (${la.toFixed(6)}, ${lo.toFixed(6)}) · ${hit.site.name} (${Math.round(hit.dist)} ม.)`;
+      siteName = hit.site.name;
+      src = `GPS (${la.toFixed(6)}, ${lo.toFixed(6)}) · ${siteName} (${Math.round(hit.dist)} ม.)`;
     }
   }
 
   const note = warn.length ? ` (หมายเหตุ: ${warn.join('; ')})` : '';
+  const siteLabel = siteName ? ` (${siteName})` : '';
 
   if (type === 'in') {
     if (!rec) {
       await db.prepare('INSERT INTO time_records (user_id, date, clock_in, clock_in_src) VALUES (?,?,?,?)').run(req.user.id, today, t, src || null);
-      return res.json({ ok: true, message: `ลงเวลาเข้างาน ${t} เรียบร้อย${note}`, warning: warn });
+      return res.json({ ok: true, site: siteName || null, message: `ลงเวลาเข้างาน ${t}${siteLabel} เรียบร้อย${note}`, warning: warn });
     }
     return res.status(400).json({ error: 'คุณได้ลงเวลาเข้างานแล้วในวันนี้' });
   }
@@ -592,7 +615,7 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
     if (!rec || !rec.clock_in) return res.status(400).json({ error: 'กรุณาลงเวลาเข้างานก่อน' });
     if (rec.clock_out) return res.status(400).json({ error: 'คุณได้ลงเวลาออกงานแล้วในวันนี้' });
     await db.prepare('UPDATE time_records SET clock_out = ?, clock_out_src = ? WHERE id = ?').run(t, src || null, rec.id);
-    return res.json({ ok: true, message: `ลงเวลาออกงาน ${t} เรียบร้อย${note}`, warning: warn });
+    return res.json({ ok: true, site: siteName || null, message: `ลงเวลาออกงาน ${t}${siteLabel} เรียบร้อย${note}`, warning: warn });
   }
   res.status(400).json({ error: 'ประเภทการลงเวลาไม่ถูกต้อง' });
 });
@@ -606,7 +629,7 @@ router.get('/time/mine', auth.requireAuth, async (req, res) => {
     ORDER BY date DESC`).all(req.user.id, date)
     : await db.prepare(`SELECT * FROM time_records WHERE user_id = ? AND date LIKE ?
     ORDER BY date DESC`).all(req.user.id, month + '%');
-  res.json({ records: rows, month, date: date || null, can_edit: await isTimeEditor(req.user) });
+  res.json({ records: rows.map(withWorkSite), month, date: date || null, can_edit: await isTimeEditor(req.user) });
 });
 
 // ดูบันทึกเวลาทั้งหมด — admin และผู้ที่ได้รับสิทธิ์ (เห็นเหมือน admin)
@@ -620,8 +643,8 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
   if (date) { sql += ' AND t.date = ?'; args.push(date); }
   if (user_id) { sql += ' AND t.user_id = ?'; args.push(Number(user_id)); }
   sql += ' ORDER BY t.date DESC, t.user_id';
-  const editors = await getTimeEditorUsers();
-  res.json({ records: await db.prepare(sql).all(...args), editors, can_edit: true });
+  const [rows, editors] = await Promise.all([db.prepare(sql).all(...args), getTimeEditorUsers()]);
+  res.json({ records: rows.map(withWorkSite), editors, can_edit: true });
 });
 
 // สถิติภาพรวม — admin และผู้ที่ได้รับสิทธิ์
@@ -685,11 +708,11 @@ router.get('/time/report', auth.requireAuth, async (req, res) => {
   const period = ['day', 'week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'day';
   const range = reportRange(period, req.query.date);
   if (!range) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' });
-  const rows = await db.prepare(`SELECT t.id, t.date, t.clock_in, t.clock_out, u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
+  const rows = await db.prepare(`SELECT t.id, t.date, t.clock_in, t.clock_out, t.clock_in_src, u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
     FROM time_records t JOIN users u ON u.id = t.user_id
     WHERE t.date BETWEEN ? AND ?
     ORDER BY t.date ASC, u.full_name ASC`).all(range.start, range.end);
-  res.json({ period, range, records: rows });
+  res.json({ period, range, records: rows.map(withWorkSite) });
 });
 
 // ดาวน์โหลดรายงาน .xlsx — admin หรือผู้ได้รับสิทธิ์
@@ -698,20 +721,28 @@ router.get('/time/report.xlsx', auth.requireAuth, async (req, res) => {
   const period = ['day', 'week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'day';
   const range = reportRange(period, req.query.date);
   if (!range) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' });
-  const rows = await db.prepare(`SELECT t.date, t.clock_in, t.clock_out, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace
+  const rows = await db.prepare(`SELECT t.date, t.clock_in, t.clock_out, t.clock_in_src, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace
     FROM time_records t JOIN users u ON u.id = t.user_id
     WHERE t.date BETWEEN ? AND ?
     ORDER BY t.date ASC, u.full_name ASC`).all(range.start, range.end);
 
   const XLSX = require('xlsx');
-  const head = [['รายงานการลงเวลาทำงาน', '', '', '', '', ''],
-    ['สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2', '', '', '', '', ''],
-    [`ช่วงเวลา: ${range.label}`, '', '', '', '', ''],
+  const head = [['รายงานการลงเวลาทำงาน', '', '', '', '', '', ''],
+    ['สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2', '', '', '', '', '', ''],
+    [`ช่วงเวลา: ${range.label}`, '', '', '', '', '', ''],
     []];
-  const body = rows.map((r) => [r.date, r.full_name, r.position || '', r.workplace || '', r.clock_in || '-', r.clock_out || '-']);
-  const aoa = head.concat([['วันที่', 'ชื่อ-นามสกุล', 'ตำแหน่ง', 'กลุ่มงาน', 'เวลาเข้า', 'เวลาออก']], body);
+  const body = rows.map((r) => [
+    r.date,
+    r.full_name,
+    r.position || '',
+    r.workplace || '',
+    siteNameFromSrc(r.clock_in_src) || '-',
+    r.clock_in || '-',
+    r.clock_out || '-',
+  ]);
+  const aoa = head.concat([['วันที่', 'ชื่อ-นามสกุล', 'ตำแหน่ง', 'กลุ่มงาน', 'สถานที่ทำงาน', 'เวลาเข้า', 'เวลาออก']], body);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 30 }, { wch: 28 }, { wch: 10 }, { wch: 10 }];
+  ws['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 30 }, { wch: 28 }, { wch: 26 }, { wch: 10 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'รายงานการลงเวลา');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });

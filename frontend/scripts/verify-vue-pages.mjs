@@ -79,6 +79,17 @@ const VUE_PAGES = {
         check: `!document.querySelectorAll('.clock-btn')[1].disabled`,
       },
       {
+        name: 'ตารางบันทึกเวลามีคอลัมน์ "สถานที่ทำงาน" ต่อจาก "กลุ่มงาน"',
+        check: `(() => {
+          const ths = [...document.querySelectorAll('.tbl thead th')].map(th => (th.innerText || '').trim());
+          const idxGroup = ths.indexOf('กลุ่มงาน');
+          const idxSite = ths.indexOf('สถานที่ทำงาน');
+          if (idxSite < 0) throw new Error('ไม่พบคอลัมน์ "สถานที่ทำงาน" ในตาราง (มี: ' + ths.join(', ') + ')');
+          if (idxGroup >= 0 && idxSite !== idxGroup + 1) throw new Error('คอลัมน์ "สถานที่ทำงาน" ไม่ได้อยู่ต่อจาก "กลุ่มงาน" (มี: ' + ths.join(', ') + ')');
+          return true;
+        })()`,
+      },
+      {
         /* ผู้ใช้สั่ง: ตั้งค่าตำแหน่งที่ทำงานเป็น 2 สถานที่ + เอา IP ออก
          * ต้องเห็นช่องพิกัด/รัศมีของทั้ง 2 แห่ง และต้องไม่มีช่อง IP อีก */
         name: 'dialog ตั้งค่าตำแหน่งที่ทำงาน: มี 2 สถานที่ (สพป. อ.ลอง · ศูนย์ฯ ร่องกาศ) และไม่มีช่อง IP',
@@ -1003,6 +1014,25 @@ const VUE_PAGES = {
       {
         name: 'ปุ่มไปประวัติการลงเวลาชี้ไปเมนู clock',
         check: `(document.querySelector('.home-clock-history')||{}).getAttribute && document.querySelector('.home-clock-history').getAttribute('href') === '#/clock'`,
+      },
+      {
+        name: 'การ์ด "มาทำงานวันนี้": เปิดดูรายชื่อแล้วมีคอลัมน์ "สถานที่ทำงาน" ต่อจาก "กลุ่มงาน"',
+        check: `(async () => {
+          const card = [...document.querySelectorAll('.stat-card')].find(c => (c.innerText || '').includes('มาทำงานวันนี้'));
+          if (!card) return true; // ถ้ายังไม่มีคนลงเวลาในวันนี้ การ์ดจะถูกซ่อนตามปกติ
+          card.click();
+          await new Promise(r => setTimeout(r, 800));
+          const ths = [...document.querySelectorAll('[data-app-modal] .tbl thead th, .modal .tbl thead th')].map(th => (th.innerText || '').trim());
+          const idxGroup = ths.indexOf('กลุ่มงาน');
+          const idxSite = ths.indexOf('สถานที่ทำงาน');
+          if (idxGroup < 0 || idxSite !== idxGroup + 1) {
+            throw new Error('ตารางมาทำงานวันนี้ต้องมี "สถานที่ทำงาน" ต่อจาก "กลุ่มงาน" (มี: ' + ths.join(', ') + ')');
+          }
+          const closeBtn = [...document.querySelectorAll('[data-app-modal] button, .modal button')].find(b => (b.innerText || '').trim() === 'ปิด');
+          if (closeBtn) closeBtn.click();
+          await new Promise(r => setTimeout(r, 400));
+          return true;
+        })()`,
       },
       {
         name: 'มีหัวข้อ "เมนูหลัก" และตารางเมนู',

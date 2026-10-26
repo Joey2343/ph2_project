@@ -39,3 +39,20 @@ export function geoErrorMessage(e) {
   if (code === 3) return 'การระบุตำแหน่งใช้เวลานานเกินไป — กรุณาลองใหม่';
   return 'ไม่สามารถระบุตำแหน่ง GPS ได้ — กรุณาลองใหม่';
 }
+
+/**
+ * ชื่อสถานที่ทำงานของแถวบันทึกเวลา (ตรวจจากพิกัด GPS ตอนลงเวลาเข้างาน)
+ *   1. สพป.แพร่ เขต 2 อ.ลอง
+ *   2. ศูนย์พัฒนาวิชาการ ร่องกาศ
+ * คืน '-' ถ้าแถวนั้นยังไม่มีสถานที่ (เช่น ลงเวลาสมัยยังไม่ได้ตั้งพิกัด)
+ */
+export function workSiteLabel(r) {
+  if (!r) return '-';
+  if (r.work_site && String(r.work_site).trim()) return String(r.work_site).trim();
+  const s = String(r.clock_in_src || '').trim();
+  if (!s) return '-';
+  if (s.includes('สพป.แพร่ เขต 2 อ.ลอง')) return 'สพป.แพร่ เขต 2 อ.ลอง';
+  if (s.includes('ศูนย์พัฒนาวิชาการ ร่องกาศ')) return 'ศูนย์พัฒนาวิชาการ ร่องกาศ';
+  const m = s.match(/·\s*(.+?)(?:\s*\(\d+\s*ม\.\))?$/);
+  return m ? m[1].trim() : '-';
+}

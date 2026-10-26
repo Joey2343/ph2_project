@@ -20,8 +20,8 @@ import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import AppModal from '../components/ui/AppModal.vue';
 import ThaiDateField from '../components/ui/ThaiDateField.vue';
-// ขอตำแหน่ง GPS — ใช้ร่วมกับการ์ดลงเวลาหน้าแรก (src/lib/clock-geo.js)
-import { getPosition, geoErrorMessage } from '../lib/clock-geo.js';
+// ขอตำแหน่ง GPS + แปลงชื่อสถานที่ทำงาน — ใช้ร่วมกับการ์ดลงเวลาหน้าแรก (src/lib/clock-geo.js)
+import { getPosition, geoErrorMessage, workSiteLabel } from '../lib/clock-geo.js';
 
 /* ---------- สิทธิ์ ---------- */
 const canViewAll = computed(() => Auth.isAdmin() || !!(Auth.user && Auth.user.is_time_editor));
@@ -79,7 +79,7 @@ async function doCheck(type) {
     const res = await api.post('/time/check', payload);
     const hasWarn = res.warning && res.warning.length;
     UI.toast(hasWarn ? res.message + ' — ' + res.warning.join('; ') : res.message, hasWarn ? 'warning' : 'success');
-    await loadToday();
+    await Promise.all([loadToday(), loadRecords(), loadStats()]);
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {
@@ -89,6 +89,15 @@ async function doCheck(type) {
 
 /* ---------- ภาพรวมวันนี้ ---------- */
 const stats = ref(null);
+
+async function loadStats() {
+  if (!canViewAll.value) return;
+  try {
+    stats.value = await api.get('/time/stats');
+  } catch (e) {
+    /* ignore */
+  }
+}
 
 /* ---------- ตารางบันทึกเวลา (แสดงวันเดียว) ---------- */
 const tableLoading = ref(true);
@@ -182,7 +191,7 @@ async function saveEdit() {
     });
     UI.toast(res.message);
     editOpen.value = false;
-    await Promise.all([loadRecords(), loadToday()]);
+    await Promise.all([loadRecords(), loadToday(), loadStats()]);
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {
@@ -199,7 +208,7 @@ async function deleteRecord(r) {
   try {
     const res = await api.del(`/time/${r.id}`);
     UI.toast(res.message);
-    await Promise.all([loadRecords(), loadToday()]);
+    await Promise.all([loadRecords(), loadToday(), loadStats()]);
   } catch (e) {
     UI.toast(e.message, 'error');
   }
@@ -488,13 +497,7 @@ onMounted(async () => {
     if (document.getElementById('clock-now')) nowTime.value = new Date().toTimeString().slice(0, 8);
   }, 1000);
 
-  if (canViewAll.value) {
-    try {
-      stats.value = await api.get('/time/stats');
-    } catch (e) {
-      /* ignore */
-    }
-  }
+  await loadStats();
 });
 
 onBeforeUnmount(() => {
@@ -625,6 +628,7 @@ onBeforeUnmount(() => {
               <th>วันที่</th>
               <th v-if="scope === 'all'">ชื่อ-นามสกุล</th>
               <th v-if="scope === 'all'">กลุ่มงาน</th>
+              <th>สถานที่ทำงาน</th>
               <th>เวลาเข้า</th>
               <th>เวลาออก</th>
               <th v-if="scope === 'all' || canEditMine"></th>
@@ -635,6 +639,7 @@ onBeforeUnmount(() => {
               <td>{{ UI.date(r.date) }}</td>
               <td v-if="scope === 'all'">{{ UI.personName(r) }}</td>
               <td v-if="scope === 'all'">{{ r.workplace }}</td>
+              <td>{{ workSiteLabel(r) }}</td>
               <td>{{ UI.time(r.clock_in) }}</td>
               <td>{{ UI.time(r.clock_out) }}</td>
               <td v-if="scope === 'all' || canEditMine">
@@ -725,6 +730,7 @@ onBeforeUnmount(() => {
                 <th>ชื่อ-นามสกุล</th>
                 <th>ตำแหน่ง</th>
                 <th>กลุ่มงาน</th>
+                <th>สถานที่ทำงาน</th>
                 <th>เวลาเข้า</th>
                 <th>เวลาออก</th>
               </tr>
@@ -735,6 +741,7 @@ onBeforeUnmount(() => {
                 <td>{{ UI.personName(r) }}</td>
                 <td>{{ r.position }}</td>
                 <td>{{ r.workplace }}</td>
+                <td>{{ workSiteLabel(r) }}</td>
                 <td>{{ UI.time(r.clock_in) }}</td>
                 <td>{{ UI.time(r.clock_out) }}</td>
               </tr>
