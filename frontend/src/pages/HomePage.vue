@@ -425,7 +425,8 @@ const greeting = computed(() => {
         <div class="home-clock-btns">
           <button
             id="home-clock-in"
-            class="btn btn-clock-in btn-sm"
+            class="btn btn-clock-in btn-sm home-clock-btn home-clock-in"
+            :class="{ 'home-clock-blink': !(clockRec && clockRec.clock_in) }"
             :disabled="checking || !!(clockRec && clockRec.clock_in)"
             @click="checkTime('in')"
           >
@@ -433,7 +434,8 @@ const greeting = computed(() => {
           </button>
           <button
             id="home-clock-out"
-            class="btn btn-clock-out btn-sm"
+            class="btn btn-clock-out btn-sm home-clock-btn home-clock-out"
+            :class="{ 'home-clock-blink': !!(clockRec && clockRec.clock_in) && !clockRec.clock_out }"
             :disabled="checking || !clockRec || !clockRec.clock_in || !!clockRec.clock_out"
             @click="checkTime('out')"
           >
@@ -571,6 +573,82 @@ const greeting = computed(() => {
   .menu-count-fix {
     animation: none;
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
+  }
+}
+
+/*
+ * ปุ่มลงเวลาบนการ์ดหน้าแรก — ให้หน้าตา/จังหวะตรงกับหน้า #/clock
+ * ─────────────────────────────────────────────────────────────
+ * เข้างาน = เขียวอ่อน · ออกงาน = ส้ม
+ * กระพริบช้า ๆ เฉพาะปุ่มที่ "ต้องกดเป็นลำดับถัดไป"
+ *   ยังไม่เข้างาน → ปุ่มเข้างานกระพริบ
+ *   เข้างานแล้ว   → ปุ่มออกงานกระพริบ
+ *   ครบทั้งวัน     → ไม่กระพริบทั้งคู่
+ * ขยายขึ้นเล็กน้อย (เดิม btn-sm = 5px 12px · 13px) ให้กดง่ายบนมือถือ
+ * ⚠️ theme.css ห้ามแก้ → override เฉพาะใน component นี้
+ */
+.home-clock-in,
+.home-clock-out {
+  min-width: 96px;
+  padding: 9px 18px;
+  font-size: 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+}
+.home-clock-in {
+  background: #dcfce7;
+  color: #15803d;
+  --hc-base: #dcfce7;
+  --hc-flash: #bbf7d0;
+}
+.home-clock-in:hover:not(:disabled) {
+  background: #bbf7d0;
+  box-shadow: 0 4px 12px rgba(21, 128, 61, 0.35);
+}
+.home-clock-out {
+  background: #f97316;
+  color: #fff;
+  --hc-base: #f97316;
+  --hc-flash: #fb923c;
+}
+.home-clock-out:hover:not(:disabled) {
+  background: #ea580c;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.45);
+}
+.home-clock-blink {
+  animation: home-clock-blink 1.8s ease-in-out infinite;
+}
+/* ปุ่มที่กดไม่ได้ (ลงเวลาแล้ว/ยังไม่ถึงลำดับ) ต้องไม่กระพริบค้าง
+ * ⚠️ ลด opacity แรง ๆ ไม่ได้ — ปุ่มอยู่บนพื้นเขียวเข้ม ส้มจะกลายเป็นน้ำตาล
+ *    ใช้ 0.85 + ตัดเงาออก = ยังเห็นเป็น "ส้ม/เขียวอ่อน" ตามที่ต้องการ แต่ดูแบนลง
+ */
+.home-clock-btn:disabled {
+  animation: none;
+  opacity: 0.85;
+  box-shadow: none;
+}
+/*
+ * กระพริบด้วย "สีพื้น" ไม่ใช่ opacity
+ * ────────────────────────────────────
+ * ปุ่มอยู่บนแบนเนอร์สีเขียวเข้ม ถ้าลด opacity ครึ่งหนึ่ง ส้มจะผสมกับเขียว
+ * กลายเป็นสีน้ำตาล (เห็นชัดตอนทดสอบจริง) → ใช้สีพื้นอ่อนลงแทน
+ * ทั้ง 2 สี จึงยังจำแนกได้ว่าเป็นปุ่มเขียว/ส้มตลอดจังหวะกระพริบ
+ */
+@keyframes home-clock-blink {
+  0%,
+  100% {
+    background-color: var(--hc-base);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    background-color: var(--hc-flash);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), 0 0 0 6px rgba(255, 255, 255, 0.22);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-clock-blink {
+    animation: none;
   }
 }
 </style>
