@@ -289,7 +289,8 @@ async function openApproveLevel1(r) {
   l1Conflict.value = null;
   try {
     const res = await api.get('/users/active');
-    l1Users.value = res.users || [];
+    // พนักงานขับรถต้องเป็นเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา)
+    l1Users.value = (res.users || []).filter((u) => u.user_group !== 'school');
   } catch (e) {
     /* ignore */
   }
@@ -463,7 +464,8 @@ async function openEditBooking(r) {
   editConflict.value = null;
   try {
     const res = await api.get('/users/active');
-    editUsers.value = res.users || [];
+    // พนักงานขับรถต้องเป็นเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา)
+    editUsers.value = (res.users || []).filter((u) => u.user_group !== 'school');
   } catch (e) {
     /* ignore */
   }
