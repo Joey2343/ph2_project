@@ -244,7 +244,7 @@ CREATE TABLE IF NOT EXISTS \`leave_requests\` (
   \`leave_type\` mediumtext NOT NULL,
   \`date_from\` mediumtext DEFAULT NULL,
   \`date_to\` mediumtext DEFAULT NULL,
-  \`days\` int(11) DEFAULT 1,
+  \`days\` double DEFAULT 1,
   \`reason\` mediumtext DEFAULT NULL,
   \`address\` mediumtext DEFAULT NULL,
   \`phone\` mediumtext DEFAULT NULL,
@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS \`leave_requests\` (
   \`writing_at\` mediumtext DEFAULT NULL,
   \`last_leave_from\` mediumtext DEFAULT NULL,
   \`last_leave_to\` mediumtext DEFAULT NULL,
-  \`last_leave_days\` int(11) DEFAULT NULL,
+  \`last_leave_days\` double DEFAULT NULL,
   \`attachment\` mediumtext DEFAULT NULL,
   \`delegate_to\` int(11) DEFAULT NULL,
   \`reviewed\` int(11) NOT NULL DEFAULT 0,
@@ -743,6 +743,30 @@ async function migrate() {
     }
   }
   await fixRevisionNoteCharset();
+
+  /*
+   * leave_requests.days: int → double
+   *
+   * ผู้ใช้ขอให้ลาครึ่งวันได้ (0.5 วัน) แต่คอลัมน์เดิมเป็น int(11)
+   * → 0.5 ถูกปัดเป็น 0 หรือ 1 ทำให้ยอดวันลาที่หักไม่ตรงกับที่ขอ
+   * ใช้ double (ไม่ใช่ decimal) เพราะ mysql2 คืนค่าเป็น number ตรง ๆ
+   * → หน้าเว็บแสดง 1 หรือ 0.5 ได้สวย ไม่ต้องจัดรูปแบบ
+   * รันซ้ำได้ (เช็ค DATA_TYPE ก่อน)
+   */
+  async function widenLeaveDays() {
+    for (const colName of ['days', 'last_leave_days']) {
+      const col = await db.prepare(`
+        SELECT DATA_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = ?
+      `).get(colName);
+      if (col && String(col.DATA_TYPE).toLowerCase() !== 'double') {
+        await db.exec(`ALTER TABLE \`leave_requests\` MODIFY COLUMN \`${colName}\` DOUBLE DEFAULT ${colName === 'days' ? 1 : 'NULL'}`);
+        console.log(`[migrate] leave_requests.${colName} → DOUBLE (รองรับลาครึ่งวัน 0.5)`);
+      }
+    }
+  }
+  await widenLeaveDays();
 
   // ผู้ใช้เดิม role 'member' → เปลี่ยนเป็น 'staff' (เจ้าหน้าที่ในสำนักงาน)
   await db.prepare("UPDATE users SET role = 'staff' WHERE role = 'member'").run();

@@ -152,8 +152,10 @@ function usedOf(type) {
   return (statsData.value.find((s) => s.leave_type === type) || {}).used || 0;
 }
 
+/** จำนวนวัน — รองรับครึ่งวัน (0.5) จึงใช้ Number ไม่ใช่ parseInt */
 function num(v) {
-  return parseInt(v, 10) || 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 /** แสดงช่อง "เนื่องจาก" เฉพาะลากิจและลาป่วย */
@@ -304,8 +306,27 @@ const inputStyle = { width: '100%', padding: '8px', border: '1px solid #d1d5db',
       <div class="form-group">
         <label style="font-weight: 700">มีกำหนด</label>
         <div style="display: flex; align-items: center; gap: 8px">
-          <input v-model.number="f.days" type="number" min="1" style="width: 80px; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px" />
+          <input
+            id="lf-days"
+            v-model.number="f.days"
+            type="number"
+            min="0.5"
+            step="0.5"
+            list="lf-days-options"
+            style="width: 90px; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px"
+          />
           <span>วัน</span>
+          <datalist id="lf-days-options">
+            <option value="0.5"></option>
+            <option value="1"></option>
+            <option value="1.5"></option>
+            <option value="2"></option>
+            <option value="2.5"></option>
+            <option value="3"></option>
+          </datalist>
+        </div>
+        <div class="hint" style="margin-top: 4px">
+          ลาครึ่งวันให้กรอก 0.5 (ระบบจะหักวันลา 0.5 วัน)
         </div>
       </div>
 
@@ -325,7 +346,7 @@ const inputStyle = { width: '100%', padding: '8px', border: '1px solid #d1d5db',
         <div class="form-group">
           <label>มีกำหนด</label>
           <div style="display: flex; align-items: center; gap: 8px">
-            <input v-model.number="f.last_leave_days" type="number" min="0" style="width: 80px; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px" />
+            <input v-model.number="f.last_leave_days" type="number" min="0" step="0.5" style="width: 90px; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px" />
             <span>วัน</span>
           </div>
         </div>
