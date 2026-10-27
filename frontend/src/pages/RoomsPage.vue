@@ -65,8 +65,15 @@ onMounted(async () => {
 /* ---------- แท็บ: การจอง ---------- */
 const curYear = new Date().getFullYear() + 543;
 const yearFilter = ref(String(curYear));
-const calView = ref(false);
+// มุมมอง (ตาราง/ปฏิทิน) จำค่าไว้ — กดรีเฟรชแล้วต้องอยู่มุมมองเดิม
+const calView = ref(localStorage.getItem('room_view') === 'calendar');
 const calMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+
+/** สลับมุมมองตาราง ↔ ปฏิทิน แล้วจำค่าไว้ใน localStorage */
+function toggleCalView() {
+  calView.value = !calView.value;
+  localStorage.setItem('room_view', calView.value ? 'calendar' : 'table');
+}
 
 const bookingsLoading = ref(true);
 const bookingsError = ref('');
@@ -432,7 +439,7 @@ function openExportDialog() {
         <option :value="String(curYear - 1)">{{ curYear - 1 }}</option>
         <option value="">ทุกปี</option>
       </select>
-      <button id="rb-view-toggle" class="btn btn-outline" @click="calView = !calView">
+      <button id="rb-view-toggle" class="btn btn-outline" @click="toggleCalView">
         {{ calView ? '▭ มุมมองตาราง' : '🗓️ มุมมองปฏิทิน' }}
       </button>
       <button

@@ -136,6 +136,11 @@ const VUE_PAGES = {
         check: `document.querySelectorAll('.cal-weekday').length === 7`,
       },
       {
+        /* ผู้ใช้ขอ: กดรีเฟรชแล้วต้องอยู่มุมมองปฏิทินเหมือนเดิม → ต้องจำค่าไว้ */
+        name: 'จำมุมมองปฏิทินไว้ (กดรีเฟรชแล้วยังเป็นปฏิทิน)',
+        check: `localStorage.getItem('room_view') === 'calendar'`,
+      },
+      {
         name: 'สลับกลับเป็นมุมมองตารางได้',
         check: `(async () => {
           __click('#rb-view-toggle');
@@ -163,6 +168,11 @@ const VUE_PAGES = {
       {
         name: 'ปฏิทินมีช่องวันที่ครบ 7 คอลัมน์',
         check: `document.querySelectorAll('.cal-weekday').length === 7`,
+      },
+      {
+        /* ผู้ใช้ขอ: กดรีเฟรชแล้วต้องอยู่มุมมองปฏิทินเหมือนเดิม → ต้องจำค่าไว้ */
+        name: 'จำมุมมองปฏิทินไว้ (กดรีเฟรชแล้วยังเป็นปฏิทิน)',
+        check: `localStorage.getItem('vehicle_view') === 'calendar'`,
       },
       {
         name: 'สลับกลับเป็นมุมมองตารางได้',
