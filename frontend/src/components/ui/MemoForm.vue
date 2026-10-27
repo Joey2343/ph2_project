@@ -419,6 +419,9 @@ function printNewForm() {
 
         <div class="form-group full">
           <label>บันทึกข้อความ</label>
+          <div style="color: #dc2626; font-weight: 700; font-size: 13px; margin-bottom: 6px">
+            กรุณาเคาะ 10 เคาะ เพื่อย่อหน้า
+          </div>
           <MemoRichEditor v-model="content" />
         </div>
 

@@ -411,6 +411,19 @@ const VUE_PAGES = {
         check: `!!document.querySelector('.memo-editor[contenteditable="true"]') && document.querySelectorAll('.memo-tb').length >= 6`,
       },
       {
+        /* ผู้ใช้ขอให้มีคำอธิบายสีแดงในส่วน "บันทึกข้อความ" ของหน้าเขียน */
+        name: 'มีข้อความสีแดง "กรุณาเคาะ 10 เคาะ เพื่อย่อหน้า"',
+        check: `(() => {
+          const txt = 'กรุณาเคาะ 10 เคาะ เพื่อย่อหน้า';
+          const el = [...document.querySelectorAll('[data-app-modal] div, [data-app-modal] span')]
+            .find((e) => (e.innerText || '').trim() === txt);
+          if (!el) throw new Error('ไม่พบข้อความ "' + txt + '"');
+          const color = getComputedStyle(el).color;
+          if (color !== 'rgb(220, 38, 38)') throw new Error('ข้อความไม่ได้เป็นสีแดง (ได้ ' + color + ')');
+          return true;
+        })()`,
+      },
+      {
         name: 'แบบฟอร์มมีตัวเลือกความเร่งด่วนครบ',
         check: `document.querySelectorAll('.urgency-opt').length === 3`,
       },
