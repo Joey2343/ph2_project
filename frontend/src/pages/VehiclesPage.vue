@@ -25,6 +25,7 @@ import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalPill from '../components/ui/ApprovalPill.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import BookingCalendar from '../components/ui/BookingCalendar.vue';
+import Pagination from '../components/ui/Pagination.vue';
 import ThaiDateField from '../components/ui/ThaiDateField.vue';
 import VehicleDoc from '../components/ui/VehicleDoc.vue';
 
@@ -62,6 +63,20 @@ const visibleBookings = computed(() =>
   myFilter.value === 'mine' ? bookings.value.filter(isMine) : bookings.value,
 );
 
+/*
+ * แบ่งหน้า: หน้าละ 25 รายการ
+ *   รายการเรียงใหม่ → เก่า (ORDER BY created_at DESC, id DESC) → หน้า 1 = ล่าสุด
+ *   เปลี่ยนตัวกรอง/ปี/แท็บ → กลับไปหน้า 1
+ */
+const PER_PAGE = 25;
+const page = ref(1);
+const pageCount = computed(() => Math.max(1, Math.ceil(visibleBookings.value.length / PER_PAGE)));
+const curPage = computed(() => Math.min(page.value, pageCount.value));
+const pagedBookings = computed(() => {
+  const start = (curPage.value - 1) * PER_PAGE;
+  return visibleBookings.value.slice(start, start + PER_PAGE);
+});
+
 onMounted(async () => {
   myLevels.value = Auth.isAdmin() ? [1, 2, 3] : [];
   try {
@@ -95,6 +110,7 @@ async function loadBookings() {
 }
 
 watch([tab, yearFilter, myFilter], async (v) => {
+  page.value = 1; // เปลี่ยนตัวกรอง/ปี/แท็บ → เริ่มที่รายการล่าสุด
   if (v[0] === 'bookings') await loadBookings();
 });
 
@@ -910,7 +926,7 @@ function canCancelRow(r) {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in visibleBookings" :key="r.id">
+              <tr v-for="r in pagedBookings" :key="r.id">
                 <td>{{ dateCell(r) }}</td>
                 <td>{{ UI.time(r.start_time) }} - {{ UI.time(r.end_time) }}</td>
                 <td class="nowrap">{{ UI.date(r.created_at) }}</td>
@@ -962,6 +978,8 @@ function canCancelRow(r) {
             </tbody>
           </table>
         </div>
+        <!-- เลขหน้า (หน้าละ 25 รายการ) -->
+        <Pagination :total="visibleBookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-for="r in visibleBookings.filter((x) => x.note)" :key="'n' + r.id" class="hint" style="margin-top: 10px">
           หมายเหตุรายการ {{ r.id }}: {{ r.note }}
         </div>

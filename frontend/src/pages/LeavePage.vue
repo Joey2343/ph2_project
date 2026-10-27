@@ -38,6 +38,7 @@ import LeaveApproveNote from '../components/ui/LeaveApproveNote.vue';
 import LeaveBalance from '../components/ui/LeaveBalance.vue';
 import LeaveApprovers from '../components/ui/LeaveApprovers.vue';
 import LeaveStats from '../components/ui/LeaveStats.vue';
+import Pagination from '../components/ui/Pagination.vue';
 
 /* ---------- นิยามแท็บ ---------- */
 const LEAVE_GROUPS = [
@@ -192,6 +193,20 @@ const rows = ref([]);
 const loading = ref(false);
 const loadError = ref('');
 
+/*
+ * แบ่งหน้า: หน้าละ 25 รายการ
+ *   รายการเรียงใหม่ → เก่า (backend ORDER BY id DESC) → หน้า 1 = รายการล่าสุดเสมอ
+ *   เปลี่ยนตัวกรอง/แท็บ → กลับไปหน้า 1 (ดู watch ด้านล่าง)
+ */
+const PER_PAGE = 25;
+const page = ref(1);
+const pageCount = computed(() => Math.max(1, Math.ceil(rows.value.length / PER_PAGE)));
+const curPage = computed(() => Math.min(page.value, pageCount.value));
+const pagedRows = computed(() => {
+  const start = (curPage.value - 1) * PER_PAGE;
+  return rows.value.slice(start, start + PER_PAGE);
+});
+
 async function load() {
   if (HIDE_FILTERS.includes(current.value)) return; // แท็บนี้โหลดเอง
   if (STATS_TABS.includes(current.value)) return;
@@ -233,7 +248,10 @@ async function load() {
   }
 }
 
-watch([current, fy, round, status, myOnly], load);
+watch([current, fy, round, status, myOnly], () => {
+  page.value = 1; // เปลี่ยนตัวกรอง → เริ่มที่รายการล่าสุด
+  load();
+});
 
 /* ---------- สิทธิ์กดปุ่ม ---------- */
 function myLevels(r) {
@@ -491,7 +509,7 @@ function statusPill(r) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r.id">
+            <tr v-for="r in pagedRows" :key="r.id">
               <td>{{ r.leave_no || '-' }}</td>
               <td v-if="canSeeAll">
                 <div>{{ UI.personName(r) }}</div>
@@ -627,6 +645,9 @@ function statusPill(r) {
             </tr>
           </tbody>
         </table>
+
+        <!-- เลขหน้า (หน้าละ 25 รายการ) -->
+        <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
 
         <!-- หมายเหตุรายการ -->
         <div v-for="r in rows.filter((x) => x.note)" :key="'n' + r.id" class="hint" style="margin-top: 8px">

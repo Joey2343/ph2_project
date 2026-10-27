@@ -28,6 +28,7 @@ import MemoDoc from '../components/ui/MemoDoc.vue';
 import MemoView from '../components/ui/MemoView.vue';
 import MemoApprovers from '../components/ui/MemoApprovers.vue';
 import AppModal from '../components/ui/AppModal.vue';
+import Pagination from '../components/ui/Pagination.vue';
 
 /* ---------- สิทธิ์เจ้าหน้าที่อนุมัติ ---------- */
 const myLevels = ref([]);
@@ -54,6 +55,20 @@ const rows = ref([]);
 const loading = ref(false);
 const loadError = ref('');
 
+/*
+ * แบ่งหน้า: หน้าละ 25 รายการ
+ *   backend ส่งมาเรียงใหม่ → เก่า (ORDER BY id DESC) → หน้า 1 = ล่าสุด
+ *   เปลี่ยนคำค้น/สถานะ/ปี/ของฉัน → กลับไปหน้า 1
+ */
+const PER_PAGE = 25;
+const page = ref(1);
+const pageCount = computed(() => Math.max(1, Math.ceil(rows.value.length / PER_PAGE)));
+const curPage = computed(() => Math.min(page.value, pageCount.value));
+const pagedRows = computed(() => {
+  const start = (curPage.value - 1) * PER_PAGE;
+  return rows.value.slice(start, start + PER_PAGE);
+});
+
 const mineBtnLabel = computed(() =>
   mineOnly.value ? '▭ บันทึกข้อความทั้งหมด' : '✎ บันทึกข้อความของฉัน',
 );
@@ -79,6 +94,13 @@ async function load() {
 
 function toggleMine() {
   mineOnly.value = !mineOnly.value;
+  page.value = 1;
+  load();
+}
+
+/** กลับไปหน้าแรกแล้วโหลดใหม่ (ใช้เมื่อเปลี่ยนตัวกรอง) */
+function loadFirst() {
+  page.value = 1;
   load();
 }
 
@@ -86,7 +108,7 @@ let searchTimer = null;
 function onSearch() {
   // ค้นหาทุกคีย์ = ยิง API ถี่เกินไป → หน่วงเวลาเล็กน้อย
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(load, 350);
+  searchTimer = setTimeout(loadFirst, 350);
 }
 
 /* ---------- ตัวช่วยแสดงผล ---------- */
@@ -219,7 +241,7 @@ async function remove(m) {
   <!-- ---------- ตัวกรอง ---------- -->
   <div class="filter-row">
     <input id="mem-q" v-model="q" type="search" placeholder="⊕ ค้นหาเรื่อง..." @input="onSearch" />
-    <select id="mem-status" v-model="status" @change="load">
+    <select id="mem-status" v-model="status" @change="loadFirst">
       <option value="">ทุกสถานะ</option>
       <option value="draft">ฉบับร่าง</option>
       <option value="submitted">ส่งแล้ว / รออนุมัติ</option>
@@ -228,7 +250,7 @@ async function remove(m) {
       <option value="returned">↻ ส่งกลับเพื่อแก้ไข</option>
       <option value="myapprove">◷ รอการอนุมัติของฉัน</option>
     </select>
-    <select id="mem-year" v-model="year" @change="load">
+    <select id="mem-year" v-model="year" @change="loadFirst">
       <option :value="String(curYear)">{{ curYear }}</option>
       <option :value="String(curYear - 1)">{{ curYear - 1 }}</option>
       <option value="">ทุกปี</option>
@@ -262,7 +284,7 @@ async function remove(m) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="m in rows" :key="m.id">
+          <tr v-for="m in pagedRows" :key="m.id">
             <td>{{ m.doc_no || '-' }}</td>
             <td>{{ m.title }}</td>
             <td>{{ UI.date(m.date) }}</td>
@@ -324,6 +346,9 @@ async function remove(m) {
           </tr>
         </tbody>
       </table>
+
+      <!-- เลขหน้า (หน้าละ 25 รายการ) -->
+      <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
     </div>
   </div>
 

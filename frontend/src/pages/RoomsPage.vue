@@ -23,6 +23,7 @@ import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalPill from '../components/ui/ApprovalPill.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import BookingCalendar from '../components/ui/BookingCalendar.vue';
+import Pagination from '../components/ui/Pagination.vue';
 
 /* ---------- สิทธิ์อนุมัติ ---------- */
 const LEVEL_NAMES = { 1: 'อนุมัติขั้นต้น', 2: 'อนุมัติขั้นสุดท้าย' };
@@ -79,6 +80,20 @@ const bookingsLoading = ref(true);
 const bookingsError = ref('');
 const bookings = ref([]);
 
+/*
+ * แบ่งหน้า: หน้าละ 25 รายการ
+ *   backend ส่งมาเรียงใหม่ → เก่า (ORDER BY created_at DESC, id DESC) → หน้า 1 = ล่าสุด
+ *   เปลี่ยนปี/แท็บ → กลับไปหน้า 1
+ */
+const PER_PAGE = 25;
+const page = ref(1);
+const pageCount = computed(() => Math.max(1, Math.ceil(bookings.value.length / PER_PAGE)));
+const curPage = computed(() => Math.min(page.value, pageCount.value));
+const pagedBookings = computed(() => {
+  const start = (curPage.value - 1) * PER_PAGE;
+  return bookings.value.slice(start, start + PER_PAGE);
+});
+
 async function loadBookings() {
   bookingsLoading.value = true;
   bookingsError.value = '';
@@ -95,6 +110,7 @@ async function loadBookings() {
 }
 
 watch([tab, yearFilter], async (v) => {
+  page.value = 1; // เปลี่ยนปี/แท็บ → เริ่มที่รายการล่าสุด
   if (v[0] === 'bookings') await loadBookings();
 });
 
@@ -482,7 +498,7 @@ function openExportDialog() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in bookings" :key="r.id">
+              <tr v-for="r in pagedBookings" :key="r.id">
                 <td>{{ UI.date(r.date) }}</td>
                 <td>{{ UI.time(r.start_time) }} - {{ UI.time(r.end_time) }}</td>
                 <td class="nowrap">{{ UI.date(r.created_at) }}</td>
@@ -533,6 +549,8 @@ function openExportDialog() {
             </tbody>
           </table>
         </div>
+        <!-- เลขหน้า (หน้าละ 25 รายการ) -->
+        <Pagination :total="bookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-for="r in bookings.filter((x) => x.note)" :key="'n' + r.id" class="hint" style="margin-top: 10px">
           หมายเหตุรายการ {{ r.id }}: {{ r.note }}
         </div>

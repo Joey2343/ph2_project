@@ -26,6 +26,7 @@ import TravelForm from '../components/ui/TravelForm.vue';
 import TravelDoc from '../components/ui/TravelDoc.vue';
 import TravelDecide from '../components/ui/TravelDecide.vue';
 import TravelApprovers from '../components/ui/TravelApprovers.vue';
+import Pagination from '../components/ui/Pagination.vue';
 
 const props = defineProps({
   /** 'office' | 'school' — ส่งมาจาก registry */
@@ -62,6 +63,20 @@ const loadError = ref('');
 const approvers = ref({});
 const approversSchool = ref({});
 
+/*
+ * แบ่งหน้า: หน้าละ 25 รายการ
+ *   backend ส่งมาเรียงใหม่ → เก่า (ORDER BY id DESC) → หน้า 1 = ล่าสุด
+ *   เปลี่ยนสถานะ/ปี/สโคป → กลับไปหน้า 1
+ */
+const PER_PAGE = 25;
+const page = ref(1);
+const pageCount = computed(() => Math.max(1, Math.ceil(requests.value.length / PER_PAGE)));
+const curPage = computed(() => Math.min(page.value, pageCount.value));
+const pagedRequests = computed(() => {
+  const start = (curPage.value - 1) * PER_PAGE;
+  return requests.value.slice(start, start + PER_PAGE);
+});
+
 async function load() {
   loading.value = true;
   loadError.value = '';
@@ -82,7 +97,10 @@ async function load() {
   }
 }
 
-watch([status, year, groupParam], load);
+watch([status, year, groupParam], () => {
+  page.value = 1; // เปลี่ยนตัวกรอง → เริ่มที่รายการล่าสุด
+  load();
+});
 onMounted(load);
 
 /* ---------- สิทธิ์อนุมัติ ----------
@@ -412,7 +430,7 @@ function openExportDialog() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in requests" :key="r.id">
+          <tr v-for="r in pagedRequests" :key="r.id">
             <td>{{ noOf(r) }}</td>
             <td>{{ r.title }}</td>
             <td>{{ r.destination }}</td>
@@ -452,6 +470,9 @@ function openExportDialog() {
           </tr>
         </tbody>
       </table>
+
+      <!-- เลขหน้า (หน้าละ 25 รายการ) -->
+      <Pagination :total="requests.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
     </div>
   </div>
 
