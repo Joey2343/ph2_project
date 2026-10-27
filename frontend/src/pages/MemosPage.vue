@@ -19,7 +19,6 @@ import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { MEMO_LEVEL_NAMES } from '../lib/memo.js';
 import { applyRow, removeRow } from '../lib/row-update.js';
-import { sanitizeNoteHtml } from '../lib/note-html.js';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import MemoForm from '../components/ui/MemoForm.vue';
@@ -128,11 +127,6 @@ function requiredLevels(m) {
 /* ---------- สิทธิ์กดปุ่ม ---------- */
 const canEditRow = (m) => Auth.isAdmin() || m.user_id === Auth.user?.id;
 const canDecideRow = (m) => m.status === 'submitted' && myLevels.value.includes(UI.approvalDone(m) + 1);
-
-/** ข้อความ "สิ่งที่ให้แก้ไข" อาจมีไฮไลท์สี (HTML) → ทำความสะอาดก่อนแสดงด้วย v-html */
-function safeNote(html) {
-  return sanitizeNoteHtml(html);
-}
 
 /* ---------- หน้าต่าง ---------- */
 const detail = ref(null);
@@ -330,17 +324,6 @@ async function remove(m) {
           </tr>
         </tbody>
       </table>
-
-      <!-- สิ่งที่ให้แก้ไขสำหรับรายการที่ถูกส่งกลับ (อาจมีไฮไลท์สี → ต้องใช้ v-html) -->
-      <div
-        v-for="m in rows.filter((x) => x.status === 'returned' && x.revision_note)"
-        :key="'rev' + m.id"
-        class="hint"
-        style="margin-top: 8px; color: #b45309"
-      >
-        ↻ รายการ {{ m.doc_no || m.id }}: สิ่งที่ให้แก้ไข —
-        <span v-html="safeNote(m.revision_note)"></span>
-      </div>
     </div>
   </div>
 

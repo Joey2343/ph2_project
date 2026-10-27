@@ -343,15 +343,6 @@ function printNewForm() {
       @close="emit('close')"
     >
       <div class="form-grid memo-form">
-        <!-- สิ่งที่ให้แก้ไข (เมื่อถูกส่งกลับ) -->
-        <div
-          v-if="m.status === 'returned' && m.revision_note"
-          class="form-group full"
-          style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 12px; color: #92400e; font-weight: 600"
-        >
-          ↻ ส่งกลับเพื่อแก้ไข — <span v-html="safeNote(m.revision_note)"></span>
-        </div>
-
         <div class="form-group full">
           <label>ส่วนราชการ<span class="req"> *</span></label>
           <input
@@ -457,6 +448,16 @@ function printNewForm() {
         <div class="form-group">
           <label>ตำแหน่ง</label>
           <input :value="(Auth.user && Auth.user.position) || ''" readonly />
+        </div>
+
+        <!-- สิ่งที่ให้แก้ไข (เมื่อถูกส่งกลับ) — แสดงด้านล่างของหน้าแก้ไข -->
+        <div
+          v-if="m.status === 'returned' && m.revision_note"
+          id="memo-revision-note"
+          class="form-group full"
+          style="margin-top: 6px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 12px; color: #92400e; font-weight: 600"
+        >
+          ↻ ส่งกลับเพื่อแก้ไข — <span v-html="safeNote(m.revision_note)"></span>
         </div>
       </div>
 
