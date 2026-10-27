@@ -41,7 +41,7 @@ onMounted(async () => {
   } catch {
     /* โหลดไม่ได้ = ไม่มีสิทธิ์อนุมัติ */
   }
-  await load();
+  await loadLatest();
 });
 
 /* ---------- ตัวกรอง ---------- */
@@ -83,7 +83,8 @@ async function load() {
   if (mineOnly.value) p.push('mine=1');
   try {
     const data = await api.get('/memos?' + p.join('&'));
-    rows.value = data.memos || [];
+    // เรียงจากเก่า → ใหม่ (backend ส่งมาใหม่ → เก่า) → หน้า 1 = รายการแรก
+    rows.value = (data.memos || []).slice().reverse();
   } catch (e) {
     rows.value = [];
     loadError.value = e.message;
@@ -94,21 +95,20 @@ async function load() {
 
 function toggleMine() {
   mineOnly.value = !mineOnly.value;
-  page.value = 1;
-  load();
+  loadLatest();
 }
 
-/** กลับไปหน้าแรกแล้วโหลดใหม่ (ใช้เมื่อเปลี่ยนตัวกรอง) */
-function loadFirst() {
-  page.value = 1;
-  load();
+/** โหลดแล้วไปหน้าสุดท้าย (รายการล่าสุด) — ใช้เมื่อเปลี่ยนตัวกรอง/คำค้น */
+async function loadLatest() {
+  await load();
+  page.value = pageCount.value;
 }
 
 let searchTimer = null;
 function onSearch() {
   // ค้นหาทุกคีย์ = ยิง API ถี่เกินไป → หน่วงเวลาเล็กน้อย
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadFirst, 350);
+  searchTimer = setTimeout(loadLatest, 350);
 }
 
 /* ---------- ตัวช่วยแสดงผล ---------- */
@@ -241,7 +241,7 @@ async function remove(m) {
   <!-- ---------- ตัวกรอง ---------- -->
   <div class="filter-row">
     <input id="mem-q" v-model="q" type="search" placeholder="⊕ ค้นหาเรื่อง..." @input="onSearch" />
-    <select id="mem-status" v-model="status" @change="loadFirst">
+    <select id="mem-status" v-model="status" @change="loadLatest">
       <option value="">ทุกสถานะ</option>
       <option value="draft">ฉบับร่าง</option>
       <option value="submitted">ส่งแล้ว / รออนุมัติ</option>
@@ -250,7 +250,7 @@ async function remove(m) {
       <option value="returned">↻ ส่งกลับเพื่อแก้ไข</option>
       <option value="myapprove">◷ รอการอนุมัติของฉัน</option>
     </select>
-    <select id="mem-year" v-model="year" @change="loadFirst">
+    <select id="mem-year" v-model="year" @change="loadLatest">
       <option :value="String(curYear)">{{ curYear }}</option>
       <option :value="String(curYear - 1)">{{ curYear - 1 }}</option>
       <option value="">ทุกปี</option>
@@ -264,7 +264,7 @@ async function remove(m) {
   <div class="card">
     <div class="card-title">▭ รายการบันทึกข้อความ ({{ rows.length }} รายการ)</div>
 
-    <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+    <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการแรก · หน้าสุดท้าย = ล่าสุด) -->
     <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
 
     <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>

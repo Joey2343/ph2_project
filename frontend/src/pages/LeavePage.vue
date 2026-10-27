@@ -172,7 +172,7 @@ onMounted(async () => {
     /* โหลดไม่ได้ = ไม่มีสิทธิ์พิจารณา */
   }
   pickInitialTab();
-  await load();
+  await loadLatest();
 });
 
 // แท็บอาจยังเลือกไม่ได้ตอน mount (สิทธิ์โหลดช้า) → ตรวจซ้ำเมื่อสิทธิ์เปลี่ยน
@@ -195,7 +195,7 @@ const loadError = ref('');
 
 /*
  * แบ่งหน้า: หน้าละ 25 รายการ
- *   รายการเรียงใหม่ → เก่า (backend ORDER BY id DESC) → หน้า 1 = รายการล่าสุดเสมอ
+ *   เรียงเก่า → ใหม่ → หน้า 1 = รายการแรก · หน้าสุดท้าย = รายการล่าสุด (เปิดที่หน้าสุดท้าย)
  *   เปลี่ยนตัวกรอง/แท็บ → กลับไปหน้า 1 (ดู watch ด้านล่าง)
  */
 const PER_PAGE = 25;
@@ -206,6 +206,12 @@ const pagedRows = computed(() => {
   const start = (curPage.value - 1) * PER_PAGE;
   return rows.value.slice(start, start + PER_PAGE);
 });
+
+/** โหลดแล้วไปหน้าสุดท้าย (รายการล่าสุด) — ใช้ตอนเปิดหน้า/เปลี่ยนตัวกรอง */
+async function loadLatest() {
+  await load();
+  page.value = pageCount.value;
+}
 
 async function load() {
   if (HIDE_FILTERS.includes(current.value)) return; // แท็บนี้โหลดเอง
@@ -239,7 +245,9 @@ async function load() {
         return false;
       });
     }
-    rows.value = list;
+    // เรียงจากเก่า → ใหม่ (backend ส่งมาใหม่ → เก่า)
+    // → รายการที่ 1 (เก่าสุด) อยู่หน้า 1 รายการแรก · รายการล่าสุดอยู่หน้าสุดท้าย
+    rows.value = list.slice().reverse();
   } catch (e) {
     rows.value = [];
     loadError.value = e.message;
@@ -249,8 +257,8 @@ async function load() {
 }
 
 watch([current, fy, round, status, myOnly], () => {
-  page.value = 1; // เปลี่ยนตัวกรอง → เริ่มที่รายการล่าสุด
-  load();
+  // เปลี่ยนตัวกรอง → ไปหน้าสุดท้าย (รายการล่าสุด)
+  loadLatest();
 });
 
 /* ---------- สิทธิ์กดปุ่ม ---------- */
@@ -490,7 +498,7 @@ function statusPill(r) {
         ({{ rows.length }} รายการ)
       </div>
 
-      <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+      <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการแรก · หน้าสุดท้าย = ล่าสุด) -->
       <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
 
       <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>

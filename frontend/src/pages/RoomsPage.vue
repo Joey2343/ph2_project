@@ -60,7 +60,7 @@ onMounted(async () => {
   // ต้องโหลดรายการจองตอนเปิดหน้า
   // watch ข้างล่างดูแลตอน "เปลี่ยน" ค่าเท่านั้น จึงไม่ยิงตอน mount (tab เริ่มต้นเป็น 'bookings' อยู่แล้ว)
   // เคยลืมบรรทัดนี้ → หน้าค้างที่ "กำลังโหลดข้อมูล..." ตลอด ไม่มีทางหายเอง
-  if (tab.value === 'bookings') await loadBookings();
+  if (tab.value === 'bookings') await loadLatestBookings();
 });
 
 /* ---------- แท็บ: การจอง ---------- */
@@ -94,13 +94,20 @@ const pagedBookings = computed(() => {
   return bookings.value.slice(start, start + PER_PAGE);
 });
 
+/** โหลดแล้วไปหน้าสุดท้าย (รายการล่าสุด) — ใช้ตอนเปิดหน้า/เปลี่ยนปี/แท็บ */
+async function loadLatestBookings() {
+  await loadBookings();
+  page.value = pageCount.value;
+}
+
 async function loadBookings() {
   bookingsLoading.value = true;
   bookingsError.value = '';
   try {
     const url = yearFilter.value ? '/room-bookings?year=' + yearFilter.value : '/room-bookings';
     const data = await api.get(url);
-    bookings.value = data.bookings || [];
+    // เรียงจากเก่า → ใหม่ (backend ส่งมาใหม่ → เก่า) → หน้า 1 = รายการแรก
+    bookings.value = (data.bookings || []).slice().reverse();
   } catch (e) {
     bookingsError.value = e.message;
     bookings.value = [];
@@ -110,8 +117,8 @@ async function loadBookings() {
 }
 
 watch([tab, yearFilter], async (v) => {
-  page.value = 1; // เปลี่ยนปี/แท็บ → เริ่มที่รายการล่าสุด
-  if (v[0] === 'bookings') await loadBookings();
+  // เปลี่ยนปี/แท็บ → ไปหน้าสุดท้าย (รายการล่าสุด)
+  if (v[0] === 'bookings') await loadLatestBookings();
 });
 
 function shiftMonth(delta) {
@@ -481,7 +488,7 @@ function openExportDialog() {
       <!-- มุมมองตาราง -->
       <template v-else>
         <div class="card-title">▭ รายการจองทั้งหมด</div>
-        <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+        <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการแรก · หน้าสุดท้าย = ล่าสุด) -->
         <Pagination :total="bookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-if="bookings.length === 0" class="empty-state"><span class="em">⌂</span>ยังไม่มีรายการจอง</div>
         <div v-else class="table-wrap">

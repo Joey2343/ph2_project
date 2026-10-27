@@ -86,7 +86,8 @@ async function load() {
   params.push('group=' + groupParam.value);
   try {
     const data = await api.get('/travel?' + params.join('&'));
-    requests.value = data.requests || [];
+    // เรียงจากเก่า → ใหม่ (backend ส่งมาใหม่ → เก่า) → หน้า 1 = รายการแรก
+    requests.value = (data.requests || []).slice().reverse();
     approvers.value = data.travelApprovers || {};
     approversSchool.value = data.travelApproversSchool || {};
   } catch (e) {
@@ -98,10 +99,17 @@ async function load() {
 }
 
 watch([status, year, groupParam], () => {
-  page.value = 1; // เปลี่ยนตัวกรอง → เริ่มที่รายการล่าสุด
-  load();
+  // เปลี่ยนสถานะ/ปี/สโคป → ไปหน้าสุดท้าย (รายการล่าสุด)
+  loadLatest();
 });
-onMounted(load);
+
+/** โหลดแล้วไปหน้าสุดท้าย (รายการล่าสุด) — ใช้ตอนเปิดหน้า/เปลี่ยนตัวกรอง */
+async function loadLatest() {
+  await load();
+  page.value = pageCount.value;
+}
+
+onMounted(loadLatest);
 
 /* ---------- สิทธิ์อนุมัติ ----------
  * โครงสร้างต่างกันตามสายของ "ผู้ขอ" ไม่ใช่สายของหน้าที่เห็น
@@ -407,7 +415,7 @@ function openExportDialog() {
       ▭ รายการขออนุมัติ/อนุญาตเดินทางไปราชการ ({{ requests.length }} รายการ)
     </div>
 
-    <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+    <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการแรก · หน้าสุดท้าย = ล่าสุด) -->
     <Pagination :total="requests.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
 
     <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>

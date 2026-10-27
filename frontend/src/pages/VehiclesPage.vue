@@ -59,9 +59,11 @@ const bookings = ref([]);
 
 const isMine = (r) => Auth.user && Number(r.user_id) === Number(Auth.user.id);
 
-const visibleBookings = computed(() =>
-  myFilter.value === 'mine' ? bookings.value.filter(isMine) : bookings.value,
-);
+const visibleBookings = computed(() => {
+  // เรียงจากเก่า → ใหม่ (backend ส่งมาใหม่ → เก่า) → หน้า 1 = รายการแรก
+  const asc = bookings.value.slice().reverse();
+  return myFilter.value === 'mine' ? asc.filter(isMine) : asc;
+});
 
 /*
  * แบ่งหน้า: หน้าละ 25 รายการ
@@ -77,6 +79,12 @@ const pagedBookings = computed(() => {
   return visibleBookings.value.slice(start, start + PER_PAGE);
 });
 
+/** โหลดแล้วไปหน้าสุดท้าย (รายการล่าสุด) — ใช้ตอนเปิดหน้า/เปลี่ยนตัวกรอง */
+async function loadLatestBookings() {
+  await loadBookings();
+  page.value = pageCount.value;
+}
+
 onMounted(async () => {
   myLevels.value = Auth.isAdmin() ? [1, 2, 3] : [];
   try {
@@ -91,7 +99,7 @@ onMounted(async () => {
   } catch (e) {
     /* ignore */
   }
-  if (tab.value === 'bookings') await loadBookings();
+  if (tab.value === 'bookings') await loadLatestBookings();
 });
 
 async function loadBookings() {
@@ -110,8 +118,8 @@ async function loadBookings() {
 }
 
 watch([tab, yearFilter, myFilter], async (v) => {
-  page.value = 1; // เปลี่ยนตัวกรอง/ปี/แท็บ → เริ่มที่รายการล่าสุด
-  if (v[0] === 'bookings') await loadBookings();
+  // เปลี่ยนตัวกรอง/ปี/แท็บ → ไปหน้าสุดท้าย (รายการล่าสุด)
+  if (v[0] === 'bookings') await loadLatestBookings();
 });
 
 function setMyFilter(v) {
@@ -905,7 +913,7 @@ function canCancelRow(r) {
         <div class="card-title">
           ▭ {{ myFilter === 'mine' ? 'รายการจองของฉัน' : 'รายการจองทั้งหมด' }} ({{ visibleBookings.length }})
         </div>
-        <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+        <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการแรก · หน้าสุดท้าย = ล่าสุด) -->
         <Pagination :total="visibleBookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-if="visibleBookings.length === 0" class="empty-state"><span class="em">🚐</span>ยังไม่มีรายการจอง</div>
         <div v-else class="table-wrap">
