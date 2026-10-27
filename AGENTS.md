@@ -711,6 +711,16 @@ ph2_project/
   - หน้าเว็บ `LeaveForm.vue` ช่อง "มีกำหนด" รับ `min=0.5 step=0.5` + datalist 0.5/1/1.5/…
   - ใช้ `Number()` ไม่ใช่ `parseInt()` (parseInt ทำให้ 0.5 → 0 แล้วตกไปเป็น 1)
   - ยอดคงเหลือคิดจาก `SUM(days)` ของรายการที่อนุมัติแล้ว → 0.5 หักถูกอัตโนมัติ
+- **ป้ายแจ้งเตือนบนการ์ด "ขออนุญาตลา" ต้องนับตามสายรายคน**
+  - นับเฉพาะคำขอที่ **ฉันเป็นผู้อนุมัติของขั้นถัดไป "ของผู้ขอคนนั้น"**
+    (`leaveChainLevels(requesterId)` + `leaveApproverIdsFor(requesterId, level)`)
+  - ⚠️ **ห้ามใช้ `countAwaiting('leave_requests', getUserSystemLevels(...))`**
+    เพราะ `getUserSystemLevels` flatten รายชื่อทุกคนทุกระดับ
+    → ถ้าฉันเป็นผู้อนุมัติของ "บางคน" ระบบจะนับคำขอ pending ของทุกคนที่ขั้นตรงกัน
+    → ป้ายขึ้นเกินจริง (เจอจริง: ป้ายขึ้น 2 แต่ในรายการมี 1)
+  - admin ยังเห็นครบทุกคำขอ (bypass)
+  - ใช้สูตรเดียวกับหน้า `#/leave` (`myLevels` + `nextLevelOf`) → ตัวเลขตรงกันเสมอ
+  - เทสต์กันไว้ที่ `backend/scripts/test-leave-badge-count.js` (อยู่ใน `npm run verify`)
 - **"สิ่งที่ให้แก้ไข" ของบันทึกข้อความเก็บเป็น HTML ได้ (ไฮไลท์สี)**
   - หน้าคืนเรื่องเพื่อแก้ไข (`MemoReturnModal.vue`) มีเครื่องมือไฮไลท์ ส้ม · เหลือง · เขียว
     ใช้ `document.execCommand('hiliteColor')` → เก็บเป็น `<span style="background-color:...">`
@@ -870,8 +880,8 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **200** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 39/39 (MariaDB 11.4) |
-| `backend: npm run check:returns` | ผ่าน (103 ไฟล์) |
+| `backend: npm run verify` | ผ่าน 40/40 (MariaDB 11.4) |
+| `backend: npm run check:returns` | ผ่าน (108 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
 ให้เพิ่ม `--dump <keys>` เพื่อดู DOM/runtime จริง:

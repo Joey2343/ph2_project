@@ -71,6 +71,37 @@ async function leaveRequiredLevelsFor(requesterId) {
   return (await leaveChainLevels(requesterId)).length;
 }
 
+/**
+ * ผู้อนุมัติการลา ณ ขั้น level "ของผู้ขอคนนี้"
+ *
+ * รองรับ 2 รูปแบบที่เคยบันทึกไว้ใน settings
+ *   - per-person object: { "1": { "<requesterId>": "<approverId>", ... }, ... }
+ *     → คืนเฉพาะคนที่ตั้งไว้ให้ผู้ขอลาคนนี้ (คนเดียว)
+ *   - array เดิม (ส่วนกลาง): { "1": [id, id] } → ทุกคนในรายชื่ออนุมัติได้
+ *
+ * ⚠️ ใช้คู่กับ leaveChainLevels() เท่านั้น (ขั้นที่ต้องอนุมัติจริงของคนนั้น)
+ *    ถ้าใช้ getUserSystemLevels() ซึ่ง flatten รายชื่อทุกคน จะนับคำขอของคนอื่นมาด้วย
+ *    → ป้ายแจ้งเตือนบนการ์ดขึ้นเกินจริง (เจอจริง: ป้ายขึ้น 2 แต่ในรายการมี 1)
+ *
+ * @returns {Promise<number[]>} id ผู้อนุมัติของขั้นนั้นสำหรับผู้ขอลาคนนี้
+ */
+async function leaveApproverIdsFor(requesterId, level) {
+  const key = await leaveApproverKeyFor(requesterId);
+  const row = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(key);
+  let obj = {};
+  try {
+    const p = JSON.parse(row ? row.value : '{}');
+    if (p && typeof p === 'object') obj = p;
+  } catch (e) { /* ignore */ }
+  const d = obj[String(level)];
+  if (Array.isArray(d)) return d.map(Number).filter(Boolean);
+  if (d && typeof d === 'object') {
+    const id = Number(d[String(requesterId)] || 0);
+    return id ? [id] : [];
+  }
+  return [];
+}
+
 function parseApprovals(data) {
   try {
     const arr = JSON.parse(data || '[]');
@@ -490,7 +521,7 @@ async function rejectRequest({ table, id, user, note, allowFn }) {
 }
 
 module.exports = {
-  APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevelsFor, leaveApproverKeyFor, leaveChainLevels, parseApprovals,
+  APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevelsFor, leaveApproverKeyFor, leaveChainLevels, leaveApproverIdsFor, parseApprovals,
   getSystemApprovers, canApproveSystem, getUserSystemLevels, getLeaveApprovers,
   getMemoApproversPerPerson, getMemoApproverFor, canApproveMemoFor,
   canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelChainLevels, travelRequiredLevels, travelLevelLabel, approveRequest, rejectRequest,

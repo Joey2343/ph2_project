@@ -458,39 +458,61 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
     return out;
   })();
 
-  // ลาแยกตามประเภท (general = ลาป่วย/ลากิจ/ลาคลอด, vacation = ลาพักผ่อน) + กลุ่มผู้ใช้ของแต่ละขั้น
-  const leaveSplit = (async () => {
-    const levels = await approvals.getUserSystemLevels(req.user, 'leave');
-    const out = {};
-    if (!levels.length) return out;
-    const rows = await db.prepare(`SELECT l.approval_level, l.leave_type, u.user_group, u.school_code FROM leave_requests l JOIN users u ON u.id = l.user_id
-      WHERE l.status = 'pending' AND (l.approval_level + 1) IN (${levels.map(() => '?').join(',')})`).all(...levels);
+  /*
+   * ลา — นับ "รอฉันพิจารณา" ตามสายรายคนจริง
+   *
+   * ⚠️ เดิมใช้ countAwaiting('leave_requests', levels) ซึ่งนับทุกคำขอที่ขั้นตรงกับ
+   *    ระดับที่ผู้ใช้ได้รับมอบหมาย "กับใครคนใดคนหนึ่ง"
+   *    → ป้ายบนการ์ดขึ้นเกินจริง (เจอจริง: ป้ายขึ้น 2 แต่ในรายการมี 1
+   *      เพราะอีกคำขอหนึ่งตั้งผู้อนุมัติขั้นนั้นเป็นคนอื่น)
+   *
+   * ตอนนี้อ่านทีละคำขอ: ขั้นถัดไปตามสายของผู้ขอ + ผู้อนุมัติของขั้นนั้น "ของคนนั้น"
+   *   - per-person map { level: { requesterId: approverId } } → ต้องตรงกับผู้ใช้
+   *   - array เดิม (ส่วนกลาง) → ใครในรายชื่อก็อนุมัติได้
+   * ใช้สูตรเดียวกับหน้า #/leave (myLevels + nextLevelOf) → ตัวเลขตรงกันแน่นอน
+   */
+  const leavePending = (async () => {
+    const out = { byLevel: {}, split: {}, general: 0, vacation: 0, group: '' };
+    const rows = await db.prepare(`SELECT l.user_id, l.approval_level, l.leave_type, u.user_group
+      FROM leave_requests l JOIN users u ON u.id = l.user_id
+      WHERE l.status = 'pending'`).all();
+    if (!rows.length) return out;
+    const isAdmin = req.user.role === 'admin';
+    const chainCache = new Map();
     for (const r of rows) {
-      const next = r.approval_level + 1;
-      if (!levels.includes(next)) continue;
+      if (!chainCache.has(r.user_id)) {
+        chainCache.set(r.user_id, await approvals.leaveChainLevels(r.user_id));
+      }
+      const chain = chainCache.get(r.user_id);
+      const done = Number(r.approval_level) || 0;
+      const next = chain[done];
+      if (!next) continue; // สายจบแล้วไม่ต้องรอใคร
+      let mine = isAdmin;
+      if (!mine) {
+        const ids = await approvals.leaveApproverIdsFor(r.user_id, next);
+        mine = ids.includes(req.user.id);
+      }
+      if (!mine) continue;
+      out.byLevel[next] = (out.byLevel[next] || 0) + 1;
+      if (next === 1) out.group = r.user_group || 'office';
       const isVac = String(r.leave_type || '').indexOf('พักผ่อน') !== -1;
       const sys = isVac ? 'leave_vacation' : 'leave_general';
-      if (!out[sys]) out[sys] = {};
-      out[sys][next] = (out[sys][next] || 0) + 1;
-    }
-    for (const sys of Object.keys(out)) {
-      for (const lv of Object.keys(out[sys])) {
-        if (lv === 'group') continue;
-        const row = rows.find((r) => r.approval_level + 1 === Number(lv));
-        if (row) out[sys].group = (row.user_group || 'office');
-      }
+      out.split[sys] = out.split[sys] || {};
+      out.split[sys][next] = (out.split[sys][next] || 0) + 1;
+      if (isVac) out.vacation++; else out.general++;
     }
     return out;
   })();
 
   // งานที่รอการอนุมัติขั้นของฉัน ต่อขั้น เช่น {1: 2, 2: 1}
+  const leavePendingData = await leavePending;
   const approveData = {
     vehicle: await countAwaiting('vehicle_bookings', await approvals.getUserSystemLevels(req.user, 'vehicle')),
     room: await countAwaiting('room_bookings', await approvals.getUserSystemLevels(req.user, 'room')),
     travel: await travelOffice,
     travel_school: await travelSchool,
-    leave: await countAwaiting('leave_requests', await approvals.getUserSystemLevels(req.user, 'leave')),
-    leave_split: await leaveSplit,
+    leave: leavePendingData.byLevel,
+    leave_split: leavePendingData.split,
     memo: memoApprove,
   };
 

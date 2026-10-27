@@ -228,6 +228,11 @@ async function main() {
   console.log('\n[ทดสอบสิทธิ์อนุมัติ — callback ต้องถูก await ทุกตัว]');
   results.push(run('test-approval-perm', [path.join(__dirname, 'test-approval-perm.js')]));
 
+  console.log('\n[ทดสอบป้ายแจ้งเตือนบนการ์ดลานับเฉพาะคำขอที่ฉันเป็นผู้อนุมัติจริง]');
+  results.push(run('test-leave-badge-count', [path.join(__dirname, 'test-leave-badge-count.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบยื่นลา + สายอนุมัติการลา ตั้งแต่ต้นจนจบ]');
   results.push(run('test-leave-flow', [path.join(__dirname, 'test-leave-flow.js')], {
     env: { TEST_BASE_URL },
