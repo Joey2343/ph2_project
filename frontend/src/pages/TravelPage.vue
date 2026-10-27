@@ -74,7 +74,8 @@ const pageCount = computed(() => Math.max(1, Math.ceil(requests.value.length / P
 const curPage = computed(() => Math.min(page.value, pageCount.value));
 const pagedRequests = computed(() => {
   const start = (curPage.value - 1) * PER_PAGE;
-  return requests.value.slice(start, start + PER_PAGE);
+  // แสดงจากล่างขึ้นบน: เลขรายการมาก (ใหม่กว่า) อยู่บนสุดของหน้านั้น
+  return requests.value.slice(start, start + PER_PAGE).reverse();
 });
 
 async function load() {

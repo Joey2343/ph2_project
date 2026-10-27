@@ -76,7 +76,8 @@ const pageCount = computed(() => Math.max(1, Math.ceil(visibleBookings.value.len
 const curPage = computed(() => Math.min(page.value, pageCount.value));
 const pagedBookings = computed(() => {
   const start = (curPage.value - 1) * PER_PAGE;
-  return visibleBookings.value.slice(start, start + PER_PAGE);
+  // แสดงจากล่างขึ้นบน: เลขรายการมาก (ใหม่กว่า) อยู่บนสุดของหน้านั้น
+  return visibleBookings.value.slice(start, start + PER_PAGE).reverse();
 });
 
 /** โหลดแล้วไปหน้าสุดท้าย (รายการล่าสุด) — ใช้ตอนเปิดหน้า/เปลี่ยนตัวกรอง */
