@@ -23,6 +23,7 @@ import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import MemoForm from '../components/ui/MemoForm.vue';
 import MemoDecide from '../components/ui/MemoDecide.vue';
+import MemoReturnModal from '../components/ui/MemoReturnModal.vue';
 import MemoDoc from '../components/ui/MemoDoc.vue';
 import MemoView from '../components/ui/MemoView.vue';
 import MemoApprovers from '../components/ui/MemoApprovers.vue';
@@ -141,6 +142,12 @@ function openForm(m) { editTarget.value = m || null; formOpen.value = true; }
 function openDecide(m, action) {
   decideTarget.value = m;
   decideAction.value = action;
+}
+
+/* ---------- คืนเรื่องเพื่อแก้ไข (ปุ่มในแถวรายการ) ---------- */
+const returnTarget = ref(null);
+function openReturn(m) {
+  returnTarget.value = m;
 }
 
 /**
@@ -304,6 +311,13 @@ async function remove(m) {
                 <template v-if="canDecideRow(m)">
                   <button class="btn btn-xs btn-primary" @click="openDecide(m, 'approve')">● อนุมัติ</button>
                   <button class="btn btn-xs btn-outline danger-btn" @click="openDecide(m, 'reject')">✕ ไม่อนุมัติ</button>
+                  <button
+                    class="btn btn-xs btn-outline"
+                    title="คืนเรื่องเพื่อแก้ไข (แจ้งสิ่งที่ต้องแก้ให้เจ้าของเรื่อง)"
+                    @click="openReturn(m)"
+                  >
+                    ↩ คืนเรื่องเพื่อแก้ไข
+                  </button>
                 </template>
               </div>
             </td>
@@ -337,6 +351,13 @@ async function remove(m) {
     :action="decideAction"
     @close="decideTarget = null"
     @done="afterChange"
+  />
+
+  <MemoReturnModal
+    v-if="returnTarget"
+    :memo="returnTarget"
+    @close="returnTarget = null"
+    @returned="afterChange"
   />
 
   <MemoApprovers v-if="approversOpen" @close="approversOpen = false" @saved="afterChange" />
