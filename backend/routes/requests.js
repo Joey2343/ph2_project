@@ -21,6 +21,7 @@ const uploadLeavesDyn = createDynamicUpload('leaves');
 const simdate = require('../lib/simdate');
 const approvals = require('../lib/approvals');
 const telegram = require('../lib/telegram');
+const htmlText = require('../lib/html-text');
 const staffSort = require('../lib/staff-sort');
 
 const router = express.Router();
@@ -513,8 +514,12 @@ router.put('/memos/:id/return', auth.requireAuth, async (req, res) => {
   if (!await canDecideMemo(req.user, row, nextLevel)) {
     return res.status(403).json({ error: 'คุณไม่มีสิทธิ์พิจารณาบันทึกข้อความนี้' });
   }
-  const note = ((req.body || {}).note || '').trim();
-  if (!note) return res.status(400).json({ error: 'กรุณากรอกสิ่งที่ให้แก้ไขก่อนส่งกลับ' });
+  // ข้อความ "สิ่งที่ให้แก้ไข" เป็น HTML ได้ (มีไฮไลท์สี) → ทำความสะอาดก่อนบันทึก
+  // และตรวจว่ามีข้อความจริง (ไม่ใช่มีแต่แท็ก/ไฮไลท์เปล่า ๆ)
+  const note = htmlText.sanitizeNoteHtml(String((req.body || {}).note || ''));
+  if (!htmlText.htmlToText(note)) {
+    return res.status(400).json({ error: 'กรุณากรอกสิ่งที่ให้แก้ไขก่อนส่งกลับ' });
+  }
   const decidedAt = auth.now();
   await db.prepare(`UPDATE memos SET status = 'returned', revision_note = ?, decided_by = ?, decided_at = ? WHERE id = ?`)
     .run(note, req.user.id, decidedAt, id);

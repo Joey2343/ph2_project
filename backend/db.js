@@ -575,7 +575,7 @@ const COLUMN_MIGRATIONS = [
   ['memos', 'decided_by', "decided_by INT"],
   ['memos', 'decided_at', "decided_at VARCHAR(30) NOT NULL"],
   ['memos', 'note', "`note` VARCHAR(2000) COLLATE utf8mb4_bin"],
-  ['memos', 'revision_note', "revision_note VARCHAR(2000) COLLATE utf8mb4_bin"],
+  ['memos', 'revision_note', "revision_note MEDIUMTEXT COLLATE utf8mb4_bin"],
   ['memos', 'next_approver_id', "next_approver_id INT"]
 ];
 
@@ -743,6 +743,27 @@ async function migrate() {
     }
   }
   await fixRevisionNoteCharset();
+
+  /*
+   * memos.revision_note: VARCHAR(2000) → MEDIUMTEXT
+   *
+   * ผู้ใช้ขอให้ "สิ่งที่ให้แก้ไข" มีไฮไลท์สีได้ → เก็บเป็น HTML (<span style="...">)
+   * ซึ่งยาวกว่าเดิมมาก (ไฮไลท์แต่ละช่วงกินหลายสิบตัวอักษร)
+   * VARCHAR(2000) อาจตัดข้อความทิ้ง → ขยายเป็น MEDIUMTEXT (เหมือน documents.revision_note)
+   * รันซ้ำได้ (เช็ค DATA_TYPE ก่อน)
+   */
+  async function widenMemoRevisionNote() {
+    const col = await db.prepare(`
+      SELECT DATA_TYPE
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'memos' AND COLUMN_NAME = 'revision_note'
+    `).get();
+    if (col && String(col.DATA_TYPE).toLowerCase() !== 'mediumtext') {
+      await db.exec('ALTER TABLE `memos` MODIFY COLUMN `revision_note` MEDIUMTEXT COLLATE utf8mb4_bin');
+      console.log('[migrate] memos.revision_note → MEDIUMTEXT (รองรับข้อความไฮไลท์สี)');
+    }
+  }
+  await widenMemoRevisionNote();
 
   /*
    * leave_requests.days: int → double

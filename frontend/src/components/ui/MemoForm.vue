@@ -16,6 +16,7 @@ import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
 import { CONSTANTS } from '../../constants/index.js';
 import { MEMO_LEVEL_NAMES, MEMO_SETTLED } from '../../lib/memo.js';
+import { sanitizeNoteHtml } from '../../lib/note-html.js';
 import AppModal from './AppModal.vue';
 import ThaiDateField from './ThaiDateField.vue';
 import MemoRichEditor from './MemoRichEditor.vue';
@@ -32,6 +33,11 @@ const emit = defineEmits(['close', 'saved']);
 const m = computed(() => props.memo || {});
 const isNew = computed(() => !m.value.id);
 const busy = ref(false);
+
+/** ข้อความ "สิ่งที่ให้แก้ไข" อาจมีไฮไลท์สี (HTML) → ทำความสะอาดก่อนแสดงด้วย v-html */
+function safeNote(html) {
+  return sanitizeNoteHtml(html);
+}
 
 /* ---------- ค่าเริ่มต้น ---------- */
 const office = ref('');
@@ -343,7 +349,7 @@ function printNewForm() {
           class="form-group full"
           style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 12px; color: #92400e; font-weight: 600"
         >
-          ↻ ส่งกลับเพื่อแก้ไข — {{ m.revision_note }}
+          ↻ ส่งกลับเพื่อแก้ไข — <span v-html="safeNote(m.revision_note)"></span>
         </div>
 
         <div class="form-group full">

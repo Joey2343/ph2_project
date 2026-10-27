@@ -17,6 +17,7 @@
  */
 const db = require('../db');
 const approvals = require('./approvals');
+const htmlText = require('./html-text');
 const API_BASE = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org';
 
 /** แปลงวันที่ YYYY-MM-DD → DD/MM/PPPP (ปี พ.ศ. ไทย) */
@@ -242,6 +243,8 @@ function memoForwardedText(b, deciderName, decide, label) {
 
 /** ข้อความแจ้งผู้จัดทำว่าบันทึกข้อความถูกส่งกลับเพื่อแก้ไข */
 function memoReturnedText(b, deciderName, note) {
+  // note อาจเป็น HTML (มีไฮไลท์สี) → Telegram ต้องได้ข้อความล้วน ไม่งั้นเห็นแท็กเต็มไปหมด
+  const plain = htmlText.htmlToText(note);
   return [
     '📣 P2-SMART สพป.แพร่ 2',
     '',
@@ -250,7 +253,7 @@ function memoReturnedText(b, deciderName, note) {
     '📋 รายละเอียด:',
     ...detailLines('memo', b),
     `• ผู้อนุมัติที่ส่งกลับ: ${deciderName || '-'}`,
-    `• สิ่งที่ให้แก้ไข: ${note || '-'}`,
+    `• สิ่งที่ให้แก้ไข: ${plain || '-'}`,
   ].join('\n');
 }
 

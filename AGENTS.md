@@ -711,6 +711,17 @@ ph2_project/
   - หน้าเว็บ `LeaveForm.vue` ช่อง "มีกำหนด" รับ `min=0.5 step=0.5` + datalist 0.5/1/1.5/…
   - ใช้ `Number()` ไม่ใช่ `parseInt()` (parseInt ทำให้ 0.5 → 0 แล้วตกไปเป็น 1)
   - ยอดคงเหลือคิดจาก `SUM(days)` ของรายการที่อนุมัติแล้ว → 0.5 หักถูกอัตโนมัติ
+- **"สิ่งที่ให้แก้ไข" ของบันทึกข้อความเก็บเป็น HTML ได้ (ไฮไลท์สี)**
+  - หน้าคืนเรื่องเพื่อแก้ไข (`MemoReturnModal.vue`) มีเครื่องมือไฮไลท์ ส้ม · เหลือง · เขียว
+    ใช้ `document.execCommand('hiliteColor')` → เก็บเป็น `<span style="background-color:...">`
+  - `memos.revision_note` เป็น **MEDIUMTEXT** (`migrate()` ขยายให้ถ้าเดิม VARCHAR(2000))
+  - ⚠️ ก่อนบันทึก/ก่อนแสดงต้องทำความสะอาดเสมอ
+    - ฝั่งหน้าเว็บ: `src/lib/note-html.js` → `sanitizeNoteHtml()` + `notePlainText()`
+    - ฝั่งเซิร์ฟเวอร์: `backend/lib/html-text.js` → `sanitizeNoteHtml()` + `htmlToText()`
+    - ตัด `<script>/<style>/<iframe>` + event handler + `javascript:`
+  - แสดงด้วย `v-html` ที่ `MemosPage` (แถบสิ่งที่ให้แก้ไข) และ `MemoForm` (กรอบส่งกลับ)
+  - **Telegram ต้องส่งข้อความล้วน** — `memoReturnedText()` แปลงด้วย `htmlToText()` แล้ว
+  - ตรวจค่าว่างด้วยข้อความล้วน (ไฮไลท์เปล่า ๆ โดยไม่พิมพ์อะไร = 400)
 - **ปี พ.ศ.** — ทุก endpoint ที่มีตัวกรองปีรับ `year` เป็น พ.ศ. และกรองด้วยช่วงวันที่จริง
   (เคยพบบั๊กที่ใช้ `doc_no LIKE '%/2569%'` ซึ่งผิด เพราะเลขที่หนังสือไม่ได้ผูกกับปีเสมอ)
   ใช้ `backend/lib/year-filter.js` เสมอ
