@@ -418,8 +418,9 @@ const VUE_PAGES = {
           const el = [...document.querySelectorAll('[data-app-modal] div, [data-app-modal] span')]
             .find((e) => (e.innerText || '').trim() === txt);
           if (!el) throw new Error('ไม่พบข้อความ "' + txt + '"');
-          const color = getComputedStyle(el).color;
-          if (color !== 'rgb(220, 38, 38)') throw new Error('ข้อความไม่ได้เป็นสีแดง (ได้ ' + color + ')');
+          const cs = getComputedStyle(el);
+          if (cs.color !== 'rgb(220, 38, 38)') throw new Error('ข้อความไม่ได้เป็นสีแดง (ได้ ' + cs.color + ')');
+          if (cs.fontWeight !== '400') throw new Error('ข้อความยังเป็นตัวหนา (ได้ ' + cs.fontWeight + ' — ต้องเป็น 400)');
           return true;
         })()`,
       },
