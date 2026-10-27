@@ -264,6 +264,9 @@ async function remove(m) {
   <div class="card">
     <div class="card-title">▭ รายการบันทึกข้อความ ({{ rows.length }} รายการ)</div>
 
+    <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+    <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
+
     <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>
     <div v-else-if="loadError" class="empty-state"><span class="em">⚠️</span>{{ loadError }}</div>
     <div v-else-if="rows.length === 0" class="empty-state"><span class="em">✎</span>ยังไม่มีบันทึกข้อความ</div>
@@ -346,9 +349,6 @@ async function remove(m) {
           </tr>
         </tbody>
       </table>
-
-      <!-- เลขหน้า (หน้าละ 25 รายการ) -->
-      <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
     </div>
   </div>
 

@@ -481,6 +481,8 @@ function openExportDialog() {
       <!-- มุมมองตาราง -->
       <template v-else>
         <div class="card-title">▭ รายการจองทั้งหมด</div>
+        <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+        <Pagination :total="bookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-if="bookings.length === 0" class="empty-state"><span class="em">⌂</span>ยังไม่มีรายการจอง</div>
         <div v-else class="table-wrap">
           <table class="tbl">
@@ -549,8 +551,6 @@ function openExportDialog() {
             </tbody>
           </table>
         </div>
-        <!-- เลขหน้า (หน้าละ 25 รายการ) -->
-        <Pagination :total="bookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-for="r in bookings.filter((x) => x.note)" :key="'n' + r.id" class="hint" style="margin-top: 10px">
           หมายเหตุรายการ {{ r.id }}: {{ r.note }}
         </div>

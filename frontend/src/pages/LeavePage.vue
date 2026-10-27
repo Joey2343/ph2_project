@@ -490,6 +490,9 @@ function statusPill(r) {
         ({{ rows.length }} รายการ)
       </div>
 
+      <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+      <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
+
       <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>
       <div v-else-if="loadError" class="empty-state"><span class="em">⚠️</span>{{ loadError }}</div>
       <div v-else-if="rows.length === 0" class="empty-state"><span class="em">☀</span>ยังไม่มีรายการ</div>
@@ -645,9 +648,6 @@ function statusPill(r) {
             </tr>
           </tbody>
         </table>
-
-        <!-- เลขหน้า (หน้าละ 25 รายการ) -->
-        <Pagination :total="rows.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
 
         <!-- หมายเหตุรายการ -->
         <div v-for="r in rows.filter((x) => x.note)" :key="'n' + r.id" class="hint" style="margin-top: 8px">

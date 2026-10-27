@@ -31,6 +31,14 @@ const emit = defineEmits(['update:page']);
 
 const pageCount = computed(() => Math.max(1, Math.ceil(props.total / props.perPage)));
 
+/** ช่วงรายการในหน้านี้ เช่น "รายการที่ 26–50 จาก 60" */
+const rangeText = computed(() => {
+  if (!props.total) return 'ไม่มีรายการ';
+  const from = (props.page - 1) * props.perPage + 1;
+  const to = Math.min(props.total, props.page * props.perPage);
+  return `รายการที่ ${from}–${to} จาก ${props.total}`;
+});
+
 /**
  * เลขหน้าที่จะแสดง — มากกว่า 7 หน้าใช้ … คั่น
  * (หน้าแรก · หน้ารอบปัจจุบัน · หน้าสุดท้าย)
@@ -62,7 +70,7 @@ function go(p) {
   <!-- มีหน้าเดียวไม่ต้องแสดง (ไม่รกหน้า) -->
   <div v-if="total > perPage" class="pager">
     <div class="pager-info">
-      ทั้งหมด {{ total }} {{ label }} · หน้า {{ page }}/{{ pageCount }}
+      {{ rangeText }} · หน้า {{ page }}/{{ pageCount }}
     </div>
     <div class="pager-btns">
       <button
@@ -104,9 +112,9 @@ function go(p) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
-  padding: 10px 4px 2px;
+  padding: 0 2px 8px;
 }
 .pager-info {
   font-size: 13px;

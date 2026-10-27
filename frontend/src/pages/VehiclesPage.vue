@@ -905,6 +905,8 @@ function canCancelRow(r) {
         <div class="card-title">
           ▭ {{ myFilter === 'mine' ? 'รายการจองของฉัน' : 'รายการจองทั้งหมด' }} ({{ visibleBookings.length }})
         </div>
+        <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+        <Pagination :total="visibleBookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-if="visibleBookings.length === 0" class="empty-state"><span class="em">🚐</span>ยังไม่มีรายการจอง</div>
         <div v-else class="table-wrap">
           <table class="tbl">
@@ -978,8 +980,6 @@ function canCancelRow(r) {
             </tbody>
           </table>
         </div>
-        <!-- เลขหน้า (หน้าละ 25 รายการ) -->
-        <Pagination :total="visibleBookings.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
         <div v-for="r in visibleBookings.filter((x) => x.note)" :key="'n' + r.id" class="hint" style="margin-top: 10px">
           หมายเหตุรายการ {{ r.id }}: {{ r.note }}
         </div>

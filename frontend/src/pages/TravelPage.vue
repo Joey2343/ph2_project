@@ -407,6 +407,9 @@ function openExportDialog() {
       ▭ รายการขออนุมัติ/อนุญาตเดินทางไปราชการ ({{ requests.length }} รายการ)
     </div>
 
+    <!-- เลขหน้า (ด้านบนขวา · หน้าละ 25 รายการ · หน้า 1 = รายการล่าสุด) -->
+    <Pagination :total="requests.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
+
     <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>
 
     <div v-else-if="loadError" class="empty-state"><span class="em">⚠️</span>{{ loadError }}</div>
@@ -470,9 +473,6 @@ function openExportDialog() {
           </tr>
         </tbody>
       </table>
-
-      <!-- เลขหน้า (หน้าละ 25 รายการ) -->
-      <Pagination :total="requests.length" :per-page="PER_PAGE" :page="curPage" @update:page="page = $event" />
     </div>
   </div>
 
