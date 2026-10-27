@@ -34,14 +34,41 @@ const year = computed(() => props.month.getFullYear());
 const monthIdx = computed(() => props.month.getMonth());
 const title = computed(() => `${THAI_MONTHS[monthIdx.value]} ${year.value + 543}`);
 
-/** จัดการจองแยกตามวันของเดือนที่แสดง */
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** บวก 1 วันบนสตริง YYYY-MM-DD (ใช้ UTC กันเวลาเขตโซนเลื่อนวัน) */
+function nextDay(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + 1));
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+
+/**
+ * จัดการจองแยกตามวันของเดือนที่แสดง
+ *
+ * ⚠️ ต้องไล่ทุกวันตั้งแต่ date ถึง date_to
+ *    เดิมใช้แค่ b.date (วันแรก) → การจองหลายวันโผล่ในปฏิทินวันเดียว
+ *    (เจอจริง: จองรถ 3 วัน แต่ปฏิทินแสดงแค่วันแรก)
+ *
+ * _cont = true เมื่อเป็นวันต่อเนื่อง (ไม่ใช่วันเริ่ม) → ใช้เติมลูกศรนำหน้าชิป
+ * จำกัดช่วง 400 วัน กันข้อมูลผิดปกติ (date_to ไกลเกินจริง) ทำให้ลูปยาว
+ */
 const byDay = computed(() => {
-  const prefix = `${year.value}-${String(monthIdx.value + 1).padStart(2, '0')}`;
+  const prefix = `${year.value}-${pad2(monthIdx.value + 1)}`;
   const out = {};
   for (const b of props.bookings) {
-    if (b.date && String(b.date).slice(0, 7) === prefix) {
-      const d = parseInt(String(b.date).slice(8, 10), 10);
-      (out[d] = out[d] || []).push(b);
+    const start = String(b.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) continue;
+    let end = String(b.date_to || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) end = start;
+
+    let cur = start;
+    for (let guard = 0; cur <= end && guard < 400; guard++) {
+      if (cur.slice(0, 7) === prefix) {
+        const d = parseInt(cur.slice(8, 10), 10);
+        (out[d] = out[d] || []).push({ ...b, _cont: cur !== start });
+      }
+      cur = nextDay(cur);
     }
   }
   return out;
@@ -83,18 +110,23 @@ function chipTitle(b) {
 
 /** ข้อความบนชิป: ห้องประชุมใช้ชื่อห้อง · ยานพาหนะใช้คำแรกของชื่อรถ + โลโก้เมื่อมอบเจ้าหน้าที่ */
 function chipText(b) {
+  // ↳ = วันต่อเนื่องของการจองหลายวัน (วันแรกไม่มีลูกศร)
+  const cont = b._cont ? '↳ ' : '';
   if (props.kind === 'vehicles') {
-    return `${b.vehicle_name ? b.vehicle_name.split(' ')[0] : '🤝'} ${b.start_time || ''}`;
+    return `${cont}${b.vehicle_name ? b.vehicle_name.split(' ')[0] : '🤝'} ${b.start_time || ''}`;
   }
-  return `${b.room_name} ${b.start_time}`;
+  return `${cont}${b.room_name} ${b.start_time}`;
 }
 
 /** tooltip ของชิป: ยานพาหนะไม่มี topic จึงใช้ชื่อรถ/ปลายทางแทน (ตามของเดิม) */
 function chipTip(b) {
+  const range = b.date_to && b.date_to !== b.date
+    ? ` • ${UI.date(b.date)} → ${UI.date(b.date_to)}`
+    : '';
   if (props.kind === 'vehicles') {
-    return `${b.vehicle_name || 'มอบเจ้าหน้าที่จัดให้'} • ${b.start_time || '-'}-${b.end_time || '-'} • ${UI.personName(b)}`;
+    return `${b.vehicle_name || 'มอบเจ้าหน้าที่จัดให้'} • ${b.start_time || '-'}-${b.end_time || '-'} • ${UI.personName(b)}${range}`;
   }
-  return chipTitle(b);
+  return `${chipTitle(b)}${range}`;
 }
 </script>
 
