@@ -638,14 +638,18 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in records" :key="r.id">
+            <tr v-for="r in records" :key="r.is_travel ? 'travel-' + r.user_id : r.id" :class="{ 'travel-row': r.is_travel }">
               <td>{{ UI.date(r.date) }}</td>
               <td v-if="scope === 'all'">{{ UI.personName(r) }}</td>
               <td v-if="scope === 'all'">{{ r.workplace }}</td>
-              <td>{{ workSiteLabel(r) }}</td>
-              <td>{{ UI.time(r.clock_in) }}</td>
-              <td>{{ UI.time(r.clock_out) }}</td>
-              <td v-if="scope === 'all' || canEditMine">
+              <td>
+                <span v-if="r.is_travel" class="travel-tag">ไปราชการ</span>
+                <template v-else>{{ workSiteLabel(r) }}</template>
+              </td>
+              <!-- ไปราชการ: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
+              <td>{{ r.is_travel ? '' : UI.time(r.clock_in) }}</td>
+              <td>{{ r.is_travel ? '' : UI.time(r.clock_out) }}</td>
+              <td v-if="(scope === 'all' || canEditMine) && !r.is_travel">
                 <div style="display: inline-flex; gap: 6px">
                   <button class="btn btn-xs btn-outline" title="แก้ไขเวลา" @click="openEdit(r)">✎</button>
                   <button class="btn btn-xs btn-danger" title="ลบบันทึกเวลา" @click="deleteRecord(r)">✕</button>
@@ -1051,5 +1055,23 @@ onBeforeUnmount(() => {
   .clock-btn-blink {
     animation: none;
   }
+}
+
+/*
+ * แถว "ไปราชการ" — ดึงจากรายการขออนุมัติ/อนุญาตเดินทางไปราชการ
+ * ไม่มีเวลาเข้า/ออก จึงแสดงป้ายกำกับให้เห็นชัดว่าไปราชการ
+ */
+.travel-tag {
+  display: inline-block;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.travel-row td {
+  background: #f8fafc;
 }
 </style>

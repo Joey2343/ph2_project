@@ -697,6 +697,14 @@ ph2_project/
     - จำวันล่าสุดใน settings `clock_auto_out_last` → รีสตาร์ทไม่ทำซ้ำ
     - ปิดในเซิร์ฟเวอร์ทดสอบ (`TELEGRAM_DISABLED=1`) เพื่อไม่ให้ปิดเวลาของเทสต์
     - เทสต์กันไว้ที่ `backend/scripts/test-clock-auto-out.js` (อยู่ใน `npm run verify`)
+  - **รายการบันทึกเวลาทำงานของเจ้าหน้าที่ แสดงผู้ที่ "ไปราชการ" ด้วย**
+    - `/time/all?date=...` จะเพิ่มแถวของผู้ที่มีคำขอไปราชการ **อนุมัติแล้ว** ครอบคลุมวันนั้น
+      (`status='approved'` และ `date_from <= date <= date_to`)
+    - แถวนั้น: `work_site = "ไปราชการ"` · `clock_in/clock_out = null` · `id = null` · `is_travel = 1`
+    - หน้าเว็บแสดงป้าย "ไปราชการ" แทนเวลาเข้า/ออก และ **ไม่แสดงปุ่มแก้ไข/ลบ**
+    - ข้ามคนที่มีบันทึกเวลาของวันนั้นอยู่แล้ว (กันแถวซ้ำ)
+    - ทำเฉพาะมุมมอง "วันเดียว" (ไม่ทำกับมุมมองรายเดือน)
+    - เทสต์กันไว้ที่ `backend/scripts/test-clock-travel-rows.js` (อยู่ใน `npm run verify`)
   - ⚠️ `verify:pages` ต้องจำลองตำแหน่ง GPS (`Browser.grantPermissions` +
     `Emulation.setGeolocationOverride`) ไม่งั้น headless Chrome ระบุตำแหน่งไม่ได้
     → เทสต์ "ลงเวลาเข้างานสำเร็จ" พังทั้งที่โค้ดถูก

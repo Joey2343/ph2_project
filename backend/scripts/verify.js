@@ -219,6 +219,11 @@ async function main() {
   console.log('\n[ทดสอบลงเวลาออกงานอัตโนมัติ 17:00 น.]');
   results.push(run('test-clock-auto-out', [path.join(__dirname, 'test-clock-auto-out.js')]));
 
+  console.log('\n[ทดสอบรายการบันทึกเวลาทำงานแสดงผู้ที่ไปราชการของวันนั้น]');
+  results.push(run('test-clock-travel-rows', [path.join(__dirname, 'test-clock-travel-rows.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
 

@@ -672,7 +672,52 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
   if (user_id) { sql += ' AND t.user_id = ?'; args.push(Number(user_id)); }
   sql += ' ORDER BY t.date DESC, t.user_id';
   const [rows, editors] = await Promise.all([db.prepare(sql).all(...args), getTimeEditorUsers()]);
-  res.json({ records: rows.map(withWorkSite), editors, can_edit: true });
+  const records = rows.map(withWorkSite);
+
+  /*
+   * เพิ่มรายชื่อผู้ "ไปราชการ" ของวันนั้น (จากคำขอที่อนุมัติแล้ว)
+   *
+   * ทำไม: ผู้ที่ไปราชการไม่ได้ลงเวลาเข้า/ออก แต่ต้องเห็นในรายการบันทึกเวลาของวันนั้น
+   *   → แสดงชื่อ + กลุ่มงาน + สถานที่ทำงาน = "ไปราชการ" และไม่แสดงเวลาเข้า/ออก
+   *
+   * เงื่อนไข
+   *   - เฉพาะเมื่อดู "วันเดียว" (date) — ไม่ทำกับมุมมองรายเดือน (จะซ้ำหลายวัน)
+   *   - คำขอต้อง status = approved และครอบคลุมวันที่นั้น (date_from <= date <= date_to)
+   *   - ข้ามคนที่มีบันทึกเวลาของวันนั้นอยู่แล้ว (กันแถวซ้ำ)
+   *   - id = null + is_travel = 1 → หน้าเว็บไม่แสดงปุ่มแก้ไข/ลบ
+   */
+  if (date && !month) {
+    const travels = await db.prepare(`SELECT tr.user_id FROM travel_requests tr
+      JOIN users u ON u.id = tr.user_id
+      WHERE tr.status = 'approved' AND tr.date_from <= ? AND tr.date_to >= ? AND u.status = 'active'`).all(date, date);
+    if (travels.length) {
+      const have = new Set(records.map((r) => Number(r.user_id)));
+      const ids = [...new Set(travels.map((t) => Number(t.user_id)))].filter((id) => id && !have.has(id));
+      if (ids.length) {
+        const users = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
+          FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+        for (const u of users) {
+          records.push({
+            id: null,
+            user_id: u.id,
+            date,
+            clock_in: null,
+            clock_out: null,
+            title: u.title,
+            full_name: u.full_name,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            username: u.username,
+            workplace: u.workplace,
+            work_site: 'ไปราชการ',
+            is_travel: 1,
+          });
+        }
+      }
+    }
+  }
+
+  res.json({ records, editors, can_edit: true });
 });
 
 // สถิติภาพรวม — admin และผู้ที่ได้รับสิทธิ์
