@@ -689,6 +689,14 @@ ph2_project/
     แต่ถ้าตั้งพิกัดแล้วไม่ส่ง lat/lng มา → **400**
   - หน้าเว็บขอ GPS **ทุกอุปกรณ์** (มือถือ/แท็บเล็ต/คอมพิวเตอร์) ด้วย `getPosition()`
     (timeout 15 วินาที) — ไม่มี `isMobileDevice()` อีกแล้ว
+  - ⚠️ **ตรวจ GPS เฉพาะการลงเวลา "เข้างาน"** — การลงเวลา **ออกงานไม่ต้องอ้างอิงพิกัด**
+    (`/time/check` type=out ไม่ตรวจตำแหน่ง · `clock_out_src` = "ไม่ตรวจตำแหน่ง (ลงเวลาออกงาน)")
+  - **ลงเวลาออกงานอัตโนมัติ 17:00 น.** (`backend/lib/clock-autoout.js`)
+    - ทุกวัน เมื่อเวลาผ่าน 17:00 น. → ปิดเวลาออกให้ทุกคนที่ "เข้าแล้วแต่ยังไม่ออก"
+      `clock_out = '17:00:00'` · `clock_out_src = 'อัตโนมัติ (ครบกำหนดเวลา 17:00 น.)'`
+    - จำวันล่าสุดใน settings `clock_auto_out_last` → รีสตาร์ทไม่ทำซ้ำ
+    - ปิดในเซิร์ฟเวอร์ทดสอบ (`TELEGRAM_DISABLED=1`) เพื่อไม่ให้ปิดเวลาของเทสต์
+    - เทสต์กันไว้ที่ `backend/scripts/test-clock-auto-out.js` (อยู่ใน `npm run verify`)
   - ⚠️ `verify:pages` ต้องจำลองตำแหน่ง GPS (`Browser.grantPermissions` +
     `Emulation.setGeolocationOverride`) ไม่งั้น headless Chrome ระบุตำแหน่งไม่ได้
     → เทสต์ "ลงเวลาเข้างานสำเร็จ" พังทั้งที่โค้ดถูก
@@ -891,7 +899,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **202** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 40/40 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 41/41 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (108 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

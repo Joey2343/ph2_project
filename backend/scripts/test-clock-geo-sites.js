@@ -230,29 +230,37 @@ async function sessionOf(userId) {
       `รายการ "มาทำงานวันนี้" (/today-summary) แสดง work_site = "${NAME_CENTER}"`,
       `ได้ "${workedB.work_site}"`);
 
-    /* ── ⑤ ลงเวลาออกที่สถานที่ 2 ──────────────────────────────────────── */
+    /* ── ⑤ ลงเวลาออกงานไม่ต้องอ้างอิงพิกัด ───────────────────────────── */
     console.log('');
-    console.log('⑤ อยู่ในรัศมี "ศูนย์พัฒนาวิชาการ ร่องกาศ" → ลงเวลาออกได้');
+    console.log('⑤ ลงเวลาออกงานไม่ต้องอ้างอิงพิกัด (ผู้ใช้สั่ง)');
+    // อยู่นอกรัศมีทุกสถานที่ (พิกัดไกลมาก) ก็ต้องลงเวลาออกได้
     const farOut = await jpost('/api/time/check', userA, { type: 'out', lat: FAR.lat, lng: FAR.lng });
-    check(farOut.status === 403, 'ลงเวลาออกนอกพื้นที่ → 403', `ได้ ${farOut.status}`);
-    todayA = (await jget('/api/time/today', userA)).body || {};
-    check(!(todayA.record || {}).clock_out, 'ยังไม่มีเวลาออกงานหลังถูกปฏิเสธ');
-
-    const outA = await jpost('/api/time/check', userA, { type: 'out', lat: NEAR_CENTER.lat, lng: NEAR_CENTER.lng });
-    check(outA.status === 200, 'ลงเวลาออกที่สถานที่ 2 → 200', `ได้ ${outA.status} ${JSON.stringify(outA.body)}`);
+    check(farOut.status === 200, 'ลงเวลาออกงานด้วยพิกัดไกล → 200 (ไม่ตรวจตำแหน่ง)',
+      `ได้ ${farOut.status} ${JSON.stringify(farOut.body)}`);
     todayA = (await jget('/api/time/today', userA)).body || {};
     recA = todayA.record || {};
     check(!!recA.clock_out, 'มีเวลาออกงานในบันทึกจริง');
-    check(String(recA.clock_out_src || '').includes(NAME_CENTER),
-      `clock_out_src บอกสถานที่ที่ 2 ("${NAME_CENTER}")`,
+    check(String(recA.clock_out_src || '').includes('ไม่ตรวจตำแหน่ง'),
+      'clock_out_src บอกว่าไม่ได้ตรวจตำแหน่ง',
       `ได้ "${recA.clock_out_src}"`);
 
-    /* ── ⑥ ไม่ส่ง GPS → 400 ─────────────────────────────────────────── */
+    // ออกงานซ้ำไม่ได้
+    const outAgain = await jpost('/api/time/check', userA, { type: 'out' });
+    check(outAgain.status === 400, 'ลงเวลาออกงานซ้ำ → 400', `ได้ ${outAgain.status}`);
+
+    // ออกงานโดยไม่ส่ง lat/lng เลยก็ต้องได้
+    const userE = await mkUser('e');
+    await jpost('/api/time/check', userE, { type: 'in', lat: NEAR_OFFICE.lat, lng: NEAR_OFFICE.lng });
+    const outNoGps = await jpost('/api/time/check', userE, { type: 'out' });
+    check(outNoGps.status === 200, 'ลงเวลาออกงานโดยไม่ส่ง GPS → 200',
+      `ได้ ${outNoGps.status} ${JSON.stringify(outNoGps.body)}`);
+
+    /* ── ⑥ ไม่ส่ง GPS ตอนเข้างาน → 400 ──────────────────────────────── */
     console.log('');
-    console.log('⑥ ไม่ส่งตำแหน่ง GPS มา → 400 (ใช้ GPS ทุกอุปกรณ์)');
+    console.log('⑥ ไม่ส่งตำแหน่ง GPS ตอนเข้างาน → 400');
     const userC = await mkUser('c');
     const noGps = await jpost('/api/time/check', userC, { type: 'in' });
-    check(noGps.status === 400, 'ไม่ส่ง lat/lng → 400', `ได้ ${noGps.status} ${JSON.stringify(noGps.body)}`);
+    check(noGps.status === 400, 'ไม่ส่ง lat/lng ตอนเข้างาน → 400', `ได้ ${noGps.status} ${JSON.stringify(noGps.body)}`);
 
     /* ── ⑦ ปิดการตรวจสอบ → ลงเวลาได้โดยไม่ต้องมี GPS ────────────────── */
     console.log('');

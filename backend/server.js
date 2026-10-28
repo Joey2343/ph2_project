@@ -21,6 +21,7 @@ const db = require('./db');
 const auth = require('./lib/auth');
 const { wrapHandler } = require('./lib/async-route');
 const clockReminder = require('./lib/clock-reminder');
+const clockAutoOut = require('./lib/clock-autoout');
 
 require('./lib/simdate').install(); // นาฬิกาจำลอง (settings: sim_today) — ต้องมาก่อนโค้ดที่ใช้ Date
 
@@ -173,9 +174,11 @@ async function start() {
   await db.bootstrap();
   startSessionPurge();
   // เตือนลงเวลาทำงานผ่าน Telegram (จ-ศ 08:20 เข้างาน / 16:30 ออกงาน)
+  // + ลงเวลาออกงานอัตโนมัติ 17:00 น.
   // ปิดได้ด้วย TELEGRAM_DISABLED=1 (เซิร์ฟเวอร์ทดสอบ)
   if (String(process.env.TELEGRAM_DISABLED || '').trim() !== '1') {
     clockReminder.startClockReminders();
+    clockAutoOut.startAutoClockOut();
   }
 
   app.listen(PORT, () => {

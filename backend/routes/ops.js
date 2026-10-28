@@ -583,13 +583,17 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   const cfg = await getClockGeoConfig();
   let rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
 
-  // ---- ตรวจตำแหน่งด้วย GPS ของอุปกรณ์ เทียบกับพิกัดสถานที่ทำงาน ----
+  // ---- ตรวจตำแหน่งด้วย GPS "เฉพาะการลงเวลาเข้างาน" ----
   // ใช้ GPS ทุกอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) — ไม่ตรวจจาก IP อีกแล้ว
   // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ใดสถานที่หนึ่ง (มี 2 แห่ง)
+  //
+  // ⚠️ การลงเวลาออกงาน "ไม่ต้องอ้างอิงพิกัด" (ผู้ใช้สั่ง)
+  //    เพราะบางวันต้องออกไปปฏิบัติงานนอกสถานที่/กลับบ้านก่อนเวลา
+  //    → ไม่บล็อกการออกงาน และไม่บันทึกสถานที่
   let src = '';
   let siteName = '';
   const warn = [];
-  if (cfg.enabled) {
+  if (type === 'in' && cfg.enabled) {
     const sites = (cfg.sites || []).filter((s) => s.lat !== null && s.lng !== null);
     if (!sites.length) {
       warn.push('ยังไม่ได้ตั้งค่าพิกัด (ละติจูด/ลองติจูด) ของสถานที่ทำงาน');
@@ -636,8 +640,10 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   if (type === 'out') {
     if (!rec || !rec.clock_in) return res.status(400).json({ error: 'กรุณาลงเวลาเข้างานก่อน' });
     if (rec.clock_out) return res.status(400).json({ error: 'คุณได้ลงเวลาออกงานแล้วในวันนี้' });
-    await db.prepare('UPDATE time_records SET clock_out = ?, clock_out_src = ? WHERE id = ?').run(t, src || null, rec.id);
-    return res.json({ ok: true, site: siteName || null, message: `ลงเวลาออกงาน ${t}${siteLabel} เรียบร้อย${note}`, warning: warn });
+    // ออกงานไม่ต้องมีพิกัด — บันทึกที่มาว่าไม่ได้ตรวจตำแหน่ง
+    const outSrc = 'ไม่ตรวจตำแหน่ง (ลงเวลาออกงาน)';
+    await db.prepare('UPDATE time_records SET clock_out = ?, clock_out_src = ? WHERE id = ?').run(t, outSrc, rec.id);
+    return res.json({ ok: true, site: null, message: `ลงเวลาออกงาน ${t} เรียบร้อย`, warning: [] });
   }
   res.status(400).json({ error: 'ประเภทการลงเวลาไม่ถูกต้อง' });
 });

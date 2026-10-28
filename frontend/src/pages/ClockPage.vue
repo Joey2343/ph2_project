@@ -63,18 +63,21 @@ async function loadToday() {
   }
 }
 
-/** ลงเวลาพร้อมตรวจตำแหน่ง (GPS ทุกอุปกรณ์) */
+/** ลงเวลาพร้อมตรวจตำแหน่ง (GPS เฉพาะเข้างาน — ออกงานไม่ต้องมีพิกัด) */
 async function doCheck(type) {
   if (checking.value) return;
   checking.value = type;
   try {
     const payload = { type };
-    try {
-      const pos = await getPosition();
-      payload.lat = pos.coords.latitude;
-      payload.lng = pos.coords.longitude;
-    } catch (e) {
-      return UI.toast(geoErrorMessage(e), 'error');
+    // ตรวจพิกัดเฉพาะ "เข้างาน" (ออกงานไม่ต้องอ้างอิงพิกัด)
+    if (type === 'in') {
+      try {
+        const pos = await getPosition();
+        payload.lat = pos.coords.latitude;
+        payload.lng = pos.coords.longitude;
+      } catch (e) {
+        return UI.toast(geoErrorMessage(e), 'error');
+      }
     }
     const res = await api.post('/time/check', payload);
     const hasWarn = res.warning && res.warning.length;
@@ -761,8 +764,9 @@ onBeforeUnmount(() => {
   <!-- ---------- ตั้งค่าตำแหน่งที่ทำงาน ---------- -->
   <AppModal v-if="locOpen" title="📍 ตั้งค่าตำแหน่งที่ทำงาน (การลงเวลา)" size="lg" footer @close="locOpen = false">
     <p class="hint" style="margin-bottom: 12px">
-      ใช้ตำแหน่ง GPS ของอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) เทียบกับพิกัดของสถานที่ทำงาน
-      — ลงเวลาได้เมื่ออยู่ในรัศมีของสถานที่ใดสถานที่หนึ่งที่กำหนดไว้ด้านล่าง
+      ใช้ตำแหน่ง GPS ของอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) ตรวจเฉพาะ <b>การลงเวลาเข้างาน</b>
+      — ลงเวลาเข้าได้เมื่ออยู่ในรัศมีของสถานที่ใดสถานที่หนึ่งด้านล่าง
+      (การลงเวลาออกงานไม่ตรวจตำแหน่ง)
     </p>
 
     <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; cursor: pointer; width: fit-content">
