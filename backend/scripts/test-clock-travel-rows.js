@@ -109,7 +109,8 @@ async function jget(p, cookie) {
     console.log('');
     console.log('③ คำขอที่ยังไม่อนุมัติต้องไม่ถูกดึงมา');
     const rowC = rows.find((r) => Number(r.user_id) === C);
-    check(!rowC, 'ไม่พบผู้ที่คำขอยัง pending');
+    check(!rowC || !rowC.is_travel, 'ไม่แสดงผู้ที่คำขอยัง pending เป็น "ไปราชการ"',
+      JSON.stringify(rowC && { travel: rowC.is_travel, site: rowC.work_site }));
 
     console.log('');
     console.log('④ คณะผู้ร่วมเดินทาง (companion_ids) ถือว่าไปราชการด้วย');

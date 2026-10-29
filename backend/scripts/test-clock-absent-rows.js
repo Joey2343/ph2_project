@@ -101,6 +101,27 @@ async function jput(p, cookie, body) {
     console.log('');
     console.log('③ admin ไม่ถูกนับว่าขาดงาน');
     check(!adminRow, 'ไม่มีแถวขาดงานของ admin');
+
+    console.log('');
+    console.log('④ รายงานการลงเวลาทำงานก็ต้องแสดงผู้ที่ไม่ได้มาปฏิบัติงาน');
+    const rep = await jget('/api/time/report?period=day&date=' + PAST, admin);
+    const repRows = (rep.body && rep.body.records) || [];
+    const repB = repRows.find((r) => Number(r.user_id) === B);
+    check(rep.status === 200 && !!repB, 'รายงานมีรายชื่อผู้ที่ไม่ได้มาปฏิบัติงาน', `มี ${repRows.length} แถว`);
+    check(repB && repB.is_absent === 1 && repB.work_site === 'ไม่ได้มาปฏิบัติงาน',
+      'รายงาน: สถานที่ทำงาน = "ไม่ได้มาปฏิบัติงาน"',
+      JSON.stringify(repB && { a: repB.is_absent, s: repB.work_site }));
+    const idxAbsent = repRows.findIndex((r) => Number(r.user_id) === B);
+    const idxPresent = repRows.findIndex((r) => Number(r.user_id) === A);
+    check(idxAbsent >= 0 && idxPresent >= 0 && idxAbsent < idxPresent,
+      'รายงานเรียงแถวขาดงานไว้บนสุดของวันนั้น',
+      `ขาดงาน=${idxAbsent} · มีเวลาเข้า=${idxPresent}`);
+
+    // ไฟล์ Excel ต้องดาวน์โหลดได้ (สร้างจากแถวชุดเดียวกัน)
+    const xr = await fetch(BASE + '/api/time/report.xlsx?period=day&date=' + PAST, { headers: { Cookie: admin } });
+    check(xr.status === 200, 'ดาวน์โหลด .xlsx ของวันนั้นได้', `ได้ ${xr.status}`);
+    check(String(xr.headers.get('content-type') || '').includes('spreadsheetml'),
+      'ไฟล์ที่ได้เป็น Excel', xr.headers.get('content-type') || '-');
   } catch (e) {
     console.error('  ⚠ ' + e.message);
     fail += 1;

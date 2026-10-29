@@ -109,7 +109,8 @@ async function jpost(p, cookie, body) {
     check(todayL2.body && todayL2.body.on_leave === false, 'ผู้ที่ลายัง pending → on_leave = false',
       JSON.stringify(todayL2.body && todayL2.body.on_leave));
     const row2 = rows.find((r) => Number(r.user_id) === L2);
-    check(!row2, 'ไม่แสดงแถวของผู้ที่ลายัง pending');
+    check(!row2 || !row2.is_leave, 'ไม่แสดงแถว "ลา" ของผู้ที่ยัง pending',
+      JSON.stringify(row2 && { leave: row2.is_leave, site: row2.work_site }));
 
     // รายงานการลงเวลาต้องมีผู้ที่ลาด้วย (สถานที่ทำงาน = ประเภทการลา)
     const rep = await jget('/api/time/report?period=day&date=' + today, 'sid=' + adminSid);
@@ -117,7 +118,8 @@ async function jpost(p, cookie, body) {
     const repL1 = repRows.find((r) => Number(r.user_id) === L1);
     check(rep.status === 200 && !!repL1, 'รายงานการลงเวลามีผู้ที่ลาด้วย', `มี ${repRows.length} แถว`);
     check(repL1 && repL1.work_site === 'ลาป่วย', 'รายงาน: สถานที่ทำงาน = "ลาป่วย"', `ได้ "${repL1 && repL1.work_site}"`);
-    check(repRows.every((r) => Number(r.user_id) !== L2), 'รายงานไม่แสดงผู้ที่ลายัง pending');
+    check(!repRows.some((r) => Number(r.user_id) === L2 && r.is_leave),
+      'รายงานไม่แสดงผู้ที่ลายัง pending เป็น "ลา"');
 
     for (const id of madeLeaves) {
       try { await db.prepare('DELETE FROM leave_requests WHERE id = ?').run(id); } catch (e) { /* ignore */ }

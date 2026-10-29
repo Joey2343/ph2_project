@@ -197,6 +197,57 @@ async function leaveUsersOn(date) {
   return out;
 }
 
+/**
+ * วันที่นั้น "จบแล้ว" หรือยัง (ใช้ตัดสินว่าจะแสดงผู้ที่ไม่ได้มาปฏิบัติงาน)
+ *   - วันในอดีต = จบแล้ว
+ *   - วันนี้ = จบเมื่อเวลาผ่าน 17:01 น.
+ *   - วันในอนาคต = ยังไม่จบ
+ */
+function isDayOver(date) {
+  const today = simdate.todayISO();
+  if (!date) return false;
+  if (date < today) return true;
+  if (date > today) return false;
+  const now = new Date();
+  return now.getHours() > 17 || (now.getHours() === 17 && now.getMinutes() >= 1);
+}
+
+/**
+ * เจ้าหน้าที่ สพป. (ยกเว้น admin) ที่ยังไม่มีแถวของวันนั้น
+ *   = ไม่ได้ลงเวลา/ไปราชการ/ลา → "ไม่ได้มาปฏิบัติงาน"
+ *
+ * @param {string} date  วันที่ YYYY-MM-DD
+ * @param {Set<number>} have  id ของผู้ที่มีแถวอยู่แล้วของวันนั้น
+ * @returns {Promise<Array>} แถวข้อมูล (work_site = "ไม่ได้มาปฏิบัติงาน", is_absent = 1)
+ */
+async function absentStaffOn(date, have) {
+  const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
+    FROM users WHERE status = 'active'
+      AND COALESCE(user_group, 'office') = 'office'
+      AND role <> 'admin'
+      AND (created_at IS NULL OR created_at = '' OR LEFT(created_at, 10) <= ?)`).all(date);
+  const out = [];
+  for (const u of staff) {
+    if (have && have.has(Number(u.id))) continue;
+    out.push({
+      id: null,
+      user_id: u.id,
+      date,
+      clock_in: null,
+      clock_out: null,
+      title: u.title,
+      full_name: u.full_name,
+      first_name: u.first_name,
+      last_name: u.last_name,
+      username: u.username,
+      workplace: u.workplace,
+      work_site: 'ไม่ได้มาปฏิบัติงาน',
+      is_absent: 1,
+    });
+  }
+  return out;
+}
+
 /** รัศมีเริ่มต้น (เมตร) เมื่อยังไม่เคยตั้งค่า */
 const DEFAULT_CLOCK_RADIUS = 200;
 
@@ -950,45 +1001,12 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
     /*
      * หลังเวลา 17:01 ของวันนั้น → เจ้าหน้าที่ที่เหลือ (ไม่มีบันทึกเวลา/ไปราชการ/ลา)
      * ถือว่า "ไม่ได้มาปฏิบัติงาน" และแสดงไว้บนสุดของรายการ
-     *
-     * เงื่อนไขเวลา
-     *   - วันที่ดูเป็น "วันนี้" และเวลาปัจจุบัน >= 17:01
-     *   - หรือวันที่ดูเป็นวันในอดีต (วันนั้นจบแล้ว)
-     * ยกเว้น admin (ผู้ดูแลระบบไม่ต้องถูกนับว่าขาดงาน)
-     * เฉพาะเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา)
+     * (logic อยู่ใน absentStaffOn — วันที่ผ่านไปแล้วก็นับด้วย)
      */
-    const nowClock = new Date();
-    const todaySim = simdate.todayISO();
-    const dayOver =
-      date < todaySim ||
-      (date === todaySim &&
-        (nowClock.getHours() > 17 || (nowClock.getHours() === 17 && nowClock.getMinutes() >= 1)));
-
-    if (dayOver) {
-      const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
-        FROM users WHERE status = 'active'
-          AND COALESCE(user_group, 'office') = 'office'
-          AND role <> 'admin'
-          AND (created_at IS NULL OR created_at = '' OR LEFT(created_at, 10) <= ?)`).all(date);
+    if (isDayOver(date)) {
       const haveAll = new Set(records.map((r) => Number(r.user_id)));
-      for (const u of staff) {
-        if (haveAll.has(Number(u.id))) continue;
-        records.push({
-          id: null,
-          user_id: u.id,
-          date,
-          clock_in: null,
-          clock_out: null,
-          title: u.title,
-          full_name: u.full_name,
-          first_name: u.first_name,
-          last_name: u.last_name,
-          username: u.username,
-          workplace: u.workplace,
-          work_site: 'ไม่ได้มาปฏิบัติงาน',
-          is_absent: 1,
-        });
-      }
+      const absentRows = await absentStaffOn(date, haveAll);
+      records.push(...absentRows);
     }
   }
 
@@ -1022,12 +1040,14 @@ function dateListInRange(start, end) {
 
 /**
  * เรียงแถวรายงานให้เหมือนหน้า "บันทึกเวลาทำงานของเจ้าหน้าที่"
- *   วันที่ใหม่ → เก่า · เวลาเข้าล่าสุดก่อน · แถวที่ไม่มีเวลาเข้า (ไปราชการ/ลา) ไปท้าย
+ *   วันที่ใหม่ → เก่า · "ไม่ได้มาปฏิบัติงาน" ขึ้นก่อนในแต่ละวัน
+ *   · เวลาเข้าล่าสุดก่อน · แถวที่ไม่มีเวลาเข้า (ไปราชการ/ลา) ไปท้าย
  */
 function sortReportRows(a, b) {
   const d1 = String(a.date || '');
   const d2 = String(b.date || '');
   if (d1 !== d2) return d2.localeCompare(d1);
+  if (!!a.is_absent !== !!b.is_absent) return a.is_absent ? -1 : 1;
   const t1 = String(a.clock_in || '');
   const t2 = String(b.clock_in || '');
   if (!t1 && !t2) return 0;
@@ -1049,11 +1069,18 @@ async function addNonWorkingReportRows(records, start, end) {
   const dates = dateListInRange(start, end);
   if (!dates.length) return records;
 
-  const have = new Set(records.map((r) => `${Number(r.user_id)}|${r.date}`));
+  // ผู้ที่มีแถวแล้ว แยกตามวัน (สำหรับตัดสินผู้ขาดงานของแต่ละวัน)
+  const haveByDate = new Map();
+  const haveOf = (date) => {
+    if (!haveByDate.has(date)) haveByDate.set(date, new Set());
+    return haveByDate.get(date);
+  };
+  for (const r of records) haveOf(String(r.date)).add(Number(r.user_id));
+
   const pushRow = (row) => {
-    const key = `${Number(row.user_id)}|${row.date}`;
-    if (have.has(key)) return;
-    have.add(key);
+    const set = haveOf(String(row.date));
+    if (set.has(Number(row.user_id))) return;
+    set.add(Number(row.user_id));
     records.push(row);
   };
   const baseRow = (u, date, site, flag) => ({
@@ -1148,6 +1175,13 @@ async function addNonWorkingReportRows(records, start, end) {
       if (date < from || date > to) continue;
       pushRow(baseRow({ ...l, id: l.user_id }, date, site, 'is_leave'));
     }
+  }
+
+  // ---- "ไม่ได้มาปฏิบัติงาน" (วันที่จบแล้ว: อดีต หรือวันนี้หลัง 17:01) ----
+  for (const date of dates) {
+    if (!isDayOver(date)) continue;
+    const absent = await absentStaffOn(date, haveOf(date));
+    for (const row of absent) records.push(row);
   }
 
   return records;

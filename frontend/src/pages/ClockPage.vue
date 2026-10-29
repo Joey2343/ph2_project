@@ -802,9 +802,12 @@ onBeforeUnmount(() => {
                 <td>{{ UI.personName(r) }}</td>
                 <td>{{ r.position }}</td>
                 <td>{{ r.workplace }}</td>
-                <td>{{ workSiteLabel(r) }}</td>
-                <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_in) }}</td>
-                <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_out) }}</td>
+                <td>
+                  <span v-if="r.is_absent" class="absent-tag">ไม่ได้มาปฏิบัติงาน</span>
+                  <template v-else>{{ workSiteLabel(r) }}</template>
+                </td>
+                <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_in) }}</td>
+                <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_out) }}</td>
               </tr>
             </tbody>
           </table>
