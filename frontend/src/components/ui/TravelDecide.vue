@@ -10,9 +10,9 @@
  * 1) forward  — สายสถานศึกษา ขั้นที่ 1 (ผู้ตรวจสอบ)
  *              ปุ่มเดียว "เสนอเรื่อง" ไม่บันทึกความเห็นลงในเอกสาร
  * 2) level1   — สาย สพป. ขั้นที่ 1 (ผู้บังคับบัญชาขั้นต้น)
- *              ตัวเลือก 4 ข้อ: ควรอนุมัติ / ไม่ควรอนุมัติ / ควรอนุญาต / ไม่ควรอนุญาต
+ *              ติ๊กเลือก: ควรอนุญาต / ไม่ควรอนุญาต (ใส่เหตุผลเมื่อไม่ควรอนุญาต)
  * 3) final    — ขั้นสุดท้าย (สพป. ขั้น 2 / สถานศึกษา ขั้น 3)
- *              ตัวเลือก 4 ข้อ: อนุมัติ / ไม่อนุมัติ / อนุญาต / ไม่อนุญาต + เลือกตำแหน่ง
+ *              ติ๊กเลือก: อนุญาต / ไม่อนุญาต (ใส่เหตุผลเมื่อไม่อนุญาต) + เลือกตำแหน่ง
  *
  * ทั้ง 3 แบบส่ง note เป็น JSON: { choices: [...], reasonMap: {...} }
  * และขั้น final ส่ง position ของผู้อนุมัติไปด้วย
@@ -32,16 +32,18 @@ const props = defineProps({
 const emit = defineEmits(['close', 'confirm']);
 
 /* ---------- ตัวเลือกของแต่ละขั้น ---------- */
+/*
+ * ผู้ใช้กำหนด:
+ *   - ผู้บังคับบัญชาขั้นต้น → ติ๊ก "ควรอนุญาต" / "ไม่ควรอนุญาต" (ใส่เหตุผลเมื่อไม่ควรอนุญาต)
+ *   - ผู้อนุมัติ (ขั้นสุดท้าย) → ติ๊ก "อนุญาต" / "ไม่อนุญาต" (ใส่เหตุผลเมื่อไม่อนุญาต)
+ * เลือกได้ครั้งละ 1 ข้อ (radio) — เลือกทั้ง 2 ข้อพร้อมกันไม่ได้
+ */
 const OPTIONS = {
   level1: [
-    { key: 'ควรอนุมัติ', reason: false },
-    { key: 'ไม่ควรอนุมัติ', reason: true },
     { key: 'ควรอนุญาต', reason: false },
     { key: 'ไม่ควรอนุญาต', reason: true },
   ],
   final: [
-    { key: 'อนุมัติ', reason: false },
-    { key: 'ไม่อนุมัติ', reason: true },
     { key: 'อนุญาต', reason: false },
     { key: 'ไม่อนุญาต', reason: true },
   ],
@@ -101,15 +103,12 @@ watch(
   { immediate: true },
 );
 
-function toggle(key) {
-  const i = picked.value.indexOf(key);
-  if (i >= 0) picked.value.splice(i, 1);
-  else picked.value.push(key);
-}
-
-/** เหตุผลจะถูกล้างเมื่อถอดตัวเลือกที่ต้องใส่เหตุผลออก (เหมือนของเดิม) */
-function onToggle(key, opt) {
-  if (opt.reason && picked.value.indexOf(key) < 0) delete reasons.value[key];
+/** เลือกได้ครั้งละ 1 ข้อ (radio) — ล้างเหตุผลของข้อที่ไม่ได้เลือก */
+function pick(key) {
+  picked.value = [key];
+  for (const k of Object.keys(reasons.value)) {
+    if (k !== key) delete reasons.value[k];
+  }
 }
 
 const isRejectPicked = computed(() => picked.value.some((k) => k.startsWith('ไม่')));
@@ -165,10 +164,11 @@ function confirm() {
         <div v-for="o in options" :key="o.key">
           <label style="display: flex; align-items: center; gap: 4px; margin-bottom: 6px; cursor: pointer">
             <input
-              type="checkbox"
+              type="radio"
+              name="travel-decide-choice"
               :checked="picked.includes(o.key)"
               style="width: 16px; height: 16px; flex-shrink: 0; cursor: pointer"
-              @change="onToggle(o.key, o); toggle(o.key)"
+              @change="pick(o.key)"
             />
             {{ o.key }}
           </label>
