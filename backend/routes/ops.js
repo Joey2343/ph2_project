@@ -436,11 +436,101 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
     WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ? AND u.status = 'active'
     ORDER BY u.full_name`).all(today, today);
 
-  // ผู้ที่ไปราชการวันนี้ (คำขอที่อนุมัติแล้วครอบคลุมวันนี้)
-  const travel = await db.prepare(`SELECT t.id, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace, t.title AS topic, t.destination, t.date_from, t.date_to
+  /*
+   * ผู้ที่ไปราชการวันนี้ (คำขอที่อนุมัติแล้วครอบคลุมวันนี้)
+   *
+   * ⚠️ ต้องรวม "คณะผู้ร่วมเดินทาง" ด้วย (ผู้ใช้แจ้ง: การ์ดไปราชการUpไม่แสดงรายชื่อคณะ)
+   *   แถวของผู้ขอ: ใช้ข้อมูลจาก users ที่ JOIN มา
+   *   แถวของคณะ: อ่านจาก form_data.companion_ids (สำรอง: companion_names จับคู่ชื่อ)
+   *   ใช้ปลายทาง/วันที่ของคำขอเดียวกัน
+   *   ถ้าคนเดียวกันปรากฏหลายคำขอ → แสดงครั้งเดียว (กันชื่อซ้ำบนการ์ด)
+   */
+  const travelReqs = await db.prepare(`SELECT t.id, t.user_id, t.form_data, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace, t.title AS topic, t.destination, t.date_from, t.date_to
     FROM travel_requests t JOIN users u ON u.id = t.user_id
     WHERE t.status = 'approved' AND t.date_from <= ? AND t.date_to >= ? AND u.status = 'active'
     ORDER BY u.full_name`).all(today, today);
+
+  const travelFd = travelReqs.map((t) => {
+    let fd = {};
+    try {
+      fd = typeof t.form_data === 'string' ? JSON.parse(t.form_data || '{}') : (t.form_data || {});
+    } catch (e) {
+      fd = {};
+    }
+    const idList = Array.isArray(fd.companion_ids) ? fd.companion_ids.map(Number).filter((n) => n > 0) : [];
+    const nameList = Array.isArray(fd.companion_names)
+      ? fd.companion_names.map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+      : [];
+    return { idList, nameList };
+  });
+
+  // id ของคณะทั้งหมด (โหลดผู้ใช้ครั้งเดียว)
+  const compIdSet = new Set();
+  for (const f of travelFd) for (const id of f.idList) compIdSet.add(id);
+  const compById = new Map();
+  if (compIdSet.size) {
+    const rows2 = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace
+      FROM users WHERE id IN (${[...compIdSet].map(() => '?').join(',')})`).all(...compIdSet);
+    for (const u of rows2) compById.set(Number(u.id), u);
+  }
+  // สำรอง: จับคู่จากชื่อ (ข้อมูลเก่าที่ไม่มี companion_ids)
+  const nameSet = new Set();
+  for (const f of travelFd) for (const n of f.nameList) nameSet.add(n);
+  if (nameSet.size) {
+    const allUsers = await db.prepare(`SELECT id, title, first_name, last_name, full_name, position, workplace
+      FROM users WHERE status = 'active'`).all();
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    for (const u of allUsers) {
+      const built = norm(`${u.title || ''}${u.first_name || ''}  ${u.last_name || ''}`);
+      if (nameSet.has(built) || nameSet.has(norm(u.full_name))) compById.set(Number(u.id), u);
+    }
+  }
+
+  const travel = [];
+  const seenPeople = new Set();
+  for (let i = 0; i < travelReqs.length; i++) {
+    const t = travelReqs[i];
+    const base = {
+      id: t.id,
+      topic: t.topic,
+      destination: t.destination,
+      date_from: t.date_from,
+      date_to: t.date_to,
+    };
+    // ผู้ยื่นคำขอ
+    const ownerId = Number(t.user_id);
+    if (!seenPeople.has(ownerId)) {
+      seenPeople.add(ownerId);
+      travel.push({
+        ...base,
+        user_id: ownerId,
+        title: t.title,
+        full_name: t.full_name,
+        first_name: t.first_name,
+        last_name: t.last_name,
+        position: t.position,
+        workplace: t.workplace,
+      });
+    }
+    // คณะผู้ร่วมเดินทาง
+    const f = travelFd[i];
+    for (const cid of f.idList) {
+      if (seenPeople.has(cid)) continue;
+      const cu = compById.get(cid);
+      if (!cu) continue;
+      seenPeople.add(cid);
+      travel.push({
+        ...base,
+        user_id: cid,
+        title: cu.title,
+        full_name: cu.full_name,
+        first_name: cu.first_name,
+        last_name: cu.last_name,
+        position: cu.position,
+        workplace: cu.workplace,
+      });
+    }
+  }
 
   res.json({ today, worked, birthdays, leave, travel });
 });

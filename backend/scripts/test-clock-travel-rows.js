@@ -118,6 +118,15 @@ async function jget(p, cookie) {
     check(rowD && rowD.work_site === 'ไปราชการ', 'คณะก็แสดงสถานที่ทำงาน = "ไปราชการ"', `ได้ "${rowD && rowD.work_site}"`);
     check(rowD && !rowD.clock_in && !rowD.clock_out, 'คณะไม่มีเวลาเข้า/ออก');
 
+    // การ์ด "ไปราชการ" บนหน้าแรก ต้องมีชื่อคณะด้วย
+    const sum = await jget('/api/today-summary', 'sid=' + adminSid);
+    const sumTravel = (sum.body && sum.body.travel) || [];
+    const hasA = sumTravel.some((t) => Number(t.user_id) === A);
+    const hasD = sumTravel.some((t) => Number(t.user_id) === D);
+    check(sum.status === 200 && hasA && hasD,
+      'การ์ด "ไปราชการ" (today-summary) แสดงทั้งผู้ขอและคณะ',
+      `ผู้ขอ ${hasA ? 'มี' : 'ไม่มี'} · คณะ ${hasD ? 'มี' : 'ไม่มี'} (${sumTravel.length} คน)`);
+
     console.log('');
     console.log('⑤ ผู้ที่ไปราชการลงเวลาเข้า/ออกไม่ได้');
     const dCookie = 'sid=' + (await auth.newSession(D));
