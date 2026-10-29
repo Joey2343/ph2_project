@@ -272,6 +272,26 @@ const VUE_PAGES = {
         })()`,
       },
       {
+        /* ผู้ใช้ขอ: คณะเกิน 15 คน → ช่องที่ 16 ขึ้นคอลัมน์ใหม่ */
+        name: 'คณะเกิน 15 คน: ช่องที่ 16 ขึ้นคอลัมน์ใหม่',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const num = [...document.querySelectorAll('[data-app-modal] input[type=number]')].find((i) => i.max === '50');
+          if (!num) throw new Error('ไม่พบช่องจำนวนคณะ');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(num, '16');
+          num.dispatchEvent(new Event('input', { bubbles: true }));
+          num.dispatchEvent(new Event('change', { bubbles: true }));
+          await sleep(500);
+          const rows = [...document.querySelectorAll('#tf-companions .tf-companion-row')];
+          if (rows.length !== 16) throw new Error('จำนวนช่อง = ' + rows.length + ' (ต้องเป็น 16)');
+          const x0 = rows[0].getBoundingClientRect().left;
+          const x15 = rows[15].getBoundingClientRect().left;
+          if (x15 <= x0) throw new Error('ช่องที่ 16 ไม่ได้ขึ้นคอลัมน์ใหม่ (x ' + Math.round(x15) + ' <= ' + Math.round(x0) + ')');
+          return true;
+        })()`,
+      },
+      {
         name: 'แบบฟอร์มมีช่องสถานที่และช่วงวันเดินทาง',
         check: `document.body.innerText.includes('สถานที่') && document.body.innerText.includes('ตั้งแต่วันที่')`,
       },

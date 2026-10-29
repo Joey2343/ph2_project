@@ -278,18 +278,15 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
       <!--
         ช่องเลือกชื่อผู้ร่วมเดินทาง — จำนวนช่องตามจำนวนคณะที่กรอก
         มีเลขลำดับนำหน้า (1. 2. 3. ...) · เลือกจากรายชื่อบุคลากร สพป. เท่านั้น
+        แสดงเป็นคอลัมน์ละ 15 ช่อง → ช่องที่ 16 และ 31 ขึ้นคอลัมน์ใหม่
       -->
-      <div v-if="companionNames.length" id="tf-companions" style="margin: 0 0 12px 20px">
-        <div
-          v-for="(name, i) in companionNames"
-          :key="i"
-          style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px"
-        >
-          <span style="width: 24px; text-align: right; font-weight: 700">{{ i + 1 }}.</span>
+      <div v-if="companionNames.length" id="tf-companions" class="tf-companions" style="margin: 0 0 12px 20px">
+        <div v-for="(name, i) in companionNames" :key="i" class="tf-companion-row">
+          <span class="tf-companion-no">{{ i + 1 }}.</span>
           <select
             :id="'tf-companion-' + i"
             v-model="companionNames[i]"
-            style="width: 380px; max-width: 100%; font-size: 14px"
+            class="tf-companion-select"
           >
             <option value="">— เลือกบุคลากร —</option>
             <option v-for="u in optionsFor(i)" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
@@ -421,4 +418,37 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของเดิมทั้งหมด */
+
+/*
+ * ช่องเลือกชื่อคณะ — แบ่งคอลัมน์ละ 15 ช่อง
+ *   ใช้ CSS grid แบบ "ไหลลงคอลัมน์" (grid-auto-flow: column)
+ *   → ช่องที่ 1–15 อยู่คอลัมน์แรก · ช่องที่ 16–30 ขึ้นคอลัมน์ที่สอง · 31+ คอลัมน์ถัดไป
+ *   ถ้าจอแคบเกินกว่าจะแสดงครบ ให้เลื่อนแนวนอนได้ (overflow-x)
+ */
+.tf-companions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(15, auto);
+  gap: 4px 14px;
+  align-items: center;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.tf-companion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tf-companion-no {
+  flex: 0 0 24px;
+  width: 24px;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tf-companion-select {
+  width: 300px;
+  max-width: 100%;
+  font-size: 14px;
+}
 </style>
