@@ -360,6 +360,15 @@ function downloadXlsx() {
   );
 }
 
+/**
+ * ส่งออกรายการ "บันทึกเวลาทำงานของเจ้าหน้าที่" ของวันที่เลือกเป็น Excel
+ * ใช้ endpoint รายงาน period=day (มีบันทึกเวลา + ไปราชการ + ลา และเรียงเหมือนหน้ารายการ)
+ */
+function exportDayXlsx() {
+  const d = day.value || localTodayISO();
+  window.open('/api/time/report.xlsx?period=day&date=' + encodeURIComponent(d), '_blank');
+}
+
 /* ---------- admin: ตั้งค่าตำแหน่งที่ทำงาน ---------- */
 const locOpen = ref(false);
 const locSaving = ref(false);
@@ -643,8 +652,23 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <div class="card-title">
-        ▭ {{ scope === 'all' ? 'บันทึกเวลาทำงานของเจ้าหน้าที่ (' + dayLabel + ')' : 'บันทึกเวลาของฉัน (' + dayLabel + ')' }}
+      <div
+        class="card-title"
+        style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap"
+      >
+        <span>
+          ▭ {{ scope === 'all' ? 'บันทึกเวลาทำงานของเจ้าหน้าที่ (' + dayLabel + ')' : 'บันทึกเวลาของฉัน (' + dayLabel + ')' }}
+        </span>
+        <!-- ส่งออกข้อมูลของวันที่เลือกเป็น Excel (มุมขวาบนของรายการ) -->
+        <button
+          v-if="scope === 'all'"
+          id="clock-export-xlsx"
+          class="btn btn-info btn-sm"
+          title="ส่งออกรายการบันทึกเวลาของวันนี้เป็นไฟล์ Excel"
+          @click="exportDayXlsx"
+        >
+          ⬇️ ส่งออกข้อมูล
+        </button>
       </div>
       <div class="table-wrap">
         <table class="tbl">

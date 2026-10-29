@@ -927,7 +927,7 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **204** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **205** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
 | `backend: npm run verify` | ผ่าน 44/44 (MariaDB 11.4) |
