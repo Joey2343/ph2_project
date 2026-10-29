@@ -712,6 +712,7 @@ function statusPill(r) {
   <LeaveForm
     v-if="formOpen"
     :mode="formMode"
+    :scope="current === 'general-school' ? 'school' : 'office'"
     :record="editTarget"
     @close="formOpen = false"
     @saved="afterChange"

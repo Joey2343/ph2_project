@@ -20,6 +20,8 @@ import ThaiDateField from './ThaiDateField.vue';
 const props = defineProps({
   /** 'general' | 'vacation' */
   mode: { type: String, default: 'general' },
+  /** 'office' = เจ้าหน้าที่ สพป. · 'school' = เจ้าหน้าที่สถานศึกษา (หน้าต่างแยกกันชัดเจน) */
+  scope: { type: String, default: 'office' },
   /** record ที่กำลังแก้ไข — null = สร้างใหม่ */
   record: { type: Object, default: null },
 });
@@ -29,6 +31,7 @@ const emit = defineEmits(['close', 'saved']);
 const u = computed(() => Auth.user || {});
 const isEdit = computed(() => !!props.record);
 const isVacation = computed(() => props.mode === 'vacation');
+const isSchool = computed(() => props.scope === 'school');
 
 const busy = ref(false);
 const statsData = ref([]);
@@ -224,7 +227,11 @@ const TYPES = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบ�
 const TITLE = computed(
   () =>
     (props.record ? '✎ แก้ไขคำขอลา — ' + (props.record.leave_no || '') : '') ||
-    (isVacation.value ? '🏖️ ยื่นคำลาพักผ่อน' : '🤒 ยื่นคำลาป่วย ลากิจ ลาคลอด'),
+    (isVacation.value
+      ? '🏖️ ยื่นคำลาพักผ่อน'
+      : (isSchool.value
+        ? '🤒 ยื่นคำลาป่วย ลากิจ ลาคลอด (สถานศึกษา)'
+        : '🤒 ยื่นคำลาป่วย ลากิจ ลาคลอด')),
 );
 const inputStyle = { width: '100%', padding: '8px', border: '1px solid #d1d5db', borderRadius: '8px' };
 </script>

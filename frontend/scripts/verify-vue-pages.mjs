@@ -461,6 +461,26 @@ const VUE_PAGES = {
         })()`,
       },
       {
+        /* ผู้ใช้ขอ: ฟอร์มยื่นคำลาของสถานศึกษาแยกจาก สพป. — ชื่อมี "(สถานศึกษา)" */
+        name: 'แท็บสถานศึกษา: ฟอร์มยื่นคำลาเป็น "(สถานศึกษา)"',
+        check: `(async () => {
+          const sleep=(ms)=>new Promise((r)=>setTimeout(r,ms));
+          const schoolTab=[...document.querySelectorAll('.seg-btn')].find((b)=>(b.innerText||'').includes('(สถานศึกษา)'));
+          if (!schoolTab) throw new Error('ไม่พบแท็บสถานศึกษา');
+          schoolTab.click(); await sleep(1200);
+          const submit=[...document.querySelectorAll('.toolbar .btn, .page-head .btn')].find((b)=>(b.innerText||'').includes('ยื่นคำลา'));
+          if (!submit) throw new Error('ไม่พบปุ่มยื่นคำลา');
+          submit.click(); await sleep(1200);
+          const modal=document.querySelector('[data-app-modal]');
+          const title=((modal && (modal.querySelector('.modal-title, .modal-head')||{}).innerText)||'').trim();
+          if (!title.includes('(สถานศึกษา)')) throw new Error('ชื่อฟอร์มไม่ถูกต้อง: '+title);
+          // ปิดฟอร์มก่อนไปตรวจแท็บถัดไป
+          const cancel=[...document.querySelectorAll('[data-app-modal] button')].find((b)=>(b.innerText||'').includes('ยกเลิก'));
+          if (cancel) { cancel.click(); await sleep(400); }
+          return true;
+        })()`,
+      },
+      {
         name: 'สลับไปแท็บ "วันลาพักผ่อนสะสม" ได้',
         check: `(async () => {
           const b = __clickText('.seg-btn', 'วันลาพักผ่อนสะสม');

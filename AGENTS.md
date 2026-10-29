@@ -780,6 +780,10 @@ ph2_project/
   - หน้าเว็บ `LeaveForm.vue` ช่อง "มีกำหนด" รับ `min=0.5 step=0.5` + datalist 0.5/1/1.5/…
   - ใช้ `Number()` ไม่ใช่ `parseInt()` (parseInt ทำให้ 0.5 → 0 แล้วตกไปเป็น 1)
   - ยอดคงเหลือคิดจาก `SUM(days)` ของรายการที่อนุมัติแล้ว → 0.5 หักถูกอัตโนมัติ
+- **ฟอร์มยื่นคำลาของสถานศึกษาแยกจาก สพป.**
+  - `LeavePage` ส่ง `:scope="current === 'general-school' ? 'school' : 'office'"` ให้ `LeaveForm`
+  - หน้าต่างของสถานศึกษา: **"🤒 ยื่นคำลาป่วย ลากิจ ลาคลอด (สถานศึกษา)"**
+    (ฟิลด์เหมือนของ สพป. ทุกอย่าง)
 - **ป้ายแจ้งเตือนบนการ์ด "ขออนุญาตลา" ต้องนับตามสายรายคน**
   - นับเฉพาะคำขอที่ **ฉันเป็นผู้อนุมัติของขั้นถัดไป "ของผู้ขอคนนั้น"**
     (`leaveChainLevels(requesterId)` + `leaveApproverIdsFor(requesterId, level)`)
@@ -957,7 +961,7 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **210** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **211** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
 | `backend: npm run verify` | ผ่าน 45/45 (MariaDB 11.4) |
