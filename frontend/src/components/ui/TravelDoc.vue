@@ -151,13 +151,26 @@ function approvalAt(level) {
 const col1 = computed(() => approvalAt(reqIsSchool.value ? 2 : 1));
 const col2 = computed(() => approvalAt(reqIsSchool.value ? 3 : 2));
 
-/** ตัวเลือกของแต่ละคอลัมน์ — ข้อความต่างกันตามสาย */
-const col1Options = computed(() =>
-  reqIsSchool.value
-    ? ['อนุมัติ', 'ไม่อนุมัติ', 'อนุญาต', 'ไม่อนุญาต']
-    : ['ควรอนุมัติ', 'ไม่ควรอนุมัติ', 'ควรอนุญาต', 'ไม่ควรอนุญาต'],
-);
-const col2Options = computed(() => ['อนุมัติ', 'ไม่อนุมัติ', 'อนุญาต', 'ไม่อนุญาต']);
+/**
+ * ตัวเลือกของแต่ละคอลัมน์
+ *   - ผู้บังคับบัญชาขั้นต้น (ขั้น 1 สพป. / ขั้น 2 สถานศึกษา): ควรอนุญาต / ไม่ควรอนุญาต
+ *   - ผู้อนุมัติ/ผู้อนุญาต (ขั้นสุดท้าย): อนุญาต / ไม่อนุญาต
+ * ถ้าเอกสารเก่าบันทึกด้วยคำเดิม (เช่น "ควรอนุมัติ") ให้แสดงคำเดิมนั้นด้วย
+ * เพื่อไม่ให้เครื่องหมายติ๊กหายไปจากเอกสารที่อนุมัติไปแล้ว
+ */
+function savedChoices(a) {
+  return a ? parseNote(a).choices || [] : [];
+}
+const col1Options = computed(() => {
+  const base = ['ควรอนุญาต', 'ไม่ควรอนุญาต'];
+  const extra = savedChoices(col1.value).filter((k) => !base.includes(k));
+  return [...extra, ...base];
+});
+const col2Options = computed(() => {
+  const base = ['อนุญาต', 'ไม่อนุญาต'];
+  const extra = savedChoices(col2.value).filter((k) => !base.includes(k));
+  return [...extra, ...base];
+});
 
 /** ตัวเลือกที่ต้องใส่เหตุผล (ขึ้นต้นด้วย "ไม่") */
 function isReasonKey(key) {
@@ -373,7 +386,9 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
         </div>
 
         <div style="flex: 1">
-          <div style="font-size: 20px; margin-bottom: 5px; text-align: left">ความเห็นของผู้อนุมัติ/อนุญาต</div>
+          <div style="font-size: 20px; margin-bottom: 5px; text-align: left">
+            {{ reqIsSchool ? 'ความเห็นของผู้อนุญาต' : 'ความเห็นของผู้อนุมัติ/อนุญาต' }}
+          </div>
 
           <template v-if="col2">
             <div
