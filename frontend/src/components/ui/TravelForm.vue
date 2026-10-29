@@ -20,6 +20,8 @@ import ThaiDateField from './ThaiDateField.vue';
 const props = defineProps({
   /** true = กำลังส่ง (ปิดปุ่มไว้กันกดซ้ำ) */
   saving: { type: Boolean, default: false },
+  /** 'office' = เจ้าหน้าที่ สพป. · 'school' = เจ้าหน้าที่สถานศึกษา (หน้าต่างแยกกันชัดเจน) */
+  scope: { type: String, default: 'office' },
 });
 
 const emit = defineEmits(['close', 'submit']);
@@ -34,9 +36,29 @@ const fullName = computed(() =>
 );
 const titleName = computed(() => user.value.title || '');
 
+/** หน้าต่างของสถานศึกษา (แยกจากของ สพป. อย่างชัดเจน) */
+const isSchoolScope = computed(() => props.scope === 'school');
+
+/**
+ * "เขียนที่" เริ่มต้น
+ *   - สพป.   → สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2
+ *   - สถานศึกษา → ชื่อสถานศึกษาของผู้ใช้ (current_school / workplace)
+ */
+function defaultWritingAt() {
+  if (!isSchoolScope.value) return 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
+  return user.value.current_school || user.value.workplace || 'สถานศึกษา';
+}
+
+/** กลุ่ม/หน่วย — สถานศึกษาใช้ชื่อโรงเรียน */
+const deptText = computed(() =>
+  isSchoolScope.value
+    ? user.value.workplace || user.value.department || user.value.group || '-'
+    : user.value.department || user.value.group || '-',
+);
+
 /* ---------- ฟอร์ม ---------- */
 const f = ref({
-  writing_at: 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2',
+  writing_at: defaultWritingAt(),
   form_date: todayISO,
   companions: 0,
   travel_subject: '',
@@ -102,7 +124,7 @@ function optionsFor(index) {
 
 function reset() {
   f.value = {
-    writing_at: 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2',
+    writing_at: defaultWritingAt(),
     form_date: todayISO,
     companions: 0,
     travel_subject: '',
@@ -237,11 +259,24 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
 </script>
 
 <template>
-  <AppModal title="✈ ยื่นคำขอไปราชการ" size="lg" footer @close="emit('close')">
+  <AppModal
+    :title="isSchoolScope ? '✈ ยื่นคำขอไปราชการ (สถานศึกษา)' : '✈ ยื่นคำขอไปราชการ'"
+    size="lg"
+    footer
+    @close="emit('close')"
+  >
     <div style="font-size: 14px; line-height: 1.8">
       <!-- ---------- หัวแบบฟอร์ม ---------- -->
       <div style="text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; text-decoration: underline">
         แบบขออนุมัติ/อนุญาตเดินทางไปราชการ
+      </div>
+
+      <!-- ระบุให้ชัดว่าเป็นแบบฟอร์มของสถานศึกษา (แยกจากของ สพป.) -->
+      <div
+        v-if="isSchoolScope"
+        style="text-align: center; font-size: 13px; color: #0369a1; font-weight: 700; margin: -8px 0 12px"
+      >
+        สำหรับเจ้าหน้าที่สถานศึกษา
       </div>
 
       <div style="text-align: right; margin-bottom: 5px; display: flex; justify-content: flex-end; align-items: center; gap: 5px">
@@ -273,7 +308,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
 
       <div :style="lineStyle">
         <span>กลุ่ม/หน่วย </span>
-        <span style="font-weight: bold">{{ user.department || user.group || '-' }}</span>
+        <span style="font-weight: bold">{{ deptText }}</span>
       </div>
 
       <div style="margin-bottom: 10px">

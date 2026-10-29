@@ -486,7 +486,7 @@ function openExportDialog() {
   </div>
 
   <!-- ---------- หน้าต่างย่อย ---------- -->
-  <TravelForm v-if="formOpen" :saving="formSaving" @close="formOpen = false" @submit="submitForm" />
+  <TravelForm v-if="formOpen" :saving="formSaving" :scope="props.scope" @close="formOpen = false" @submit="submitForm" />
 
   <TravelDoc v-if="detail" :record="detail" @close="detail = null" />
 
