@@ -43,9 +43,11 @@ const fullName = computed(() => {
 });
 
 const posText = computed(() => props.record.position || '-');
-const deptText = computed(
-  () => props.record.workplace || props.record.department || props.record.group || '-',
-);
+/** กลุ่ม/หน่วย — ของสถานศึกษาใช้ชื่อโรงเรียน (ตัดรหัสออก) */
+const deptText = computed(() => {
+  const raw = props.record.workplace || props.record.department || props.record.group || '-';
+  return reqIsSchool.value ? schoolDisplayName(raw) : raw;
+});
 
 /**
  * ชื่อผู้ร่วมเดินทาง (จากช่องเลือกชื่อในส่วน "พร้อมด้วยคณะ")
@@ -254,7 +256,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
         </p>
 
         <p style="margin: 0 0 2px 0">
-          <span style="margin-right: 20px">กลุ่ม/หน่วย</span>{{ deptText }}
+          <span style="margin-right: 20px">{{ reqIsSchool ? 'สถานศึกษา' : 'กลุ่ม/หน่วย' }}</span>{{ deptText }}
           <span style="margin-left: 10px">สังกัดสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2</span>
         </p>
 

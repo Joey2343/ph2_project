@@ -51,12 +51,11 @@ function defaultWritingAt() {
   return schoolDisplayName(user.value.current_school || user.value.workplace || '');
 }
 
-/** กลุ่ม/หน่วย — สถานศึกษาใช้ชื่อโรงเรียน */
-const deptText = computed(() =>
-  isSchoolScope.value
-    ? user.value.workplace || user.value.department || user.value.group || '-'
-    : user.value.department || user.value.group || '-',
-);
+/** กลุ่ม/หน่วย — สถานศึกษาใช้ชื่อโรงเรียน (ตัดรหัสออก ใช้คำว่า "โรงเรียน") */
+const deptText = computed(() => {
+  const raw = user.value.workplace || user.value.department || user.value.group || '-';
+  return isSchoolScope.value ? schoolDisplayName(raw) : raw;
+});
 
 /* ---------- ฟอร์ม ---------- */
 const f = ref({
@@ -305,7 +304,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
       </div>
 
       <div :style="lineStyle">
-        <span>กลุ่ม/หน่วย </span>
+        <span style="margin-right: 6px">{{ isSchoolScope ? 'สถานศึกษา' : 'กลุ่ม/หน่วย' }}</span>
         <span style="font-weight: bold">{{ deptText }}</span>
       </div>
 
