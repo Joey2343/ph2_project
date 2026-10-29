@@ -267,16 +267,12 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
   >
     <div style="font-size: 14px; line-height: 1.8">
       <!-- ---------- หัวแบบฟอร์ม ---------- -->
+      <!--
+        ชื่อเรื่องของแบบฟอร์ม — สถานศึกษาใช้ชื่อ "แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร"
+        (ตามที่ผู้ใช้กำหนด) ส่วน สพป. ใช้ชื่อเดิม
+      -->
       <div style="text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; text-decoration: underline">
-        แบบขออนุมัติ/อนุญาตเดินทางไปราชการ
-      </div>
-
-      <!-- ระบุให้ชัดว่าเป็นแบบฟอร์มของสถานศึกษา (แยกจากของ สพป.) -->
-      <div
-        v-if="isSchoolScope"
-        style="text-align: center; font-size: 13px; color: #0369a1; font-weight: 700; margin: -8px 0 12px"
-      >
-        สำหรับเจ้าหน้าที่สถานศึกษา
+        {{ isSchoolScope ? 'แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร' : 'แบบขออนุมัติ/อนุญาตเดินทางไปราชการ' }}
       </div>
 
       <div style="text-align: right; margin-bottom: 5px; display: flex; justify-content: flex-end; align-items: center; gap: 5px">
@@ -318,14 +314,25 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
       </div>
 
       <!--
-        ช่องเลือกชื่อผู้ร่วมเดินทาง — จำนวนช่องตามจำนวนคณะที่กรอก
-        มีเลขลำดับนำหน้า (1. 2. 3. ...) · เลือกจากรายชื่อบุคลากร สพป. เท่านั้น
-        แสดงเป็นคอลัมน์ละ 15 ช่อง → ช่องที่ 16 และ 31 ขึ้นคอลัมน์ใหม่
+        ช่องระบุชื่อผู้ร่วมเดินทาง — จำนวนช่องตามจำนวนคณะที่กรอก
+        มีเลขลำดับนำหน้า (1. 2. 3. ...)
+        · สพป.   → เลือกจากรายชื่อบุคลากร สพป. (คอลัมน์ละ 15 ช่อง)
+        · สถานศึกษา → ช่องพิมพ์ข้อความอิสระ (ผู้ร่วมเดินทางอาจไม่ใช่บุคลากรใน สพป.)
       -->
       <div v-if="companionNames.length" id="tf-companions" class="tf-companions" style="margin: 0 0 12px 20px">
         <div v-for="(name, i) in companionNames" :key="i" class="tf-companion-row">
           <span class="tf-companion-no">{{ i + 1 }}.</span>
+          <input
+            v-if="isSchoolScope"
+            :id="'tf-companion-' + i"
+            v-model="companionNames[i]"
+            type="text"
+            class="tf-companion-select"
+            placeholder="พิมพ์ชื่อ-นามสกุลผู้ร่วมเดินทาง"
+            autocomplete="off"
+          />
           <select
+            v-else
             :id="'tf-companion-' + i"
             v-model="companionNames[i]"
             class="tf-companion-select"

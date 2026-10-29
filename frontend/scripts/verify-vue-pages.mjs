@@ -397,9 +397,30 @@ const VUE_PAGES = {
     ],
     afterActions: [
       {
-        /* ผู้ใช้ขอ: ปุ่มยื่นคำขอของหน้าสถานศึกษา ต้องเปิดฟอร์มของสถานศึกษา (แยกจาก สพป.) */
-        name: 'หน้าต่างยื่นคำขอของสถานศึกษาเปิด (ชื่อมี "(สถานศึกษา)")',
-        check: `(document.body.innerText.includes('ยื่นคำขอไปราชการ (สถานศึกษา)') && document.body.innerText.includes('สำหรับเจ้าหน้าที่สถานศึกษา'))`,
+        /* ผู้ใช้ขอ: ชื่อแบบฟอร์มของสถานศึกษา = "แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร" และไม่มีข้อความ "สำหรับเจ้าหน้าที่สถานศึกษา" */
+        name: 'หน้าต่างสถานศึกษาใช้ชื่อ "แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร" และไม่มีข้อความ "สำหรับเจ้าหน้าที่สถานศึกษา"',
+        check: `(document.body.innerText.includes('แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร')
+          && document.body.innerText.includes('ยื่นคำขอไปราชการ (สถานศึกษา)')
+          && !document.body.innerText.includes('สำหรับเจ้าหน้าที่สถานศึกษา'))`,
+      },
+      {
+        /* ผู้ใช้ขอ: ช่องคณะของสถานศึกษาเป็นช่องพิมพ์ข้อความ (ไม่ใช่ตัวเลือก) */
+        name: 'ช่องคณะของสถานศึกษาเป็นช่องพิมพ์ข้อความ',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const num = [...document.querySelectorAll('[data-app-modal] input[type=number]')].find((i) => i.max === '50');
+          if (!num) throw new Error('ไม่พบช่องจำนวนคณะ');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(num, '1');
+          num.dispatchEvent(new Event('input', { bubbles: true }));
+          num.dispatchEvent(new Event('change', { bubbles: true }));
+          await sleep(400);
+          const el = document.getElementById('tf-companion-0');
+          if (!el) throw new Error('ไม่พบช่องคณะช่องที่ 1');
+          if (el.tagName !== 'INPUT') throw new Error('ช่องคณะยังเป็น ' + el.tagName + ' (ต้องเป็น INPUT)');
+          if (el.type !== 'text') throw new Error('ช่องคณะไม่ใช่ type=text');
+          return true;
+        })()`,
       },
     ],
   },
