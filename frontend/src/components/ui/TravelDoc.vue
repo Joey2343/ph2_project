@@ -201,7 +201,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
 
 <template>
   <AppModal
-    :title="'👁️ รายละเอียดคำขอไปราชการ ' + (record.travel_no || '')"
+    :title="'👁️ รายละเอียดคำขอไปราชการ ' + (record.travel_no || '') + (reqIsSchool ? ' (สถานศึกษา)' : '')"
     size="lg"
     footer
     @close="emit('close')"
@@ -213,7 +213,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
       <!-- ---------- ส่วนหัว ---------- -->
       <div style="text-align: center; margin-bottom: 15px">
         <div style="font-size: 26px; font-weight: bold; text-decoration: underline; margin-bottom: 15px">
-          แบบขออนุมัติ/อนุญาตเดินทางไปราชการ
+          {{ reqIsSchool ? 'แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร' : 'แบบขออนุมัติ/อนุญาตเดินทางไปราชการ' }}
         </div>
       </div>
 
