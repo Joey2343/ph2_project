@@ -176,6 +176,27 @@ async function travelUserIdsOn(date) {
   return out;
 }
 
+/**
+ * ผู้ที่ "ลา" (อนุมัติแล้ว) ของวันที่กำหนด
+ *   คืน Map userId → ประเภทการลา (เช่น "ลาป่วย" · "ลาพักผ่อน")
+ *
+ * เงื่อนไข
+ *   - status = 'approved' และครอบคลุมวันนั้น
+ *   - เฉพาะเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา — ไม่ใช้ระบบลงเวลา)
+ *   - ถ้ามีหลายคำขอที่ครอบคลุมวันเดียวกัน ใช้รายการล่าสุด (id มากสุด)
+ */
+async function leaveUsersOn(date) {
+  const out = new Map();
+  if (!date) return out;
+  const rows = await db.prepare(`SELECT l.user_id, l.leave_type
+    FROM leave_requests l JOIN users u ON u.id = l.user_id
+    WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ?
+      AND u.status = 'active' AND COALESCE(u.user_group, 'office') = 'office'
+    ORDER BY l.id ASC`).all(date, date);
+  for (const r of rows) out.set(Number(r.user_id), String(r.leave_type || 'ลา'));
+  return out;
+}
+
 /** รัศมีเริ่มต้น (เมตร) เมื่อยังไม่เคยตั้งค่า */
 const DEFAULT_CLOCK_RADIUS = 200;
 
@@ -627,9 +648,16 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
 router.get('/time/today', auth.requireAuth, async (req, res) => {
   const today = simdate.todayISO();
   const rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
-  // วันนี้ไปราชการหรือไม่ (ผู้ขอ หรือคณะผู้ร่วมเดินทาง) → หน้าเว็บปิดปุ่มลงเวลา
+  // วันนี้ไปราชการหรือลาหรือไม่ → หน้าเว็บปิดปุ่มลงเวลา
   const onTravel = (await travelUserIdsOn(today)).has(Number(req.user.id));
-  res.json({ today, record: rec ? withWorkSite(rec) : null, on_travel: onTravel });
+  const leaveType = onTravel ? null : ((await leaveUsersOn(today)).get(Number(req.user.id)) || null);
+  res.json({
+    today,
+    record: rec ? withWorkSite(rec) : null,
+    on_travel: onTravel,
+    on_leave: !!leaveType,
+    leave_type: leaveType,
+  });
 });
 
 router.post('/time/check', auth.requireAuth, async (req, res) => {
@@ -646,6 +674,17 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   if ((await travelUserIdsOn(today)).has(Number(req.user.id))) {
     return res.status(403).json({
       error: 'คุณไปราชการในวันนี้ — ไม่ต้องลงเวลาทำงาน',
+    });
+  }
+
+  /*
+   * ผู้ที่ "ลา" (อนุมัติแล้ว) วันนี้ → ลงเวลาเข้า/ออกไม่ได้
+   * แจ้งประเภทการลาด้วย เพื่อให้ผู้ใช้รู้ว่าติดเรื่องอะไร
+   */
+  const leaveType = (await leaveUsersOn(today)).get(Number(req.user.id));
+  if (leaveType) {
+    return res.status(403).json({
+      error: `คุณลา (${leaveType}) ในวันนี้ — ไม่ต้องลงเวลาทำงาน`,
     });
   }
 
@@ -781,6 +820,38 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
             workplace: u.workplace,
             work_site: 'ไปราชการ',
             is_travel: 1,
+          });
+        }
+      }
+    }
+
+    /*
+     * เพิ่มรายชื่อผู้ "ลา" ของวันนั้น (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว)
+     * → สถานที่ทำงาน = ประเภทการลา · ไม่มีเวลาเข้า/ออก · id = null + is_leave = 1
+     * ข้ามคนที่มีแถวอยู่แล้ว (บันทึกเวลาจริง หรือไปราชการ)
+     */
+    const leaveMap = await leaveUsersOn(date);
+    if (leaveMap.size) {
+      const have2 = new Set(records.map((r) => Number(r.user_id)));
+      const ids2 = [...leaveMap.keys()].filter((id) => id && !have2.has(id));
+      if (ids2.length) {
+        const users2 = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
+          FROM users WHERE id IN (${ids2.map(() => '?').join(',')})`).all(...ids2);
+        for (const u of users2) {
+          records.push({
+            id: null,
+            user_id: u.id,
+            date,
+            clock_in: null,
+            clock_out: null,
+            title: u.title,
+            full_name: u.full_name,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            username: u.username,
+            workplace: u.workplace,
+            work_site: leaveMap.get(Number(u.id)) || 'ลา',
+            is_leave: 1,
           });
         }
       }

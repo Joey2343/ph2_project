@@ -224,6 +224,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบผู้ที่ลา: ลงเวลาไม่ได้ + แสดงในรายการบันทึกเวลาพร้อมประเภทการลา]');
+  results.push(run('test-clock-leave-rows', [path.join(__dirname, 'test-clock-leave-rows.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
 

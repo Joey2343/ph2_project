@@ -32,6 +32,9 @@ const clockStatus = ref(null);
 const clockRec = ref(null);
 /** วันนี้ไปราชการ (ผู้ยื่นคำขอหรือคณะ) → ปิดปุ่มลงเวลา */
 const clockOnTravel = ref(false);
+/** วันนี้ลา (อนุมัติแล้ว) → ปิดปุ่มลงเวลา */
+const clockOnLeave = ref(false);
+const clockLeaveType = ref('');
 const checking = ref(false);
 let clockTimer = null;
 
@@ -43,11 +46,19 @@ async function loadClock() {
     const rec = data.record;
     clockRec.value = rec;
     clockOnTravel.value = !!data.on_travel;
+    clockOnLeave.value = !!data.on_leave;
+    clockLeaveType.value = data.leave_type || '';
     if (clockOnTravel.value) {
       clockStatus.value = {
         text: '✈ ไปราชการวันนี้ — ไม่ต้องลงเวลาทำงาน',
         bg: '#e0f2fe',
         color: '#0369a1',
+      };
+    } else if (clockOnLeave.value) {
+      clockStatus.value = {
+        text: `❋ ลา (${clockLeaveType.value}) วันนี้ — ไม่ต้องลงเวลาทำงาน`,
+        bg: '#ffedd5',
+        color: '#c2410c',
       };
     } else if (rec && rec.clock_out) {
       clockStatus.value = {
@@ -456,8 +467,8 @@ const greeting = computed(() => {
           <button
             id="home-clock-in"
             class="btn btn-clock-in btn-sm home-clock-btn home-clock-in"
-            :class="{ 'home-clock-blink': !clockOnTravel && !(clockRec && clockRec.clock_in) }"
-            :disabled="checking || clockOnTravel || !!(clockRec && clockRec.clock_in)"
+            :class="{ 'home-clock-blink': !clockOnTravel && !clockOnLeave && !(clockRec && clockRec.clock_in) }"
+            :disabled="checking || clockOnTravel || clockOnLeave || !!(clockRec && clockRec.clock_in)"
             @click="checkTime('in')"
           >
             ⬡ เข้างาน
@@ -465,8 +476,8 @@ const greeting = computed(() => {
           <button
             id="home-clock-out"
             class="btn btn-clock-out btn-sm home-clock-btn home-clock-out"
-            :class="{ 'home-clock-blink': !clockOnTravel && !!(clockRec && clockRec.clock_in) && !clockRec.clock_out }"
-            :disabled="checking || clockOnTravel || !clockRec || !clockRec.clock_in || !!clockRec.clock_out"
+            :class="{ 'home-clock-blink': !clockOnTravel && !clockOnLeave && !!(clockRec && clockRec.clock_in) && !clockRec.clock_out }"
+            :disabled="checking || clockOnTravel || clockOnLeave || !clockRec || !clockRec.clock_in || !!clockRec.clock_out"
             @click="checkTime('out')"
           >
             🏁 ออกงาน

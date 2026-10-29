@@ -42,6 +42,9 @@ const nowDay = ref('');
 const checking = ref(''); // '' | 'in' | 'out'
 /** วันนี้ไปราชการ (ผู้ยื่นคำขอหรือคณะ) → ปิดปุ่มลงเวลา */
 const onTravel = ref(false);
+/** วันนี้ลา (อนุมัติแล้ว) → ปิดปุ่มลงเวลา */
+const onLeave = ref(false);
+const leaveType = ref('');
 let clockTimer = null;
 
 const checkedIn = computed(() => !!(record.value && record.value.clock_in));
@@ -55,6 +58,8 @@ async function loadToday() {
     record.value = data.record || null;
     today.value = data.today || '';
     onTravel.value = !!data.on_travel;
+    onLeave.value = !!data.on_leave;
+    leaveType.value = data.leave_type || '';
     const now = new Date();
     nowTime.value = now.toTimeString().slice(0, 8);
     nowDay.value = THAI_DAYS[now.getDay()];
@@ -535,6 +540,13 @@ onBeforeUnmount(() => {
           ✈ ไปราชการวันนี้ — ไม่ต้องลงเวลาทำงาน
         </span>
         <span
+          v-else-if="onLeave"
+          class="status-pill"
+          style="background: #ffedd5; color: #c2410c; padding: 4px 14px; border-radius: 999px; font-weight: 700"
+        >
+          ❋ ลา ({{ leaveType }}) วันนี้ — ไม่ต้องลงเวลาทำงาน
+        </span>
+        <span
           v-else-if="record"
           class="status-pill"
           :style="{
@@ -562,16 +574,16 @@ onBeforeUnmount(() => {
       <div class="clock-btns">
         <button
           class="btn clock-btn clock-btn-in"
-          :class="{ 'clock-btn-blink': !onTravel && !checkedIn }"
-          :disabled="onTravel || checkedIn || checking === 'in'"
+          :class="{ 'clock-btn-blink': !onTravel && !onLeave && !checkedIn }"
+          :disabled="onTravel || onLeave || checkedIn || checking === 'in'"
           @click="doCheck('in')"
         >
           {{ checking === 'in' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '⬡ ลงเวลาเข้างาน' }}
         </button>
         <button
           class="btn clock-btn clock-btn-out"
-          :class="{ 'clock-btn-blink': !onTravel && checkedIn && !checkedOut }"
-          :disabled="onTravel || !checkedIn || checkedOut || checking === 'out'"
+          :class="{ 'clock-btn-blink': !onTravel && !onLeave && checkedIn && !checkedOut }"
+          :disabled="onTravel || onLeave || !checkedIn || checkedOut || checking === 'out'"
           @click="doCheck('out')"
         >
           {{ checking === 'out' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '🏁 ลงเวลาออกงาน' }}
@@ -648,18 +660,23 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in records" :key="r.is_travel ? 'travel-' + r.user_id : r.id" :class="{ 'travel-row': r.is_travel }">
+            <tr
+              v-for="r in records"
+              :key="r.is_travel ? 'travel-' + r.user_id : r.is_leave ? 'leave-' + r.user_id : r.id"
+              :class="{ 'travel-row': r.is_travel, 'leave-row': r.is_leave }"
+            >
               <td>{{ UI.date(r.date) }}</td>
               <td v-if="scope === 'all'">{{ UI.personName(r) }}</td>
               <td v-if="scope === 'all'">{{ r.workplace }}</td>
               <td>
                 <span v-if="r.is_travel" class="travel-tag">ไปราชการ</span>
+                <span v-else-if="r.is_leave" class="leave-tag">{{ r.work_site }}</span>
                 <template v-else>{{ workSiteLabel(r) }}</template>
               </td>
-              <!-- ไปราชการ: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
-              <td>{{ r.is_travel ? '' : UI.time(r.clock_in) }}</td>
-              <td>{{ r.is_travel ? '' : UI.time(r.clock_out) }}</td>
-              <td v-if="(scope === 'all' || canEditMine) && !r.is_travel">
+              <!-- ไปราชการ/ลา: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
+              <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_in) }}</td>
+              <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_out) }}</td>
+              <td v-if="(scope === 'all' || canEditMine) && !r.is_travel && !r.is_leave">
                 <div style="display: inline-flex; gap: 6px">
                   <button class="btn btn-xs btn-outline" title="แก้ไขเวลา" @click="openEdit(r)">✎</button>
                   <button class="btn btn-xs btn-danger" title="ลบบันทึกเวลา" @click="deleteRecord(r)">✕</button>
@@ -1083,5 +1100,23 @@ onBeforeUnmount(() => {
 }
 .travel-row td {
   background: #f8fafc;
+}
+
+/*
+ * แถว "ลา" — ดึงจากคำขอลาที่อนุมัติแล้ว
+ * สถานที่ทำงาน = ประเภทการลา (ป่วย/กิจ/คลอด/พักผ่อน)
+ */
+.leave-tag {
+  display: inline-block;
+  background: #ffedd5;
+  color: #c2410c;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.leave-row td {
+  background: #fffbf5;
 }
 </style>

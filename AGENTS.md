@@ -709,6 +709,15 @@ ph2_project/
       พร้อมป้าย "✈ ไปราชการวันนี้ — ไม่ต้องลงเวลาทำงาน"
     - ทำเฉพาะมุมมอง "วันเดียว" (ไม่ทำกับมุมมองรายเดือน)
     - เทสต์กันไว้ที่ `backend/scripts/test-clock-travel-rows.js` (อยู่ใน `npm run verify`)
+  - **ผู้ที่ "ลา" (อนุมัติแล้ว) ของวันนั้น**
+    - ลงเวลาเข้า/ออกไม่ได้ → `/time/check` ตอบ 403 `คุณลา (<ประเภท>) ในวันนี้`
+    - `/time/all?date=...` เพิ่มแถวโดย `work_site` = **ประเภทการลา** (ลาป่วย/ลากิจ/ลาคลอดบุตร/ลาพักผ่อน)
+      · ไม่มีเวลาเข้า/ออก · `is_leave = 1` · `id = null` (แก้ไข/ลบไม่ได้)
+    - `/time/today` คืน `on_leave` + `leave_type` → หน้า `#/clock` และการ์ดหน้าแรกปิดปุ่มลงเวลา
+      พร้อมป้าย "❋ ลา (ประเภท) วันนี้ — ไม่ต้องลงเวลาทำงาน"
+    - เฉพาะเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา) และเฉพาะคำขอ `approved`
+    - ถ้ามีบันทึกเวลาหรือไปราชการของวันนั้นอยู่แล้ว → ไม่เพิ่มแถวซ้ำ
+    - เทสต์กันไว้ที่ `backend/scripts/test-clock-leave-rows.js` (อยู่ใน `npm run verify`)
   - ⚠️ `verify:pages` ต้องจำลองตำแหน่ง GPS (`Browser.grantPermissions` +
     `Emulation.setGeolocationOverride`) ไม่งั้น headless Chrome ระบุตำแหน่งไม่ได้
     → เทสต์ "ลงเวลาเข้างานสำเร็จ" พังทั้งที่โค้ดถูก
@@ -911,7 +920,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **204** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 42/42 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 43/43 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
