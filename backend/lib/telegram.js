@@ -1050,6 +1050,72 @@ async function notifyTravelNextLevel(id, deciderName, nextLevel) {
   }
 }
 
+/**
+ * แจ้ง "คณะผู้ร่วมเดินทาง" (พร้อมด้วยคณะ) เมื่อคำขอไปราชการได้รับการอนุมัติ
+ *
+ * ผู้ใช้ขอ: เมื่อคำขอไปราชการอนุมัติแล้ว ข้อความ Telegram ต้องส่งถึง
+ * คนในรายชื่อที่เลือกไว้ในส่วน "พร้อมด้วยคณะ" ด้วย
+ *
+ * รายชื่อคณะมาจาก form_data
+ *   - companion_ids   = id ของผู้ใช้ (แม่นยำ — ใช้ก่อน)
+ *   - companion_names = ชื่อ (ข้อมูลเก่า → จับคู่กับ users)
+ *
+ * ข้ามผู้ยื่นคำขอ (เขาได้ข้อความจาก notifyRequest แล้ว) และข้ามคนที่ไม่ได้ตั้ง Telegram
+ */
+async function notifyTravelCompanions(id, { approved, deciderName, note } = {}) {
+  try {
+    const b = await fetchTravelRow(id);
+    if (!b) return;
+
+    let fd = {};
+    try {
+      fd = typeof b.form_data === 'string' ? JSON.parse(b.form_data || '{}') : (b.form_data || {});
+    } catch (e) {
+      fd = {};
+    }
+
+    const ids = Array.isArray(fd.companion_ids) ? fd.companion_ids.map(Number).filter(Boolean) : [];
+    const names = Array.isArray(fd.companion_names)
+      ? fd.companion_names.map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+      : [];
+    if (!ids.length && !names.length) return;
+
+    const users = [];
+    const seen = new Set([Number(b.user_id)]); // ไม่ส่งซ้ำถึงผู้ขอ
+    if (ids.length) {
+      const rows = await db.prepare(`SELECT id, telegram_token, telegram_chat_id FROM users
+        WHERE id IN (${ids.map(() => '?').join(',')}) AND status = 'active'`).all(...ids);
+      for (const u of rows) {
+        if (seen.has(Number(u.id))) continue;
+        seen.add(Number(u.id));
+        users.push(u);
+      }
+    }
+    if (names.length) {
+      const all = await db.prepare(`SELECT id, title, first_name, last_name, full_name, telegram_token, telegram_chat_id
+        FROM users WHERE status = 'active'`).all();
+      const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+      for (const u of all) {
+        if (seen.has(Number(u.id))) continue;
+        const built = norm(`${u.title || ''}${u.first_name || ''}  ${u.last_name || ''}`);
+        if (names.includes(built) || names.includes(norm(u.full_name))) {
+          seen.add(Number(u.id));
+          users.push(u);
+        }
+      }
+    }
+
+    const text = requestText({ system: 'travel', approved: approved !== false, b, deciderName, note });
+    for (const u of users) {
+      if (u.telegram_token && u.telegram_chat_id) {
+        await sendTelegram({ token: u.telegram_token, chatId: u.telegram_chat_id, text });
+      }
+    }
+  } catch (e) {
+    console.error('[telegram] notifyTravelCompanions error:', e.message);
+  }
+}
+
 module.exports = {
   thaiDate, thaiDateRange, systemLabel, requestText,
   roomSubmittedText, roomLevelApprovedText, notifyApprovers,
@@ -1064,6 +1130,6 @@ module.exports = {
   fetchLeaveRow, leaveSubmittedText, leaveDelegateText, leaveNextLevelText,
   notifyLeaveSubmitted, notifyLeaveNextLevel,
   notifyLeaveCancelRequested, notifyLeaveCancelled,
-  travelSubmittedText, travelNextLevelText, notifyTravelSubmitted, notifyTravelNextLevel,
+  travelSubmittedText, travelNextLevelText, notifyTravelSubmitted, notifyTravelNextLevel, notifyTravelCompanions,
   notifyRequest, sendTelegram, telegramDisabled,
 };

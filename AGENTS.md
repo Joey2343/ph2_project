@@ -706,6 +706,8 @@ ph2_project/
     - ข้ามคนที่มีบันทึกเวลาของวันนั้นอยู่แล้ว (กันแถวซ้ำ)
     - **การ์ด "ไปราชการ" บนหน้าแรก** (`/today-summary`) นับและแสดงรายชื่อ **ทั้งผู้ขอและคณะ**
       (ข้ามคนที่ซ้ำหลายคำขอ) — เดิมแสดงเฉพาะผู้ยื่นคำขอ
+    - **เมื่ออนุมัติแล้ว Telegram แจ้งคณะผู้ร่วมเดินทางด้วย**
+      (`notifyTravelCompanions` · อ่าน `companion_ids` / `companion_names` · ข้ามคนที่ไม่ได้ตั้ง Telegram)
     - **ผู้ที่ไปราชการลงเวลาเข้า/ออกไม่ได้** → `/time/check` ตอบ 403 "คุณไปราชการในวันนี้"
     - `/time/today` คืน `on_travel` → หน้า `#/clock` และการ์ดหน้าแรกปิดปุ่มลงเวลา
       พร้อมป้าย "✈ ไปราชการวันนี้ — ไม่ต้องลงเวลาทำงาน"
@@ -922,7 +924,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **204** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 43/43 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 44/44 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

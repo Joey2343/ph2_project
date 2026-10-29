@@ -745,6 +745,8 @@ router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
   if (result.approved) {
     // อนุมัติครบขั้นแล้ว → แจ้งเตือน Telegram (ข้อความสีเขียว 🟢) ไปยังผู้ยื่นคำขอ
     await telegram.notifyRequest({ system: 'travel', id: Number(req.params.id), approved: true, deciderName: req.user.full_name, note });
+    // แจ้งคณะผู้ร่วมเดินทางที่เลือกไว้ในส่วน "พร้อมด้วยคณะ" ด้วย
+    await telegram.notifyTravelCompanions(Number(req.params.id), { approved: true, deciderName: req.user.full_name, note });
   } else if (result.level >= 1) {
     // ยังไม่ครบสาย → แจ้งผู้พิจารณาขั้นถัดไปตามสายจริง
     // ⚠️ ต้องหาจาก chain ไม่ใช่เดาเองว่าขั้น 2 คือใคร
