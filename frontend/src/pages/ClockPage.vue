@@ -40,6 +40,8 @@ const record = ref(null);
 const nowTime = ref('');
 const nowDay = ref('');
 const checking = ref(''); // '' | 'in' | 'out'
+/** วันนี้ไปราชการ (ผู้ยื่นคำขอหรือคณะ) → ปิดปุ่มลงเวลา */
+const onTravel = ref(false);
 let clockTimer = null;
 
 const checkedIn = computed(() => !!(record.value && record.value.clock_in));
@@ -52,6 +54,7 @@ async function loadToday() {
     const data = await api.get('/time/today');
     record.value = data.record || null;
     today.value = data.today || '';
+    onTravel.value = !!data.on_travel;
     const now = new Date();
     nowTime.value = now.toTimeString().slice(0, 8);
     nowDay.value = THAI_DAYS[now.getDay()];
@@ -525,7 +528,14 @@ onBeforeUnmount(() => {
       <div class="clock-date">{{ UI.thaiDate(today) }} • {{ nowDay }}</div>
       <div style="margin-bottom: 14px">
         <span
-          v-if="record"
+          v-if="onTravel"
+          class="status-pill"
+          style="background: #e0f2fe; color: #0369a1; padding: 4px 14px; border-radius: 999px; font-weight: 700"
+        >
+          ✈ ไปราชการวันนี้ — ไม่ต้องลงเวลาทำงาน
+        </span>
+        <span
+          v-else-if="record"
           class="status-pill"
           :style="{
             background: record.clock_out ? '#e2e8f0' : '#dcfce7',
@@ -552,16 +562,16 @@ onBeforeUnmount(() => {
       <div class="clock-btns">
         <button
           class="btn clock-btn clock-btn-in"
-          :class="{ 'clock-btn-blink': !checkedIn }"
-          :disabled="checkedIn || checking === 'in'"
+          :class="{ 'clock-btn-blink': !onTravel && !checkedIn }"
+          :disabled="onTravel || checkedIn || checking === 'in'"
           @click="doCheck('in')"
         >
           {{ checking === 'in' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '⬡ ลงเวลาเข้างาน' }}
         </button>
         <button
           class="btn clock-btn clock-btn-out"
-          :class="{ 'clock-btn-blink': checkedIn && !checkedOut }"
-          :disabled="!checkedIn || checkedOut || checking === 'out'"
+          :class="{ 'clock-btn-blink': !onTravel && checkedIn && !checkedOut }"
+          :disabled="onTravel || !checkedIn || checkedOut || checking === 'out'"
           @click="doCheck('out')"
         >
           {{ checking === 'out' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '🏁 ลงเวลาออกงาน' }}

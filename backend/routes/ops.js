@@ -117,6 +117,65 @@ function withWorkSite(row) {
   return { ...row, work_site: siteNameFromSrc(row.clock_in_src) };
 }
 
+/**
+ * ผู้ที่ "ไปราชการ" ของวันที่กำหนด
+ *   = ผู้ยื่นคำขอ (travel_requests.user_id)
+ *   + คณะผู้ร่วมเดินทางที่เลือกไว้ (form_data.companion_ids)
+ *   + สำรอง: จับคู่จากชื่อ (form_data.companion_names) สำหรับข้อมูลเก่า
+ *
+ * เงื่อนไข: คำขอ status = 'approved' และครอบคลุมวันนั้น (date_from <= date <= date_to)
+ *
+ * ใช้ที่
+ *   - /time/check  → คนที่ไปราชการลงเวลาเข้า/ออกไม่ได้
+ *   - /time/today  → บอกหน้าเว็บว่าวันนี้ไปราชการ (ปิดปุ่มลงเวลา)
+ *   - /time/all    → แสดงแถว "ไปราชการ" ในรายการบันทึกเวลาของเจ้าหน้าที่
+ */
+async function travelUserIdsOn(date) {
+  const out = new Set();
+  if (!date) return out;
+  const rows = await db.prepare(`SELECT user_id, form_data FROM travel_requests
+    WHERE status = 'approved' AND date_from <= ? AND date_to >= ?`).all(date, date);
+  if (!rows.length) return out;
+
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  let users = null; // โหลดเฉพาะเมื่อต้องจับคู่จากชื่อ
+
+  for (const r of rows) {
+    out.add(Number(r.user_id));
+    let fd = {};
+    try {
+      fd = typeof r.form_data === 'string' ? JSON.parse(r.form_data || '{}') : (r.form_data || {});
+    } catch (e) {
+      fd = {};
+    }
+
+    // วิธีหลัก: id ของคณะ (แม่นยำ)
+    const ids = Array.isArray(fd.companion_ids) ? fd.companion_ids : [];
+    for (const id of ids) {
+      const n = Number(id);
+      if (n > 0) out.add(n);
+    }
+
+    // สำรอง: ข้อมูลเก่าที่เก็บแต่ชื่อ → จับคู่กับ users (รูปแบบเดียวกับ UI.personName)
+    const names = Array.isArray(fd.companion_names) ? fd.companion_names.map(norm).filter(Boolean) : [];
+    if (names.length) {
+      if (!users) {
+        users = await db.prepare(`SELECT id, title, first_name, last_name, full_name
+          FROM users WHERE status = 'active'`).all();
+      }
+      for (const name of names) {
+        const hit = users.find((u) => {
+          const built = `${u.title || ''}${u.first_name || ''}  ${u.last_name || ''}`;
+          return norm(built) === name || norm(u.full_name) === name;
+        });
+        if (hit) out.add(Number(hit.id));
+      }
+    }
+  }
+
+  return out;
+}
+
 /** รัศมีเริ่มต้น (เมตร) เมื่อยังไม่เคยตั้งค่า */
 const DEFAULT_CLOCK_RADIUS = 200;
 
@@ -127,8 +186,7 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** ระยะทางระหว่าง 2 พิกัด (เมตร) โดยใช้สูตร Haversine */
-function haversineMeters(lat1, lng1, lat2, lng2) {
+/** ระยะทางระหว่าง 2 พิกัด (เมตร) โดยใช้สูตร Haversine */function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -569,7 +627,9 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
 router.get('/time/today', auth.requireAuth, async (req, res) => {
   const today = simdate.todayISO();
   const rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
-  res.json({ today, record: rec ? withWorkSite(rec) : null });
+  // วันนี้ไปราชการหรือไม่ (ผู้ขอ หรือคณะผู้ร่วมเดินทาง) → หน้าเว็บปิดปุ่มลงเวลา
+  const onTravel = (await travelUserIdsOn(today)).has(Number(req.user.id));
+  res.json({ today, record: rec ? withWorkSite(rec) : null, on_travel: onTravel });
 });
 
 router.post('/time/check', auth.requireAuth, async (req, res) => {
@@ -578,6 +638,17 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'เจ้าหน้าที่สถานศึกษาไม่ใช้ระบบลงเวลาทำงาน' });
   }
   const today = simdate.todayISO();
+
+  /*
+   * ผู้ที่ "ไปราชการ" วันนี้ (ผู้ยื่นคำขอ หรือคณะที่เลือกไว้ในคำขอ)
+   * → ลงเวลาเข้า/ออกไม่ได้ เพราะถือว่าปฏิบัติราชการนอกสถานที่อยู่แล้ว
+   */
+  if ((await travelUserIdsOn(today)).has(Number(req.user.id))) {
+    return res.status(403).json({
+      error: 'คุณไปราชการในวันนี้ — ไม่ต้องลงเวลาทำงาน',
+    });
+  }
+
   const t = new Date().toTimeString().slice(0, 8); // เวลาบนนาฬิกาของระบบ (จำลองตามวันที่ sim_today เมื่อเปิดใช้)
   const { type, lat, lng } = req.body || {};
   const cfg = await getClockGeoConfig();
@@ -687,12 +758,11 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
    *   - id = null + is_travel = 1 → หน้าเว็บไม่แสดงปุ่มแก้ไข/ลบ
    */
   if (date && !month) {
-    const travels = await db.prepare(`SELECT tr.user_id FROM travel_requests tr
-      JOIN users u ON u.id = tr.user_id
-      WHERE tr.status = 'approved' AND tr.date_from <= ? AND tr.date_to >= ? AND u.status = 'active'`).all(date, date);
-    if (travels.length) {
+    // ผู้ที่ไปราชการของวันนั้น = ผู้ยื่นคำขอ + คณะผู้ร่วมเดินทางที่เลือกไว้
+    const travelIds = await travelUserIdsOn(date);
+    if (travelIds.size) {
       const have = new Set(records.map((r) => Number(r.user_id)));
-      const ids = [...new Set(travels.map((t) => Number(t.user_id)))].filter((id) => id && !have.has(id));
+      const ids = [...travelIds].filter((id) => id && !have.has(id));
       if (ids.length) {
         const users = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
           FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);

@@ -64,17 +64,25 @@ async function jget(p, cookie) {
     const A = await mkUser('a');
     const B = await mkUser('b');
     const C = await mkUser('c');
+    // D = คณะผู้ร่วมเดินทางของ A (ไม่ได้ยื่นคำขอเอง)
+    const D = await mkUser('d');
 
-    const mkTravel = async (userId, status) => {
+    const mkTravel = async (userId, status, formData = null) => {
       const info = await db.prepare(`INSERT INTO travel_requests
-        (user_id, title, destination, date_from, date_to, days, status, approval_level, approval_data, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
-        userId, 'ทดสอบไปราชการ', 'แพร่', today, today, 1, status, 0, '[]', '2026-10-28 09:00:00'
+        (user_id, title, destination, date_from, date_to, days, status, approval_level, approval_data, form_data, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+        userId, 'ทดสอบไปราชการ', 'แพร่', today, today, 1, status, 0, '[]',
+        formData ? JSON.stringify(formData) : null, '2026-10-28 09:00:00'
       );
       return Number(info.insertId);
     };
     const travelIds = [];
-    travelIds.push(await mkTravel(A, 'approved'));
+    // A ไปราชการพร้อมคณะ = D (เก็บทั้งชื่อและ id)
+    travelIds.push(await mkTravel(A, 'approved', {
+      companions: 1,
+      companion_ids: [D],
+      companion_names: ['ทดสอบ ไปราชการ d'],
+    }));
     travelIds.push(await mkTravel(B, 'approved'));
     travelIds.push(await mkTravel(C, 'pending'));
 
@@ -103,12 +111,43 @@ async function jget(p, cookie) {
     const rowC = rows.find((r) => Number(r.user_id) === C);
     check(!rowC, 'ไม่พบผู้ที่คำขอยัง pending');
 
+    console.log('');
+    console.log('④ คณะผู้ร่วมเดินทาง (companion_ids) ถือว่าไปราชการด้วย');
+    const rowD = rows.find((r) => Number(r.user_id) === D);
+    check(!!rowD, 'พบชื่อคณะผู้ร่วมเดินทางในรายการ', `ไม่พบ user ${D}`);
+    check(rowD && rowD.work_site === 'ไปราชการ', 'คณะก็แสดงสถานที่ทำงาน = "ไปราชการ"', `ได้ "${rowD && rowD.work_site}"`);
+    check(rowD && !rowD.clock_in && !rowD.clock_out, 'คณะไม่มีเวลาเข้า/ออก');
+
+    console.log('');
+    console.log('⑤ ผู้ที่ไปราชการลงเวลาเข้า/ออกไม่ได้');
+    const dCookie = 'sid=' + (await auth.newSession(D));
+    const todayD = await jget('/api/time/today', dCookie);
+    check(todayD.body && todayD.body.on_travel === true, '/time/today บอกว่าไปราชการ (on_travel = true)',
+      JSON.stringify(todayD.body && todayD.body.on_travel));
+    const inB = await fetch(BASE + '/api/time/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: dCookie },
+      body: JSON.stringify({ type: 'in', lat: 18.1, lng: 100.1 }),
+    });
+    const inBody = await inB.json().catch(() => ({}));
+    check(inB.status === 403, 'คณะกดลงเวลาเข้างาน → 403', `ได้ ${inB.status}`);
+    check(String(inBody.error || '').includes('ไปราชการ'), 'ข้อความแจ้งว่าอยู่ระหว่างไปราชการ', JSON.stringify(inBody.error));
+
+    const aCookie = 'sid=' + (await auth.newSession(A));
+    const outA = await fetch(BASE + '/api/time/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: aCookie },
+      body: JSON.stringify({ type: 'out' }),
+    });
+    check(outA.status === 403, 'ผู้ยื่นคำขอกดลงเวลาออกงาน → 403', `ได้ ${outA.status}`);
+
     // cleanup
     for (const id of travelIds) {
       try { await db.prepare('DELETE FROM travel_requests WHERE id = ?').run(id); } catch (e) { /* ignore */ }
     }
     for (const id of madeUsers) {
       try { await db.prepare('DELETE FROM time_records WHERE user_id = ?').run(id); } catch (e) { /* ignore */ }
+      try { await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); } catch (e) { /* ignore */ }
       try { await db.prepare('DELETE FROM users WHERE id = ?').run(id); } catch (e) { /* ignore */ }
     }
     try { await db.prepare('DELETE FROM sessions WHERE token = ?').run(adminSid); } catch (e) { /* ignore */ }

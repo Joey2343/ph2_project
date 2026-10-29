@@ -186,6 +186,13 @@ function submit() {
     companions: parseInt(v.companions, 10) || 0,
     // รายชื่อผู้ร่วมเดินทาง (ช่องเลือกชื่อตามจำนวนคณะ)
     companion_names: companionNames.value.map((s) => String(s || '').trim()).filter(Boolean),
+    // id ของผู้ร่วมเดินทาง (ใช้ตรวจว่าใคร "ไปราชการ" บ้าง — กันลงเวลา/แสดงในรายการ)
+    companion_ids: companionNames.value
+      .map((n) => {
+        const u = staff.value.find((x) => UI.personName(x) === String(n || '').trim());
+        return u ? Number(u.id) : null;
+      })
+      .filter(Boolean),
     travel_subject: v.travel_subject.trim(),
     order_doc: v.order_doc.trim(),
     order_date: v.order_date || '',
