@@ -132,12 +132,14 @@ const scope = ref(canViewAll.value ? 'all' : 'mine');
 
 /*
  * เรียงจากใหม่ → เก่า
+ *   · "ไม่ได้มาปฏิบัติงาน" ขึ้นบนสุดเสมอ (ผู้ใช้ขอให้เห็นรายชื่อที่ขาดก่อน)
  *   · วันล่าสุดขึ้นก่อน (date เป็น string 'YYYY-MM-DD' เพราะ connection ตั้ง dateStrings: true)
  *   · วันเดียวกัน เรียงตามเวลาเข้าล่าสุดก่อน (คนที่ลงเวลาล่าสุดอยู่บนสุด)
- *   · แถวที่ยังไม่มีเวลาเข้า (clock_in ว่าง) ไปท้ายสุด
+ *   · แถวที่ยังไม่มีเวลาเข้า (ไปราชการ/ลา) ไปท้ายสุด
  */
 function sortNewestFirst(rows) {
   return rows.slice().sort((a, b) => {
+    if (!!a.is_absent !== !!b.is_absent) return a.is_absent ? -1 : 1;
     const d1 = String(a.date || '');
     const d2 = String(b.date || '');
     if (d1 !== d2) return d2.localeCompare(d1);
@@ -686,8 +688,8 @@ onBeforeUnmount(() => {
           <tbody>
             <tr
               v-for="r in records"
-              :key="r.is_travel ? 'travel-' + r.user_id : r.is_leave ? 'leave-' + r.user_id : r.id"
-              :class="{ 'travel-row': r.is_travel, 'leave-row': r.is_leave }"
+              :key="r.is_travel ? 'travel-' + r.user_id : r.is_leave ? 'leave-' + r.user_id : r.is_absent ? 'absent-' + r.user_id : r.id"
+              :class="{ 'travel-row': r.is_travel, 'leave-row': r.is_leave, 'absent-row': r.is_absent }"
             >
               <td>{{ UI.date(r.date) }}</td>
               <td v-if="scope === 'all'">{{ UI.personName(r) }}</td>
@@ -695,12 +697,13 @@ onBeforeUnmount(() => {
               <td>
                 <span v-if="r.is_travel" class="travel-tag">ไปราชการ</span>
                 <span v-else-if="r.is_leave" class="leave-tag">{{ r.work_site }}</span>
+                <span v-else-if="r.is_absent" class="absent-tag">ไม่ได้มาปฏิบัติงาน</span>
                 <template v-else>{{ workSiteLabel(r) }}</template>
               </td>
-              <!-- ไปราชการ/ลา: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
-              <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_in) }}</td>
-              <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_out) }}</td>
-              <td v-if="(scope === 'all' || canEditMine) && !r.is_travel && !r.is_leave">
+              <!-- ไปราชการ/ลา/ไม่ได้มาปฏิบัติงาน: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
+              <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_in) }}</td>
+              <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_out) }}</td>
+              <td v-if="(scope === 'all' || canEditMine) && !r.is_travel && !r.is_leave && !r.is_absent">
                 <div style="display: inline-flex; gap: 6px">
                   <button class="btn btn-xs btn-outline" title="แก้ไขเวลา" @click="openEdit(r)">✎</button>
                   <button class="btn btn-xs btn-danger" title="ลบบันทึกเวลา" @click="deleteRecord(r)">✕</button>
@@ -1142,5 +1145,20 @@ onBeforeUnmount(() => {
 }
 .leave-row td {
   background: #fffbf5;
+}
+
+/* แถว "ไม่ได้มาปฏิบัติงาน" (หลังเวลา 17:01 ของวันนั้น) — อยู่บนสุดของรายการ */
+.absent-tag {
+  display: inline-block;
+  background: #fee2e2;
+  color: #b91c1c;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.absent-row td {
+  background: #fff5f5;
 }
 </style>

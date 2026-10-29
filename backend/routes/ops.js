@@ -946,6 +946,50 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
         }
       }
     }
+
+    /*
+     * หลังเวลา 17:01 ของวันนั้น → เจ้าหน้าที่ที่เหลือ (ไม่มีบันทึกเวลา/ไปราชการ/ลา)
+     * ถือว่า "ไม่ได้มาปฏิบัติงาน" และแสดงไว้บนสุดของรายการ
+     *
+     * เงื่อนไขเวลา
+     *   - วันที่ดูเป็น "วันนี้" และเวลาปัจจุบัน >= 17:01
+     *   - หรือวันที่ดูเป็นวันในอดีต (วันนั้นจบแล้ว)
+     * ยกเว้น admin (ผู้ดูแลระบบไม่ต้องถูกนับว่าขาดงาน)
+     * เฉพาะเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา)
+     */
+    const nowClock = new Date();
+    const todaySim = simdate.todayISO();
+    const dayOver =
+      date < todaySim ||
+      (date === todaySim &&
+        (nowClock.getHours() > 17 || (nowClock.getHours() === 17 && nowClock.getMinutes() >= 1)));
+
+    if (dayOver) {
+      const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
+        FROM users WHERE status = 'active'
+          AND COALESCE(user_group, 'office') = 'office'
+          AND role <> 'admin'
+          AND (created_at IS NULL OR created_at = '' OR LEFT(created_at, 10) <= ?)`).all(date);
+      const haveAll = new Set(records.map((r) => Number(r.user_id)));
+      for (const u of staff) {
+        if (haveAll.has(Number(u.id))) continue;
+        records.push({
+          id: null,
+          user_id: u.id,
+          date,
+          clock_in: null,
+          clock_out: null,
+          title: u.title,
+          full_name: u.full_name,
+          first_name: u.first_name,
+          last_name: u.last_name,
+          username: u.username,
+          workplace: u.workplace,
+          work_site: 'ไม่ได้มาปฏิบัติงาน',
+          is_absent: 1,
+        });
+      }
+    }
   }
 
   res.json({ records, editors, can_edit: true });

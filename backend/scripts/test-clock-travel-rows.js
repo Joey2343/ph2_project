@@ -135,9 +135,12 @@ async function jget(p, cookie) {
     check(rep.status === 200 && !!repA && !!repD, 'รายงานการลงเวลามีทั้งผู้ขอและคณะไปราชการ',
       `ผู้ขอ ${repA ? 'มี' : 'ไม่มี'} · คณะ ${repD ? 'มี' : 'ไม่มี'} (${repRows.length} แถว)`);
     check(repA && repA.work_site === 'ไปราชการ', 'รายงาน: สถานที่ทำงาน = "ไปราชการ"', `ได้ "${repA && repA.work_site}"`);
-    check(repRows.length && Number(repRows[0].user_id) === B,
+    // คนที่มีเวลาเข้าต้องมาก่อนแถวไปราชการ (แถวไม่มีเวลาอยู่ท้าย)
+    const iB = repRows.findIndex((r) => Number(r.user_id) === B);
+    const iA = repRows.findIndex((r) => Number(r.user_id) === A);
+    check(iB >= 0 && iA >= 0 && iB < iA,
       'รายงานเรียงเหมือนหน้ารายการ (คนที่มีเวลาเข้าก่อนแถวไปราชการ)',
-      `แถวแรก user ${repRows[0] && repRows[0].user_id} (ต้องเป็น ${B})`);
+      `ลำดับ B=${iB} · A=${iA}`);
 
     console.log('');
     console.log('⑤ ผู้ที่ไปราชการลงเวลาเข้า/ออกไม่ได้');

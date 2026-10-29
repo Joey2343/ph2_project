@@ -232,6 +232,11 @@ async function main() {
   console.log('\n[ทดสอบแจ้ง Telegram ถึงคณะผู้ร่วมเดินทางเมื่ออนุมัติไปราชการ]');
   results.push(run('test-travel-companion-notify', [path.join(__dirname, 'test-travel-companion-notify.js')]));
 
+  console.log('\n[ทดสอบรายชื่อ "ไม่ได้มาปฏิบัติงาน" หลังเวลา 17:01]');
+  results.push(run('test-clock-absent-rows', [path.join(__dirname, 'test-clock-absent-rows.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบวงจรชีวิต session — ไม่บล็อก event loop · ไม่รั่ว · หมดอายุเมื่อไม่ใช้งาน 1 ชม.]');
   results.push(run('test-session-lifecycle', [path.join(__dirname, 'test-session-lifecycle.js')]));
 
