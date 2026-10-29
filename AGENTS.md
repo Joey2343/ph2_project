@@ -904,11 +904,11 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **202** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **203** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 41/41 (MariaDB 11.4) |
-| `backend: npm run check:returns` | ผ่าน (108 ไฟล์) |
+| `backend: npm run verify` | ผ่าน 42/42 (MariaDB 11.4) |
+| `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
 ให้เพิ่ม `--dump <keys>` เพื่อดู DOM/runtime จริง:

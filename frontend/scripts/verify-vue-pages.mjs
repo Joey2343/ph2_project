@@ -240,6 +240,27 @@ const VUE_PAGES = {
         check: `!!document.querySelector('[data-app-modal]')`,
       },
       {
+        /* ผู้ใช้ขอ: ใส่จำนวนคณะกี่คน → มีช่องเลือกชื่อเท่านั้น ช่องละ 1 คน มีเลขลำดับนำหน้า */
+        name: 'กรอกจำนวนคณะแล้วมีช่องเลือกชื่อตามจำนวน (มีเลขลำดับ 1. 2.)',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const num = [...document.querySelectorAll('[data-app-modal] input[type=number]')].find((i) => i.max === '50');
+          if (!num) throw new Error('ไม่พบช่องจำนวนคณะ');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(num, '2');
+          num.dispatchEvent(new Event('input', { bubbles: true }));
+          num.dispatchEvent(new Event('change', { bubbles: true }));
+          await sleep(500);
+          const box = document.getElementById('tf-companions');
+          if (!box) throw new Error('ไม่พบช่องเลือกชื่อผู้ร่วมเดินทาง');
+          const sels = [...box.querySelectorAll('select')];
+          if (sels.length !== 2) throw new Error('จำนวนช่องเลือกชื่อ = ' + sels.length + ' (ต้องเป็น 2)');
+          const nums = [...box.querySelectorAll('span')].map((s) => s.innerText.trim()).filter(Boolean);
+          if (nums[0] !== '1.' || nums[1] !== '2.') throw new Error('เลขลำดับไม่ถูกต้อง: ' + nums.join(','));
+          return true;
+        })()`,
+      },
+      {
         name: 'แบบฟอร์มมีช่องสถานที่และช่วงวันเดินทาง',
         check: `document.body.innerText.includes('สถานที่') && document.body.innerText.includes('ตั้งแต่วันที่')`,
       },

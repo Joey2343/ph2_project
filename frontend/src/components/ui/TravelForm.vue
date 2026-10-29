@@ -10,9 +10,10 @@
  *
  * ข้อมูลที่เก็บลง form_data ตรงกับ backend และ TravelDoc.vue อ่านกลับได้
  */
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
+import api from '../../api/client.js';
 import AppModal from './AppModal.vue';
 import ThaiDateField from './ThaiDateField.vue';
 
@@ -59,6 +60,33 @@ const f = ref({
 const attachment = ref(null);
 const attachmentName = ref('');
 
+/*
+ * รายชื่อบุคลากร สพป. (ไม่รวมสถานศึกษา) สำหรับช่อง "พร้อมด้วยคณะ"
+ * ผู้ใช้ขอ: ใส่จำนวนคณะกี่คน → แสดงช่องเลือกชื่อเท่านั้น ช่องละ 1 คน มีเลขลำดับนำหน้า
+ */
+const staff = ref([]);
+const companionNames = ref([]);
+
+onMounted(async () => {
+  try {
+    const res = await api.get('/users/active');
+    staff.value = (res.users || []).filter((u) => u.user_group !== 'school');
+  } catch {
+    /* โหลดรายชื่อไม่ได้ → ยังใช้ฟอร์มได้ (ช่องเลือกจะว่าง) */
+  }
+});
+
+/** จำนวนช่องเลือกชื่อ = จำนวนคณะที่กรอก (สูงสุด 50 กันข้อมูลผิดปกติ) */
+watch(
+  () => f.value.companions,
+  (n) => {
+    const count = Math.min(50, Math.max(0, parseInt(n, 10) || 0));
+    const arr = companionNames.value.slice(0, count);
+    while (arr.length < count) arr.push('');
+    companionNames.value = arr;
+  },
+);
+
 function reset() {
   f.value = {
     writing_at: 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2',
@@ -83,6 +111,7 @@ function reset() {
   };
   attachment.value = null;
   attachmentName.value = '';
+  companionNames.value = [];
   expenseChecked.value = { baht: false, hotel: false, transport: false, other: false };
 }
 watch(() => props.saving, reset);
@@ -142,6 +171,8 @@ function submit() {
     writing_at: v.writing_at.trim(),
     form_date: v.form_date || '',
     companions: parseInt(v.companions, 10) || 0,
+    // รายชื่อผู้ร่วมเดินทาง (ช่องเลือกชื่อตามจำนวนคณะ)
+    companion_names: companionNames.value.map((s) => String(s || '').trim()).filter(Boolean),
     travel_subject: v.travel_subject.trim(),
     order_doc: v.order_doc.trim(),
     order_date: v.order_date || '',
@@ -227,8 +258,30 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
 
       <div style="margin-bottom: 10px">
         <span>พร้อมด้วยคณะ จำนวน </span>
-        <input v-model.number="f.companions" type="number" min="0" style="width: 60px; font-size: 14px; text-align: center" />
+        <input v-model.number="f.companions" type="number" min="0" max="50" style="width: 60px; font-size: 14px; text-align: center" />
         <span> คน</span>
+      </div>
+
+      <!--
+        ช่องเลือกชื่อผู้ร่วมเดินทาง — จำนวนช่องตามจำนวนคณะที่กรอก
+        มีเลขลำดับนำหน้า (1. 2. 3. ...) · เลือกจากรายชื่อบุคลากร สพป. เท่านั้น
+      -->
+      <div v-if="companionNames.length" id="tf-companions" style="margin: 0 0 12px 20px">
+        <div
+          v-for="(name, i) in companionNames"
+          :key="i"
+          style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px"
+        >
+          <span style="width: 24px; text-align: right; font-weight: 700">{{ i + 1 }}.</span>
+          <select
+            :id="'tf-companion-' + i"
+            v-model="companionNames[i]"
+            style="width: 380px; max-width: 100%; font-size: 14px"
+          >
+            <option value="">— เลือกบุคลากร —</option>
+            <option v-for="u in staff" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
+          </select>
+        </div>
       </div>
 
       <!-- ---------- ส่วนรายละเอียด ---------- -->
