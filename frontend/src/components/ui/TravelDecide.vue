@@ -27,6 +27,8 @@ const props = defineProps({
   record: { type: Object, default: null },
   /** 'forward' | 'level1' | 'final' */
   mode: { type: String, default: 'level1' },
+  /** ชื่อขั้น เช่น "อนุมัติขั้นต้น" (สายสถานศึกษา ขั้น 2) */
+  stepTitle: { type: String, default: '' },
 });
 
 const emit = defineEmits(['close', 'confirm']);
@@ -53,6 +55,13 @@ const options = computed(() => OPTIONS[props.mode] || OPTIONS.level1);
 
 /** ปุ่มยืนยันตามขั้น */
 const okText = computed(() => (props.mode === 'forward' ? 'ยืนยัน' : 'ยืนยัน'));
+
+/** หัวหน้าต่าง — ใช้ชื่อขั้นที่ส่งมา (เช่น "อนุมัติขั้นต้น") ถ้ามี */
+const title = computed(() => {
+  if (props.mode === 'forward') return '⊙ เสนอเรื่องคำขออนุญาตเดินทางไปราชการ';
+  if (props.stepTitle) return '● ' + props.stepTitle;
+  return '● พิจารณาคำขอไปราชการ';
+});
 
 /* ---------- สถานะฟอร์ม ---------- */
 const forward = ref(true);
@@ -132,16 +141,7 @@ function confirm() {
 </script>
 
 <template>
-  <AppModal
-    :title="
-      mode === 'forward'
-        ? '⊙ เสนอเรื่องคำขออนุญาตเดินทางไปราชการ'
-        : '● พิจารณาคำขอไปราชการ'
-    "
-    size="lg"
-    footer
-    @close="emit('close')"
-  >
+  <AppModal :title="title" size="lg" footer @close="emit('close')">
     <div style="font-size: 15px">
       <!-- ---------- ขั้นที่ 1 สายสถานศึกษา: ผู้ตรวจสอบ ---------- -->
       <template v-if="mode === 'forward'">

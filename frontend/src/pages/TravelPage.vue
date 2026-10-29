@@ -169,7 +169,10 @@ function canDecide(r) {
 /** ป้ายปุ่มอนุมัติตามขั้น — สายสถานศึกษาขั้นแรกใช้คำว่า "ตรวจสอบ" */
 function approveButtonLabel(r) {
   const next = nextLevel(r);
-  if (requestIsSchool(r) && next === 1) return '⊙ ตรวจสอบ';
+  const school = requestIsSchool(r);
+  if (school && next === 1) return '⊙ ตรวจสอบ';
+  // สายสถานศึกษา ขั้นที่ 2 = ผู้อนุมัติขั้นต้น
+  if (school && next === 2) return '● อนุมัติขั้นต้น';
   return next === 1 ? '● ควรอนุญาต' : '● อนุญาต';
 }
 
@@ -242,18 +245,25 @@ async function submitForm(payload) {
 const decideOpen = ref(false);
 const decideTarget = ref(null);
 const decideMode = ref('level1');
+/** ชื่อขั้นที่แสดงบนหัวหน้าต่าง (เช่น "อนุมัติขั้นต้น" ของสายสถานศึกษา) */
+const decideStepTitle = ref('');
 
 /**
  * เปิดหน้าต่างพิจารณา และเลือกรูปแบบให้ตรงกับขั้น
- *   ขั้น 1 สายสถานศึกษา → 'forward'  (เสนอเรื่อง ไม่บันทึกความเห็น)
- *   ขั้น 1 สาย สพป.   → 'level1'   (ควรอนุญาต/ไม่ควรอนุญาต)
- *   ขั้นสุดท้าย         → 'final'    (อนุญาต/ไม่อนุญาต + ตำแหน่ง)
+ *   ขั้น 1 สายสถานศึกษา → 'forward'  (ผู้ตรวจสอบ: เสนอเรื่อง ไม่บันทึกความเห็น)
+ *   ขั้น 2 สายสถานศึกษา → 'level1'   (ผู้อนุมัติขั้นต้น: ควรอนุญาต/ไม่ควรอนุญาต)
+ *   ขั้น 1 สาย สพป.     → 'level1'   (ผู้บังคับบัญชาขั้นต้น)
+ *   ขั้นสุดท้าย          → 'final'    (อนุญาต/ไม่อนุญาต + ตำแหน่ง)
  */
 function openDecide(r) {
   const next = nextLevel(r);
   const school = requestIsSchool(r);
+  decideStepTitle.value = '';
   if (school && next === 1) decideMode.value = 'forward';
-  else if (next === 1) decideMode.value = 'level1';
+  else if (school && next === 2) {
+    decideMode.value = 'level1';
+    decideStepTitle.value = 'อนุมัติขั้นต้น';
+  } else if (next === 1) decideMode.value = 'level1';
   else decideMode.value = 'final';
 
   decideTarget.value = r;
@@ -494,6 +504,7 @@ function openExportDialog() {
     v-if="decideOpen"
     :record="decideTarget"
     :mode="decideMode"
+    :step-title="decideStepTitle"
     @close="decideOpen = false"
     @confirm="onDecide"
   />
