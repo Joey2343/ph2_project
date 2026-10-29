@@ -46,6 +46,27 @@ const deptText = computed(
   () => props.record.workplace || props.record.department || props.record.group || '-',
 );
 
+/**
+ * ชื่อผู้ร่วมเดินทาง (จากช่องเลือกชื่อในส่วน "พร้อมด้วยคณะ")
+ * เก็บเป็น array ใน form_data.companion_names
+ */
+const companionNames = computed(() => {
+  const arr = fd.value.companion_names;
+  if (!Array.isArray(arr)) return [];
+  return arr.map((s) => String(s || '').trim()).filter(Boolean);
+});
+
+/**
+ * แบ่งรายชื่อเป็น 2 คอลัมน์เท่า ๆ กัน
+ *   30 คน → 1–15 / 16–30
+ *   47 คน → 1–24 / 25–47   (คอลัมน์แรกปัดขึ้น)
+ */
+const companionCols = computed(() => {
+  const all = companionNames.value;
+  const half = Math.ceil(all.length / 2);
+  return { left: all.slice(0, half), right: all.slice(half) };
+});
+
 /** วันที่แบบไทยแบบเต็ม ใช้ในส่วนหัวเอกสาร */
 function thaiFull(d) {
   if (!d) return '-';
@@ -226,8 +247,27 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
 
         <p style="margin: 0 0 2px 0">
           พร้อมด้วยคณะ จำนวน {{ fd.companions || 0 }} คน
-          <span style="margin-left: 10px">ตามรายชื่อแนบท้ายเอกสารนี้ (โปรดระบุด้านหลัง)</span>
+          <!-- มีรายชื่อที่เลือกไว้ → "ดังนี้" แล้วแสดงรายชื่อ 2 คอลัมน์
+               ไม่มี (ข้อมูลเก่า) → คงข้อความเดิมไว้ -->
+          <span v-if="companionNames.length" style="margin-left: 10px">ดังนี้</span>
+          <span v-else style="margin-left: 10px">ตามรายชื่อแนบท้ายเอกสารนี้ (โปรดระบุด้านหลัง)</span>
         </p>
+
+        <!-- รายชื่อผู้ร่วมเดินทาง แบ่ง 2 คอลัมน์เท่า ๆ กัน -->
+        <div
+          v-if="companionNames.length"
+          id="travel-companions"
+          style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; font-size: 20px; line-height: 1.4; margin: 2px 0 8px 0; padding-left: 40px; text-indent: 0"
+        >
+          <div>
+            <div v-for="(n, i) in companionCols.left" :key="'cl' + i">{{ i + 1 }}. {{ n }}</div>
+          </div>
+          <div>
+            <div v-for="(n, i) in companionCols.right" :key="'cr' + i">
+              {{ companionCols.left.length + i + 1 }}. {{ n }}
+            </div>
+          </div>
+        </div>
 
         <p :style="PARAGRAPH">
           มีความประสงค์ขออนุมัติ/อนุญาตเดินทางไปราชการ เรื่อง
