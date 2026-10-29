@@ -14,6 +14,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
 import api from '../../api/client.js';
+import { schoolDisplayName } from '../../lib/school-name.js';
 import AppModal from './AppModal.vue';
 import ThaiDateField from './ThaiDateField.vue';
 
@@ -42,11 +43,12 @@ const isSchoolScope = computed(() => props.scope === 'school');
 /**
  * "เขียนที่" เริ่มต้น
  *   - สพป.   → สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2
- *   - สถานศึกษา → ชื่อสถานศึกษาของผู้ใช้ (current_school / workplace)
+ *   - สถานศึกษา → ชื่อสถานศึกษา โดยเอารหัสออกและใช้คำว่า "โรงเรียน" นำหน้า
+ *     (เช่น "54020001 บ้านน้ำริน" → "โรงเรียนบ้านน้ำริน")
  */
 function defaultWritingAt() {
   if (!isSchoolScope.value) return 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
-  return user.value.current_school || user.value.workplace || 'สถานศึกษา';
+  return schoolDisplayName(user.value.current_school || user.value.workplace || '');
 }
 
 /** กลุ่ม/หน่วย — สถานศึกษาใช้ชื่อโรงเรียน */

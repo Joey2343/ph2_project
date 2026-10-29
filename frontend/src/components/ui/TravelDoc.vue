@@ -11,6 +11,7 @@
  */
 import { computed } from 'vue';
 import { UI } from '../../ui/ui.js';
+import { schoolDisplayName } from '../../lib/school-name.js';
 import AppModal from './AppModal.vue';
 import StatusBadge from './StatusBadge.vue';
 import ApprovalSteps from './ApprovalSteps.vue';
@@ -129,6 +130,18 @@ const vehicleLine = computed(() => {
  */
 const reqIsSchool = computed(() => (props.record.user_group || 'office') === 'school');
 
+/**
+ * "เขียนที่" ที่จะแสดงในเอกสาร
+ *   - สถานศึกษา: เอารหัสโรงเรียนออก ใช้คำว่า "โรงเรียน" นำหน้า
+ *     (ข้อมูลเก่าที่บันทึกเป็น "54020001 บ้านน้ำริน..." ก็แปลงให้ถูกต้อง)
+ *   - สพป.: ใช้ค่าที่บันทึกไว้ตามเดิม
+ */
+const writingAt = computed(() => {
+  const raw = String(fd.value.writing_at || '').trim();
+  if (!raw) return '-';
+  return reqIsSchool.value ? schoolDisplayName(raw) : raw;
+});
+
 function approvalAt(level) {
   return (props.record.approvals || []).find((a) => a.level === level) || null;
 }
@@ -218,7 +231,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
       </div>
 
       <div style="text-align: right; margin-bottom: 10px; font-size: 20px">
-        <div>เขียนที่ {{ fd.writing_at || '-' }}</div>
+        <div>เขียนที่ {{ writingAt }}</div>
       </div>
 
       <div style="text-indent: 50%; margin-bottom: 10px; font-size: 20px">
@@ -226,7 +239,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
       </div>
 
       <div style="margin-bottom: 8px; font-size: 20px">
-        <span style="font-weight: bold">เรื่อง&nbsp;&nbsp;</span>ขออนุมัติ/อนุญาตเดินทางไปราชการ
+        <span style="font-weight: bold">เรื่อง&nbsp;&nbsp;</span>{{ reqIsSchool ? 'ขออนุญาตเดินทางไปราชการในราชอาณาจักร' : 'ขออนุมัติ/อนุญาตเดินทางไปราชการ' }}
       </div>
 
       <div style="margin-bottom: 15px; font-size: 20px">
