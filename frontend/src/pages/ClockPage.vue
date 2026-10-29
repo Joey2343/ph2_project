@@ -132,7 +132,7 @@ const scope = ref(canViewAll.value ? 'all' : 'mine');
 
 /*
  * เรียงจากใหม่ → เก่า
- *   · "ไม่ได้มาปฏิบัติงาน" ขึ้นบนสุดเสมอ (ผู้ใช้ขอให้เห็นรายชื่อที่ขาดก่อน)
+ *   · "ไม่ได้ลงชื่อปฏิบัติงาน" ขึ้นบนสุดเสมอ (ผู้ใช้ขอให้เห็นรายชื่อที่ขาดก่อน)
  *   · วันล่าสุดขึ้นก่อน (date เป็น string 'YYYY-MM-DD' เพราะ connection ตั้ง dateStrings: true)
  *   · วันเดียวกัน เรียงตามเวลาเข้าล่าสุดก่อน (คนที่ลงเวลาล่าสุดอยู่บนสุด)
  *   · แถวที่ยังไม่มีเวลาเข้า (ไปราชการ/ลา) ไปท้ายสุด
@@ -697,10 +697,10 @@ onBeforeUnmount(() => {
               <td>
                 <span v-if="r.is_travel" class="travel-tag">ไปราชการ</span>
                 <span v-else-if="r.is_leave" class="leave-tag">{{ r.work_site }}</span>
-                <span v-else-if="r.is_absent" class="absent-tag">ไม่ได้มาปฏิบัติงาน</span>
+                <span v-else-if="r.is_absent" class="absent-tag">ไม่ได้ลงชื่อปฏิบัติงาน</span>
                 <template v-else>{{ workSiteLabel(r) }}</template>
               </td>
-              <!-- ไปราชการ/ลา/ไม่ได้มาปฏิบัติงาน: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
+              <!-- ไปราชการ/ลา/ไม่ได้ลงชื่อปฏิบัติงาน: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
               <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_in) }}</td>
               <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_out) }}</td>
               <td v-if="(scope === 'all' || canEditMine) && !r.is_travel && !r.is_leave && !r.is_absent">
@@ -803,7 +803,7 @@ onBeforeUnmount(() => {
                 <td>{{ r.position }}</td>
                 <td>{{ r.workplace }}</td>
                 <td>
-                  <span v-if="r.is_absent" class="absent-tag">ไม่ได้มาปฏิบัติงาน</span>
+                  <span v-if="r.is_absent" class="absent-tag">ไม่ได้ลงชื่อปฏิบัติงาน</span>
                   <template v-else>{{ workSiteLabel(r) }}</template>
                 </td>
                 <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_in) }}</td>
@@ -1150,7 +1150,7 @@ onBeforeUnmount(() => {
   background: #fffbf5;
 }
 
-/* แถว "ไม่ได้มาปฏิบัติงาน" (หลังเวลา 17:01 ของวันนั้น) — อยู่บนสุดของรายการ */
+/* แถว "ไม่ได้ลงชื่อปฏิบัติงาน" (หลังเวลา 17:01 ของวันนั้น) — อยู่บนสุดของรายการ */
 .absent-tag {
   display: inline-block;
   background: #fee2e2;

@@ -232,7 +232,7 @@ async function main() {
   console.log('\n[ทดสอบแจ้ง Telegram ถึงคณะผู้ร่วมเดินทางเมื่ออนุมัติไปราชการ]');
   results.push(run('test-travel-companion-notify', [path.join(__dirname, 'test-travel-companion-notify.js')]));
 
-  console.log('\n[ทดสอบรายชื่อ "ไม่ได้มาปฏิบัติงาน" หลังเวลา 17:01]');
+  console.log('\n[ทดสอบรายชื่อ "ไม่ได้ลงชื่อปฏิบัติงาน" หลังเวลา 17:01]');
   results.push(run('test-clock-absent-rows', [path.join(__dirname, 'test-clock-absent-rows.js')], {
     env: { TEST_BASE_URL },
   }));

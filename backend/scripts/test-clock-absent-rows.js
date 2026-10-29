@@ -1,17 +1,17 @@
 'use strict';
 /**
- * ทดสอบ "ไม่ได้มาปฏิบัติงาน" หลังเวลา 17:01
+ * ทดสอบ "ไม่ได้ลงชื่อปฏิบัติงาน" หลังเวลา 17:01
  *
  * ความต้องการ (ผู้ใช้):
  *   ในรายการบันทึกเวลาทำงานของเจ้าหน้าที่ เมื่อถึงเวลา 17:01 น.
  *   ให้ดึงรายชื่อเจ้าหน้าที่ที่เหลือทั้งหมด (ยกเว้น admin) มาแสดงบนสุด
- *   และคอลัมน์สถานที่ทำงาน = "ไม่ได้มาปฏิบัติงาน"
+ *   และคอลัมน์สถานที่ทำงาน = "ไม่ได้ลงชื่อปฏิบัติงาน"
  *
  * วิธีทดสอบ: ใช้โหมดจำลองวันที่ (PUT /api/sim-date) ให้ "วันนี้" เป็นวันในอนาคต
  *   แล้วดูรายงานของวันในอดีต → ถือว่าวันนั้นจบแล้ว (มีรายชื่อผู้ขาดงาน)
  *
  * สิ่งที่ต้องผ่าน
- *   ① คนที่ไม่มีบันทึกเวลา/ไปราชการ/ลา → ถูกแสดงเป็น "ไม่ได้มาปฏิบัติงาน"
+ *   ① คนที่ไม่มีบันทึกเวลา/ไปราชการ/ลา → ถูกแสดงเป็น "ไม่ได้ลงชื่อปฏิบัติงาน"
  *   ② คนที่มีบันทึกเวลาของวันนั้น → ไม่ถูกทำเครื่องหมายขาดงาน
  *   ③ admin ไม่ถูกนับว่าขาดงาน
  *
@@ -85,11 +85,11 @@ async function jput(p, cookie, body) {
     const adminRow = rows.find((r) => Number(r.user_id) === 1 && r.is_absent);
 
     console.log('');
-    console.log('① เจ้าหน้าที่ที่ไม่มีบันทึกเวลา → "ไม่ได้มาปฏิบัติงาน"');
+    console.log('① เจ้าหน้าที่ที่ไม่มีบันทึกเวลา → "ไม่ได้ลงชื่อปฏิบัติงาน"');
     check(res.status === 200, 'GET /api/time/all → 200', `ได้ ${res.status}`);
-    check(!!rowB, 'พบรายชื่อผู้ที่ไม่ได้มาปฏิบัติงาน', `ไม่พบ user ${B} (${rows.length} แถว)`);
+    check(!!rowB, 'พบรายชื่อผู้ที่ไม่ได้ลงชื่อปฏิบัติงาน', `ไม่พบ user ${B} (${rows.length} แถว)`);
     check(rowB && rowB.is_absent === 1, 'ทำเครื่องหมาย is_absent = 1', `ได้ ${rowB && rowB.is_absent}`);
-    check(rowB && rowB.work_site === 'ไม่ได้มาปฏิบัติงาน', 'สถานที่ทำงาน = "ไม่ได้มาปฏิบัติงาน"',
+    check(rowB && rowB.work_site === 'ไม่ได้ลงชื่อปฏิบัติงาน', 'สถานที่ทำงาน = "ไม่ได้ลงชื่อปฏิบัติงาน"',
       `ได้ "${rowB && rowB.work_site}"`);
     check(rowB && !rowB.clock_in && !rowB.clock_out, 'ไม่มีเวลาเข้า/ออก');
 
@@ -103,13 +103,13 @@ async function jput(p, cookie, body) {
     check(!adminRow, 'ไม่มีแถวขาดงานของ admin');
 
     console.log('');
-    console.log('④ รายงานการลงเวลาทำงานก็ต้องแสดงผู้ที่ไม่ได้มาปฏิบัติงาน');
+    console.log('④ รายงานการลงเวลาทำงานก็ต้องแสดงผู้ที่ไม่ได้ลงชื่อปฏิบัติงาน');
     const rep = await jget('/api/time/report?period=day&date=' + PAST, admin);
     const repRows = (rep.body && rep.body.records) || [];
     const repB = repRows.find((r) => Number(r.user_id) === B);
-    check(rep.status === 200 && !!repB, 'รายงานมีรายชื่อผู้ที่ไม่ได้มาปฏิบัติงาน', `มี ${repRows.length} แถว`);
-    check(repB && repB.is_absent === 1 && repB.work_site === 'ไม่ได้มาปฏิบัติงาน',
-      'รายงาน: สถานที่ทำงาน = "ไม่ได้มาปฏิบัติงาน"',
+    check(rep.status === 200 && !!repB, 'รายงานมีรายชื่อผู้ที่ไม่ได้ลงชื่อปฏิบัติงาน', `มี ${repRows.length} แถว`);
+    check(repB && repB.is_absent === 1 && repB.work_site === 'ไม่ได้ลงชื่อปฏิบัติงาน',
+      'รายงาน: สถานที่ทำงาน = "ไม่ได้ลงชื่อปฏิบัติงาน"',
       JSON.stringify(repB && { a: repB.is_absent, s: repB.work_site }));
     const idxAbsent = repRows.findIndex((r) => Number(r.user_id) === B);
     const idxPresent = repRows.findIndex((r) => Number(r.user_id) === A);

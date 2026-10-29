@@ -198,7 +198,7 @@ async function leaveUsersOn(date) {
 }
 
 /**
- * วันที่นั้น "จบแล้ว" หรือยัง (ใช้ตัดสินว่าจะแสดงผู้ที่ไม่ได้มาปฏิบัติงาน)
+ * วันที่นั้น "จบแล้ว" หรือยัง (ใช้ตัดสินว่าจะแสดงผู้ที่ไม่ได้ลงชื่อปฏิบัติงาน)
  *   - วันในอดีต = จบแล้ว
  *   - วันนี้ = จบเมื่อเวลาผ่าน 17:01 น.
  *   - วันในอนาคต = ยังไม่จบ
@@ -214,11 +214,11 @@ function isDayOver(date) {
 
 /**
  * เจ้าหน้าที่ สพป. (ยกเว้น admin) ที่ยังไม่มีแถวของวันนั้น
- *   = ไม่ได้ลงเวลา/ไปราชการ/ลา → "ไม่ได้มาปฏิบัติงาน"
+ *   = ไม่ได้ลงเวลา/ไปราชการ/ลา → "ไม่ได้ลงชื่อปฏิบัติงาน"
  *
  * @param {string} date  วันที่ YYYY-MM-DD
  * @param {Set<number>} have  id ของผู้ที่มีแถวอยู่แล้วของวันนั้น
- * @returns {Promise<Array>} แถวข้อมูล (work_site = "ไม่ได้มาปฏิบัติงาน", is_absent = 1)
+ * @returns {Promise<Array>} แถวข้อมูล (work_site = "ไม่ได้ลงชื่อปฏิบัติงาน", is_absent = 1)
  */
 async function absentStaffOn(date, have) {
   const staff = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
@@ -241,7 +241,7 @@ async function absentStaffOn(date, have) {
       last_name: u.last_name,
       username: u.username,
       workplace: u.workplace,
-      work_site: 'ไม่ได้มาปฏิบัติงาน',
+      work_site: 'ไม่ได้ลงชื่อปฏิบัติงาน',
       is_absent: 1,
     });
   }
@@ -1000,7 +1000,7 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
 
     /*
      * หลังเวลา 17:01 ของวันนั้น → เจ้าหน้าที่ที่เหลือ (ไม่มีบันทึกเวลา/ไปราชการ/ลา)
-     * ถือว่า "ไม่ได้มาปฏิบัติงาน" และแสดงไว้บนสุดของรายการ
+     * ถือว่า "ไม่ได้ลงชื่อปฏิบัติงาน" และแสดงไว้บนสุดของรายการ
      * (logic อยู่ใน absentStaffOn — วันที่ผ่านไปแล้วก็นับด้วย)
      */
     if (isDayOver(date)) {
@@ -1040,7 +1040,7 @@ function dateListInRange(start, end) {
 
 /**
  * เรียงแถวรายงานให้เหมือนหน้า "บันทึกเวลาทำงานของเจ้าหน้าที่"
- *   วันที่ใหม่ → เก่า · "ไม่ได้มาปฏิบัติงาน" ขึ้นก่อนในแต่ละวัน
+ *   วันที่ใหม่ → เก่า · "ไม่ได้ลงชื่อปฏิบัติงาน" ขึ้นก่อนในแต่ละวัน
  *   · เวลาเข้าล่าสุดก่อน · แถวที่ไม่มีเวลาเข้า (ไปราชการ/ลา) ไปท้าย
  */
 function sortReportRows(a, b) {
@@ -1177,7 +1177,7 @@ async function addNonWorkingReportRows(records, start, end) {
     }
   }
 
-  // ---- "ไม่ได้มาปฏิบัติงาน" (วันที่จบแล้ว: อดีต หรือวันนี้หลัง 17:01) ----
+  // ---- "ไม่ได้ลงชื่อปฏิบัติงาน" (วันที่จบแล้ว: อดีต หรือวันนี้หลัง 17:01) ----
   for (const date of dates) {
     if (!isDayOver(date)) continue;
     const absent = await absentStaffOn(date, haveOf(date));
