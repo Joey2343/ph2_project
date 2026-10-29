@@ -257,6 +257,17 @@ const VUE_PAGES = {
           if (sels.length !== 2) throw new Error('จำนวนช่องเลือกชื่อ = ' + sels.length + ' (ต้องเป็น 2)');
           const nums = [...box.querySelectorAll('span')].map((s) => s.innerText.trim()).filter(Boolean);
           if (nums[0] !== '1.' || nums[1] !== '2.') throw new Error('เลขลำดับไม่ถูกต้อง: ' + nums.join(','));
+
+          // เลือกชื่อในช่องที่ 1 → ช่องที่ 2 ต้องไม่แสดงชื่อนั้นอีก
+          const sel0 = sels[0], sel1 = sels[1];
+          const pick = sel0.options[1] ? sel0.options[1].value : '';
+          if (!pick) throw new Error('ไม่มีรายชื่อให้เลือก');
+          const sSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+          sSetter.call(sel0, pick);
+          sel0.dispatchEvent(new Event('change', { bubbles: true }));
+          await sleep(400);
+          const names1 = [...sel1.options].map((o) => o.value).filter(Boolean);
+          if (names1.includes(pick)) throw new Error('ช่องที่ 2 ยังแสดงชื่อที่เลือกแล้ว: ' + pick);
           return true;
         })()`,
       },

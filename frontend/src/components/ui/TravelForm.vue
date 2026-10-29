@@ -87,6 +87,19 @@ watch(
   },
 );
 
+/**
+ * ตัวเลือกของช่องที่ index — ตัดรายชื่อที่ถูกเลือกในช่องอื่นออก
+ * (ผู้ใช้ขอ: เลือกชื่อในช่องก่อนหน้าแล้ว ช่องถัดไปต้องไม่แสดงชื่อซ้ำ)
+ */
+function optionsFor(index) {
+  const taken = new Set(
+    companionNames.value
+      .map((s, i) => (i === index ? '' : String(s || '').trim()))
+      .filter(Boolean),
+  );
+  return staff.value.filter((u) => !taken.has(UI.personName(u)));
+}
+
 function reset() {
   f.value = {
     writing_at: 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2',
@@ -279,7 +292,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
             style="width: 380px; max-width: 100%; font-size: 14px"
           >
             <option value="">— เลือกบุคลากร —</option>
-            <option v-for="u in staff" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
+            <option v-for="u in optionsFor(i)" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
           </select>
         </div>
       </div>
