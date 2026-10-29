@@ -962,6 +962,164 @@ router.get('/time/stats', auth.requireAuth, async (req, res) => {
 });
 
 // ---------- รายงานการลงเวลา (วัน/สัปดาห์/เดือน) ----------
+/** วันที่ทั้งหมดในช่วง [start, end] (YYYY-MM-DD) */
+function dateListInRange(start, end) {
+  const out = [];
+  const d = new Date(start + 'T00:00:00');
+  const e = new Date(end + 'T00:00:00');
+  for (let guard = 0; d <= e && guard < 800; guard++) {
+    out.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    );
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+/**
+ * เรียงแถวรายงานให้เหมือนหน้า "บันทึกเวลาทำงานของเจ้าหน้าที่"
+ *   วันที่ใหม่ → เก่า · เวลาเข้าล่าสุดก่อน · แถวที่ไม่มีเวลาเข้า (ไปราชการ/ลา) ไปท้าย
+ */
+function sortReportRows(a, b) {
+  const d1 = String(a.date || '');
+  const d2 = String(b.date || '');
+  if (d1 !== d2) return d2.localeCompare(d1);
+  const t1 = String(a.clock_in || '');
+  const t2 = String(b.clock_in || '');
+  if (!t1 && !t2) return 0;
+  if (!t1) return 1;
+  if (!t2) return -1;
+  return t2.localeCompare(t1);
+}
+
+/**
+ * เติมแถว "ไปราชการ" และ "ลา" ให้รายงาน (ช่วงวันที่)
+ *
+ * ผู้ใช้ขอ: รายงานการลงเวลาต้องดึงไปราชการ/ลามาแสดงด้วย
+ *   และเรียงลำดับเหมือนหน้า "บันทึกเวลาทำงานของเจ้าหน้าที่"
+ *
+ * records = แถวจาก time_records (ต้องมี user_id และ date)
+ * ข้ามคนที่มีบันทึกเวลาของวันนั้นอยู่แล้ว (กันแถวซ้ำ)
+ */
+async function addNonWorkingReportRows(records, start, end) {
+  const dates = dateListInRange(start, end);
+  if (!dates.length) return records;
+
+  const have = new Set(records.map((r) => `${Number(r.user_id)}|${r.date}`));
+  const pushRow = (row) => {
+    const key = `${Number(row.user_id)}|${row.date}`;
+    if (have.has(key)) return;
+    have.add(key);
+    records.push(row);
+  };
+  const baseRow = (u, date, site, flag) => ({
+    id: null,
+    user_id: Number(u.id ?? u.user_id),
+    date,
+    clock_in: null,
+    clock_out: null,
+    title: u.title,
+    full_name: u.full_name,
+    first_name: u.first_name,
+    last_name: u.last_name,
+    username: u.username,
+    position: u.position,
+    workplace: u.workplace,
+    work_site: site,
+    [flag]: 1,
+  });
+
+  // ---- ไปราชการ (ผู้ยื่นคำขอ + คณะ) ----
+  const travels = await db.prepare(`SELECT t.id, t.user_id, t.form_data, t.date_from, t.date_to,
+      u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
+    FROM travel_requests t JOIN users u ON u.id = t.user_id
+    WHERE t.status = 'approved' AND t.date_from <= ? AND t.date_to >= ? AND u.status = 'active'`)
+    .all(end, start);
+
+  if (travels.length) {
+    const parsed = travels.map((t) => {
+      let fd = {};
+      try { fd = typeof t.form_data === 'string' ? JSON.parse(t.form_data || '{}') : (t.form_data || {}); } catch (e) { fd = {}; }
+      const idList = Array.isArray(fd.companion_ids) ? fd.companion_ids.map(Number).filter((n) => n > 0) : [];
+      const nameList = Array.isArray(fd.companion_names)
+        ? fd.companion_names.map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+        : [];
+      return { idList, nameList };
+    });
+
+    // ข้อมูลคณะ (โหลดครั้งเดียว)
+    const compIds = new Set();
+    for (const p of parsed) for (const id of p.idList) compIds.add(id);
+    const compById = new Map();
+    if (compIds.size) {
+      const cu = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, position, workplace
+        FROM users WHERE id IN (${[...compIds].map(() => '?').join(',')})`).all(...compIds);
+      for (const u of cu) compById.set(Number(u.id), u);
+    }
+    const nameSet = new Set();
+    for (const p of parsed) for (const n of p.nameList) nameSet.add(n);
+    if (nameSet.size) {
+      const allUsers = await db.prepare(`SELECT id, title, first_name, last_name, full_name, username, position, workplace
+        FROM users WHERE status = 'active'`).all();
+      const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+      for (const u of allUsers) {
+        const built = norm(`${u.title || ''}${u.first_name || ''}  ${u.last_name || ''}`);
+        if (nameSet.has(built) || nameSet.has(norm(u.full_name))) compById.set(Number(u.id), u);
+      }
+    }
+
+    const travelDates = (t) => {
+      const from = String(t.date_from || '').slice(0, 10);
+      const to = String(t.date_to || t.date_from || '').slice(0, 10);
+      return dates.filter((d) => d >= from && d <= to);
+    };
+
+    for (let i = 0; i < travels.length; i++) {
+      const t = travels[i];
+      const days = travelDates(t);
+      if (!days.length) continue;
+      for (const date of days) {
+        pushRow(baseRow({ ...t, id: t.user_id }, date, 'ไปราชการ', 'is_travel'));
+        for (const cid of parsed[i].idList) {
+          const cu = compById.get(cid);
+          if (cu) pushRow(baseRow(cu, date, 'ไปราชการ', 'is_travel'));
+        }
+      }
+    }
+  }
+
+  // ---- ลา (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว) ----
+  const leaves = await db.prepare(`SELECT l.user_id, l.leave_type, l.date_from, l.date_to,
+      u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
+    FROM leave_requests l JOIN users u ON u.id = l.user_id
+    WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ?
+      AND u.status = 'active' AND COALESCE(u.user_group, 'office') = 'office'`)
+    .all(end, start);
+
+  for (const l of leaves) {
+    const from = String(l.date_from || '').slice(0, 10);
+    const to = String(l.date_to || l.date_from || '').slice(0, 10);
+    const site = String(l.leave_type || 'ลา');
+    for (const date of dates) {
+      if (date < from || date > to) continue;
+      pushRow(baseRow({ ...l, id: l.user_id }, date, site, 'is_leave'));
+    }
+  }
+
+  return records;
+}
+
+/** แถวรายงานทั้งหมด (บันทึกเวลา + ไปราชการ + ลา) เรียงเหมือนหน้ารายการ */
+async function buildReportRows(range) {
+  const rows = await db.prepare(`SELECT t.id, t.user_id, t.date, t.clock_in, t.clock_out, t.clock_in_src,
+      u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
+    FROM time_records t JOIN users u ON u.id = t.user_id
+    WHERE t.date BETWEEN ? AND ?`).all(range.start, range.end);
+  const all = await addNonWorkingReportRows(rows.map(withWorkSite), range.start, range.end);
+  all.sort(sortReportRows);
+  return all;
+}
+
 /** คำนวณช่วงวันที่จาก period + วันที่อ้างอิง (YYYY-MM-DD หรือ YYYY-MM) */
 function reportRange(period, ref) {
   const simIso = simdate.todayISO(); // YYYY-MM-DD (วันจำลองเมื่อเปิดโหมดจำลอง)
@@ -1012,11 +1170,9 @@ router.get('/time/report', auth.requireAuth, async (req, res) => {
   const period = ['day', 'week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'day';
   const range = reportRange(period, req.query.date);
   if (!range) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' });
-  const rows = await db.prepare(`SELECT t.id, t.date, t.clock_in, t.clock_out, t.clock_in_src, u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
-    FROM time_records t JOIN users u ON u.id = t.user_id
-    WHERE t.date BETWEEN ? AND ?
-    ORDER BY t.date ASC, u.full_name ASC`).all(range.start, range.end);
-  res.json({ period, range, records: rows.map(withWorkSite) });
+  // รวมบันทึกเวลา + ไปราชการ + ลา (เรียงเหมือนหน้า "บันทึกเวลาทำงานของเจ้าหน้าที่")
+  const records = await buildReportRows(range);
+  res.json({ period, range, records });
 });
 
 // ดาวน์โหลดรายงาน .xlsx — admin หรือผู้ได้รับสิทธิ์
@@ -1025,10 +1181,8 @@ router.get('/time/report.xlsx', auth.requireAuth, async (req, res) => {
   const period = ['day', 'week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'day';
   const range = reportRange(period, req.query.date);
   if (!range) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' });
-  const rows = await db.prepare(`SELECT t.date, t.clock_in, t.clock_out, t.clock_in_src, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace
-    FROM time_records t JOIN users u ON u.id = t.user_id
-    WHERE t.date BETWEEN ? AND ?
-    ORDER BY t.date ASC, u.full_name ASC`).all(range.start, range.end);
+  // แถวเดียวกับหน้าเว็บ (รวมไปราชการ/ลา และเรียงลำดับเดียวกัน)
+  const rows = await buildReportRows(range);
 
   const XLSX = require('xlsx');
   const head = [['รายงานการลงเวลาทำงาน', '', '', '', '', '', ''],
@@ -1040,7 +1194,7 @@ router.get('/time/report.xlsx', auth.requireAuth, async (req, res) => {
     r.full_name,
     r.position || '',
     r.workplace || '',
-    siteNameFromSrc(r.clock_in_src) || '-',
+    r.work_site || siteNameFromSrc(r.clock_in_src) || '-',
     r.clock_in || '-',
     r.clock_out || '-',
   ]);

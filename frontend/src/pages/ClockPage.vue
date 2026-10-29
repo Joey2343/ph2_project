@@ -776,8 +776,8 @@ onBeforeUnmount(() => {
                 <td>{{ r.position }}</td>
                 <td>{{ r.workplace }}</td>
                 <td>{{ workSiteLabel(r) }}</td>
-                <td>{{ UI.time(r.clock_in) }}</td>
-                <td>{{ UI.time(r.clock_out) }}</td>
+                <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_in) }}</td>
+                <td>{{ r.is_travel || r.is_leave ? '' : UI.time(r.clock_out) }}</td>
               </tr>
             </tbody>
           </table>

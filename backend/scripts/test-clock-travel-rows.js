@@ -127,6 +127,18 @@ async function jget(p, cookie) {
       'การ์ด "ไปราชการ" (today-summary) แสดงทั้งผู้ขอและคณะ',
       `ผู้ขอ ${hasA ? 'มี' : 'ไม่มี'} · คณะ ${hasD ? 'มี' : 'ไม่มี'} (${sumTravel.length} คน)`);
 
+    // รายงานการลงเวลา (period=day) ต้องมีไปราชการด้วย และเรียงเหมือนหน้ารายการ
+    const rep = await jget('/api/time/report?period=day&date=' + today, 'sid=' + adminSid);
+    const repRows = (rep.body && rep.body.records) || [];
+    const repA = repRows.find((r) => Number(r.user_id) === A);
+    const repD = repRows.find((r) => Number(r.user_id) === D);
+    check(rep.status === 200 && !!repA && !!repD, 'รายงานการลงเวลามีทั้งผู้ขอและคณะไปราชการ',
+      `ผู้ขอ ${repA ? 'มี' : 'ไม่มี'} · คณะ ${repD ? 'มี' : 'ไม่มี'} (${repRows.length} แถว)`);
+    check(repA && repA.work_site === 'ไปราชการ', 'รายงาน: สถานที่ทำงาน = "ไปราชการ"', `ได้ "${repA && repA.work_site}"`);
+    check(repRows.length && Number(repRows[0].user_id) === B,
+      'รายงานเรียงเหมือนหน้ารายการ (คนที่มีเวลาเข้าก่อนแถวไปราชการ)',
+      `แถวแรก user ${repRows[0] && repRows[0].user_id} (ต้องเป็น ${B})`);
+
     console.log('');
     console.log('⑤ ผู้ที่ไปราชการลงเวลาเข้า/ออกไม่ได้');
     const dCookie = 'sid=' + (await auth.newSession(D));

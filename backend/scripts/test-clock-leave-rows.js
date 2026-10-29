@@ -111,6 +111,14 @@ async function jpost(p, cookie, body) {
     const row2 = rows.find((r) => Number(r.user_id) === L2);
     check(!row2, 'ไม่แสดงแถวของผู้ที่ลายัง pending');
 
+    // รายงานการลงเวลาต้องมีผู้ที่ลาด้วย (สถานที่ทำงาน = ประเภทการลา)
+    const rep = await jget('/api/time/report?period=day&date=' + today, 'sid=' + adminSid);
+    const repRows = (rep.body && rep.body.records) || [];
+    const repL1 = repRows.find((r) => Number(r.user_id) === L1);
+    check(rep.status === 200 && !!repL1, 'รายงานการลงเวลามีผู้ที่ลาด้วย', `มี ${repRows.length} แถว`);
+    check(repL1 && repL1.work_site === 'ลาป่วย', 'รายงาน: สถานที่ทำงาน = "ลาป่วย"', `ได้ "${repL1 && repL1.work_site}"`);
+    check(repRows.every((r) => Number(r.user_id) !== L2), 'รายงานไม่แสดงผู้ที่ลายัง pending');
+
     for (const id of madeLeaves) {
       try { await db.prepare('DELETE FROM leave_requests WHERE id = ?').run(id); } catch (e) { /* ignore */ }
     }
