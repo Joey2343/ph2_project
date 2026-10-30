@@ -108,12 +108,15 @@ function chipTitle(b) {
   return `${b.topic} • ${b.start_time}-${b.end_time} • ${UI.personName(b)}`;
 }
 
-/** ข้อความบนชิป: ห้องประชุมใช้ชื่อห้อง · ยานพาหนะใช้คำแรกของชื่อรถ + โลโก้เมื่อมอบเจ้าหน้าที่ */
+/** ข้อความบนชิป: ห้องประชุมใช้ชื่อห้อง · ยานพาหนะใช้ชื่อรถเต็ม + ทะเบียน */
 function chipText(b) {
   // ↳ = วันต่อเนื่องของการจองหลายวัน (วันแรกไม่มีลูกศร)
   const cont = b._cont ? '↳ ' : '';
   if (props.kind === 'vehicles') {
-    return `${cont}${b.vehicle_name ? b.vehicle_name.split(' ')[0] : '🤝'} ${b.start_time || ''}`;
+    // ผู้ใช้ขอ: แสดงชื่อยานพาหนะแบบเต็ม เช่น "รถตู้เทา TOYOTA 9506"
+    if (!b.vehicle_name) return `${cont}🤝 มอบเจ้าหน้าที่จัดให้ ${b.start_time || ''}`.trim();
+    const plate = b.vehicle_plate || b.plate || '';
+    return `${cont}${b.vehicle_name}${plate ? ' ' + plate : ''}${b.start_time ? ' ' + b.start_time : ''}`;
   }
   return `${cont}${b.room_name} ${b.start_time}`;
 }
@@ -150,7 +153,7 @@ function chipTip(b) {
             v-for="(b, bi) in c.items"
             :key="bi"
             class="cal-chip"
-            :class="chipClass(b.status)"
+            :class="[chipClass(b.status), { 'chip-vehicle': kind === 'vehicles' }]"
             :title="chipTip(b)"
             @click="emit('pick', b)"
           >
@@ -166,4 +169,17 @@ function chipTip(b) {
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของเดิมทั้งหมด */
+
+/*
+ * ชิปยานพาหนะแสดง "ชื่อรถเต็ม + ทะเบียน" ซึ่งยาวกว่าชื่อห้องมาก
+ * theme.css ตั้ง .cal-chip เป็น nowrap + ellipsis (ห้ามแก้ theme.css)
+ * → override เฉพาะชิปของยานพาหนะให้ตัดขึ้นบรรทัดใหม่ได้ จะได้เห็นชื่อเต็ม
+ */
+.cal-chip.chip-vehicle {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  line-height: 1.3;
+}
 </style>
