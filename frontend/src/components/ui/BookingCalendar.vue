@@ -108,15 +108,14 @@ function chipTitle(b) {
   return `${b.topic} • ${b.start_time}-${b.end_time} • ${UI.personName(b)}`;
 }
 
-/** ข้อความบนชิป: ห้องประชุมใช้ชื่อห้อง · ยานพาหนะใช้ชื่อรถเต็ม + ทะเบียน */
+/** ข้อความบนชิป: ห้องประชุมใช้ชื่อห้อง · ยานพาหนะใช้ชื่อรถเต็ม (ไม่แสดงทะเบียน) */
 function chipText(b) {
   // ↳ = วันต่อเนื่องของการจองหลายวัน (วันแรกไม่มีลูกศร)
   const cont = b._cont ? '↳ ' : '';
   if (props.kind === 'vehicles') {
-    // ผู้ใช้ขอ: แสดงชื่อยานพาหนะแบบเต็ม เช่น "รถตู้เทา TOYOTA 9506"
+    // ผู้ใช้ขอ: แสดงแค่ชื่อยานพาหนะ เช่น "รถตู้เทา 9506" — ไม่ต้องแสดงทะเบียน
     if (!b.vehicle_name) return `${cont}🤝 มอบเจ้าหน้าที่จัดให้ ${b.start_time || ''}`.trim();
-    const plate = b.vehicle_plate || b.plate || '';
-    return `${cont}${b.vehicle_name}${plate ? ' ' + plate : ''}${b.start_time ? ' ' + b.start_time : ''}`;
+    return `${cont}${b.vehicle_name}${b.start_time ? ' ' + b.start_time : ''}`;
   }
   return `${cont}${b.room_name} ${b.start_time}`;
 }
