@@ -46,12 +46,68 @@ router.put('/office', auth.requireAdmin, async (req, res) => {
 });
 
 // ---------- เมนู 2: พิกัดโรงเรียนในสังกัด ----------
+/*
+ * พิกัด "สพป.แพร่ เขต 2" (สำนักงานเขตพื้นที่) — แสดงเป็นหมุดแยกต่างหาก
+ *
+ * ⚠️ ห้ามเก็บในตาราง schools — จำนวน "โรงเรียนในสังกัด 103 แห่ง" ต้องไม่เปลี่ยน
+ *    หน้าพิกัดโรงเรียนจึงรับมาทางฟิลด์ office ใน response นี้ แล้ววาดหมุดเอง
+ *
+ * พิกัดใช้ค่าเดียวกับที่ตั้งไว้ในหน้าลงเวลาทำงาน (settings.clock_sites คีย์ 'office')
+ * เพื่อไม่ต้องกรอกซ้ำ 2 ที่ — ถ้ายังไม่ตั้ง ใช้ค่าเดิม clock_lat/clock_lng
+ * แล้วจึงใช้ค่าคงที่ของสำนักงาน (อ.ลอง)
+ */
+const OFFICE_LOCATION_FALLBACK = { lat: 18.08346, lng: 99.84805 };
+
+function numOrNull(v) {
+  if (v === null || v === undefined || String(v).trim() === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function getOfficeLocation() {
+  const rows = await db
+    .prepare('SELECT `key`, value FROM settings WHERE `key` IN (?,?,?)')
+    .all('clock_sites', 'clock_lat', 'clock_lng');
+  const kv = {};
+  for (const r of rows) kv[r.key] = r.value;
+
+  let lat = null;
+  let lng = null;
+  try {
+    const arr = JSON.parse(kv.clock_sites || '[]');
+    const site = (Array.isArray(arr) ? arr : []).find((s) => s && String(s.key) === 'office');
+    if (site) {
+      lat = numOrNull(site.lat);
+      lng = numOrNull(site.lng);
+    }
+  } catch (e) {
+    /* ค่าเสียหาย → ใช้ค่าถัดไป */
+  }
+  if (lat === null || lng === null) {
+    lat = numOrNull(kv.clock_lat);
+    lng = numOrNull(kv.clock_lng);
+  }
+  if (lat === null || lng === null) {
+    lat = OFFICE_LOCATION_FALLBACK.lat;
+    lng = OFFICE_LOCATION_FALLBACK.lng;
+  }
+
+  return {
+    name: 'สพป.แพร่ เขต 2',
+    district: 'ลอง',
+    address: 'อ.ลอง จ.แพร่',
+    lat,
+    lng,
+  };
+}
+
 // เรียงตามรหัสโรงเรียนจากน้อยไปมาก
 // เรียง LENGTH ก่อนเพราะ code เป็น mediumtext (เรียงแบบข้อความ)
 // ถ้าไม่เรียงความยาวก่อน รหัส 10 หลักจะไปอยู่หน้ารหัส 8 หลักทั้งหมด
 router.get('/schools', async (req, res) => {
   const rows = await db.prepare('SELECT * FROM schools ORDER BY LENGTH(code), code').all();
-  res.json({ schools: rows });
+  // office = สพป.แพร่ เขต 2 (ไม่นับรวมใน rows ของโรงเรียน)
+  res.json({ schools: rows, office: await getOfficeLocation() });
 });
 
 router.post('/schools', auth.requireAdmin, uploadSchoolsDyn.single('disaster_image'), uploadErrorHandler, async (req, res) => {

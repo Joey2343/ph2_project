@@ -57,6 +57,70 @@ const VUE_PAGES = {
   schools: {
     title: 'พิกัดโรงเรียน',
     mustHave: ['page-head', 'leaflet-container'],
+    /*
+     * ผู้ใช้ขอ: เพิ่ม "สพป.แพร่ เขต 2" เป็นรายการแยกต่างหาก (ไม่อยู่ในโรงเรียน 103 แห่ง)
+     *   · มีหมุดบนแผนที่
+     *   · มีตัวเลือกในคำนวณระยะทาง
+     */
+    afterActions: [
+      {
+        name: 'มีรายการ สพป.แพร่ เขต 2 แยกจากรายชื่อโรงเรียน',
+        check: `(() => {
+          const box = document.getElementById('sch-office');
+          if (!box) throw new Error('ไม่พบรายการ สพป.แพร่ เขต 2');
+          const txt = box.innerText || '';
+          if (!txt.includes('สพป.แพร่ เขต 2')) throw new Error('ข้อความในรายการไม่ถูกต้อง: ' + txt);
+          if (!txt.includes('ไม่อยู่ในรายชื่อโรงเรียน')) throw new Error('ไม่มีข้อความระบุว่าไม่นับรวมกับโรงเรียน');
+          return true;
+        })()`,
+      },
+      {
+        name: 'API แยก สพป.แพร่ เขต 2 ออกจาก schools (ไม่นับรวม 103 แห่ง)',
+        check: `(async () => {
+          const r = await fetch('/api/schools');
+          const j = await r.json();
+          if (!j.office || !(j.office.name || '').includes('สพป.แพร่ เขต 2')) throw new Error('ไม่พบข้อมูล office ใน /api/schools');
+          if (j.office.lat == null || j.office.lng == null) throw new Error('office ไม่มีพิกัด');
+          if ((j.schools || []).some((s) => (s.name || '').includes('สพป.แพร่'))) throw new Error('สพป. ถูกนับรวมอยู่ใน schools');
+          return true;
+        })()`,
+      },
+      {
+        name: 'มีหมุด สพป.แพร่ เขต 2 บนแผนที่',
+        check: `(async () => {
+          for (let i = 0; i < 20; i++) {
+            const found = [...document.querySelectorAll('.leaflet-marker-icon')].some((el) => (el.innerHTML || '').includes('🏢'));
+            if (found) return true;
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          throw new Error('ไม่พบหมุด 🏢 บนแผนที่');
+        })()`,
+      },
+      {
+        name: 'คำนวณระยะทางมีตัวเลือก สพป.แพร่ เขต 2',
+        check: `(() => {
+          const opts = [...document.querySelectorAll('#rt-from option, #rt-to option')];
+          if (!opts.some((o) => (o.textContent || '').includes('สพป.แพร่ เขต 2'))) throw new Error('ไม่พบตัวเลือก สพป.แพร่ เขต 2');
+          return true;
+        })()`,
+      },
+      {
+        name: 'เลือก สพป.แพร่ เขต 2 เป็นต้นทางแล้วค่าคงอยู่',
+        check: `(async () => {
+          const sel = document.getElementById('rt-from');
+          if (!sel) throw new Error('ไม่พบช่องต้นทาง');
+          sel.value = 'office';
+          sel.dispatchEvent(new Event('change'));
+          await new Promise((r) => setTimeout(r, 800));
+          const val = sel.value;
+          sel.value = '';
+          sel.dispatchEvent(new Event('change'));
+          await new Promise((r) => setTimeout(r, 300));
+          if (val !== 'office') throw new Error('ค่าไม่คงอยู่ (ได้ ' + val + ')');
+          return true;
+        })()`,
+      },
+    ],
   },
   clock: {
     title: 'ลงเวลาทำงาน',

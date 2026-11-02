@@ -49,6 +49,13 @@ const loading = ref(true);
 const error = ref('');
 const schools = ref([]);
 const districts = ref([]);
+/**
+ * สพป.แพร่ เขต 2 (สำนักงานเขตพื้นที่) — แยกจากรายชื่อโรงเรียน
+ *
+ * ⚠️ ไม่นับรวมใน "โรงเรียน 103 แห่ง" (backend ไม่ได้เก็บไว้ในตาราง schools)
+ *    ใช้เป็นหมุดบนแผนที่ + ตัวเลือกในคำนวณระยะทาง
+ */
+const office = ref(null);
 
 /* ---------- ตัวกรอง ---------- */
 const query = ref('');
@@ -85,6 +92,7 @@ const mapEl = ref(null);
 let map = null;
 let cluster = null;
 let markers = [];
+let officeMarker = null;
 
 function popupHtml(s) {
   const d = s.disaster || '';
@@ -115,6 +123,30 @@ function orangeMarkerIcon() {
   });
 }
 
+/**
+ * หมุดของ สพป.แพร่ เขต 2 — รูปทรงต่างจากหมุดโรงเรียน (วงกลมน้ำเงิน + 🏢)
+ * เพื่อให้เห็นทันทีว่าไม่ใช่โรงเรียน
+ */
+function officeMarkerIcon() {
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:#1d4ed8;color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;box-shadow:0 1px 5px rgba(0,0,0,.45)">🏢</div>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -16],
+  });
+}
+
+function officePopupHtml() {
+  const o = office.value;
+  if (!o) return '';
+  return `<div style="min-width:180px">
+      <b>🏢 ${UI.esc(o.name)}</b><br>
+      <span style="color:#64748b">${UI.esc(o.address || '')}</span><br>
+      <span style="color:#64748b">พิกัด ${o.lat}, ${o.lng}</span>
+    </div>`;
+}
+
 function destroyMap() {
   if (map) {
     try {
@@ -126,6 +158,7 @@ function destroyMap() {
   }
   cluster = null;
   markers = [];
+  officeMarker = null;
 }
 
 function initMap() {
@@ -157,6 +190,21 @@ function initMap() {
     bounds.push([s.lat, s.lng]);
   }
   map.addLayer(cluster);
+
+  /*
+   * หมุด สพป.แพร่ เขต 2 — แยกจากโรงเรียน
+   *   · ไม่เข้า cluster (ต้องเห็นตลอด ไม่ถูกรวมหายไปกับกลุ่ม)
+   *   · ไม่ขึ้นกับตัวกรองภัยธรรมชาติ/อำเภอ/ค้นหา (เป็นสำนักงาน ไม่ใช่โรงเรียน)
+   */
+  if (office.value && office.value.lat != null && office.value.lng != null) {
+    officeMarker = L.marker([office.value.lat, office.value.lng], {
+      icon: officeMarkerIcon(),
+      zIndexOffset: 500,
+    }).addTo(map);
+    officeMarker.bindPopup(officePopupHtml());
+    bounds.push([office.value.lat, office.value.lng]);
+  }
+
   if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
 }
 
@@ -169,11 +217,16 @@ const routeBusy = ref(false);
 let routeLayer = null;
 let routeMarkers = [];
 
-const routeOptions = computed(() =>
-  schools.value
+const routeOptions = computed(() => {
+  const list = schools.value
     .filter((s) => s.lat != null && s.lng != null)
-    .map((s) => ({ id: s.id, label: `${s.name} (อ.${s.district || '-'})` })),
-);
+    .map((s) => ({ id: s.id, label: `${s.name} (อ.${s.district || '-'})` }));
+  // สพป.แพร่ เขต 2 อยู่บนสุดของรายการ — แต่ไม่นับเป็นโรงเรียน
+  if (office.value && office.value.lat != null && office.value.lng != null) {
+    list.unshift({ id: 'office', label: 'สพป.แพร่ เขต 2 (สำนักงานเขตพื้นที่)' });
+  }
+  return list;
+});
 
 function pickRoute(which, id) {
   if (!id) {
@@ -181,11 +234,19 @@ function pickRoute(which, id) {
     drawRouteMarkers();
     return;
   }
-  const s = schools.value.find((x) => String(x.id) === String(id));
-  if (!s) return;
-  (which === 'from' ? routeFrom : routeTo).value = { lat: s.lat, lng: s.lng, label: s.name };
+  // id = 'office' → สพป.แพร่ เขต 2 (ไม่อยู่ในรายการโรงเรียน)
+  let target = null;
+  if (String(id) === 'office') {
+    const o = office.value;
+    if (o && o.lat != null && o.lng != null) target = { id: 'office', lat: o.lat, lng: o.lng, label: o.name };
+  } else {
+    const s = schools.value.find((x) => String(x.id) === String(id));
+    if (s) target = { id: s.id, lat: s.lat, lng: s.lng, label: s.name };
+  }
+  if (!target) return;
+  (which === 'from' ? routeFrom : routeTo).value = target;
   drawRouteMarkers();
-  if (map) map.setView([s.lat, s.lng], 13);
+  if (map) map.setView([target.lat, target.lng], 13);
   clearRouteLine();
   routeResult.value = '';
   routeHint.value = 'พร้อมคำนวณ — กด ▣ คำนวณระยะทาง';
@@ -290,6 +351,13 @@ function focusSchool(s) {
     map.setView([s.lat, s.lng], 14);
     mk.openPopup();
   }
+}
+
+/** คลิกรายการ สพป.แพร่ เขต 2 → ซูมไปที่หมุดของสำนักงานแล้วเปิดป้าย */
+function focusOffice() {
+  if (!office.value || office.value.lat == null || office.value.lng == null || !map) return;
+  map.setView([office.value.lat, office.value.lng], 14);
+  if (officeMarker) officeMarker.openPopup();
 }
 
 function disasterTag(s) {
@@ -445,6 +513,8 @@ async function load() {
   try {
     const data = await api.get('/schools');
     schools.value = data.schools || [];
+    // สพป.แพร่ เขต 2 (คนละส่วนกับรายชื่อโรงเรียน — ไม่นับในจำนวน 103 แห่ง)
+    office.value = data.office || null;
     districts.value = [...new Set(schools.value.map((s) => s.district).filter(Boolean))].sort();
     await nextTick();
     initMap();
@@ -536,6 +606,21 @@ onBeforeUnmount(() => {
       <option value="ไม่เกิดภัยธรรมชาติ">● ไม่เกิดภัยธรรมชาติ</option>
     </select>
     <span id="sch-count" class="hint">{{ shownCount }} แห่ง</span>
+  </div>
+
+  <!-- ---------- สพป.แพร่ เขต 2 (แยกจากรายชื่อโรงเรียน · ไม่นับในจำนวนโรงเรียน) ---------- -->
+  <div v-if="office" id="sch-office" class="card">
+    <div class="card-title">🏢 สำนักงานเขตพื้นที่การศึกษา</div>
+    <div
+      class="card"
+      style="padding: 12px 16px; margin-bottom: 0; cursor: pointer"
+      @click="focusOffice"
+    >
+      <div style="font-weight: 700">🏢 {{ office.name }}</div>
+      <div class="hint">
+        {{ office.address }} • พิกัด {{ office.lat }}, {{ office.lng }} • ไม่อยู่ในรายชื่อโรงเรียนในสังกัด
+      </div>
+    </div>
   </div>
 
   <!-- ---------- รายการโรงเรียน ---------- -->
