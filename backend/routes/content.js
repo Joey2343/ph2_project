@@ -66,10 +66,18 @@ function numOrNull(v) {
 
 async function getOfficeLocation() {
   const rows = await db
-    .prepare('SELECT `key`, value FROM settings WHERE `key` IN (?,?,?)')
-    .all('clock_sites', 'clock_lat', 'clock_lng');
+    .prepare('SELECT `key`, value FROM settings WHERE `key` IN (?,?,?,?)')
+    .all('office_location', 'clock_sites', 'clock_lat', 'clock_lng');
   const kv = {};
   for (const r of rows) kv[r.key] = r.value;
+
+  // ข้อมูลที่ admin แก้ไว้ในหน้าแผนที่ (settings.office_location) — มาก่อนเสมอ
+  let saved = {};
+  try {
+    saved = JSON.parse(kv.office_location || '{}') || {};
+  } catch (e) {
+    saved = {};
+  }
 
   let lat = null;
   let lng = null;
@@ -92,14 +100,60 @@ async function getOfficeLocation() {
     lng = OFFICE_LOCATION_FALLBACK.lng;
   }
 
+  // ค่าที่บันทึกไว้ทับค่าที่ดึงมา (ถ้ามี)
+  const savedLat = numOrNull(saved.lat);
+  const savedLng = numOrNull(saved.lng);
+  if (savedLat !== null && savedLng !== null) {
+    lat = savedLat;
+    lng = savedLng;
+  }
+
   return {
-    name: 'สพป.แพร่ เขต 2',
-    district: 'ลอง',
-    address: 'อ.ลอง จ.แพร่',
+    name: String(saved.name || '').trim() || 'สพป.แพร่ เขต 2',
+    district: String(saved.district || '').trim() || 'ลอง',
+    address: String(saved.address || '').trim() || 'อ.ลอง จ.แพร่',
     lat,
     lng,
   };
 }
+
+/**
+ * แก้ไขข้อมูลเบื้องต้นของ "สพป.แพร่ เขต 2" (เฉพาะ admin)
+ *
+ * เก็บใน settings คีย์ `office_location` — ไม่เขียนลงตาราง schools
+ * เพื่อให้จำนวน "โรงเรียนในสังกัด" ยังเป็น 103 แห่งเท่าเดิม
+ *
+ * ⚠️ พิกัดที่บันทึกจากหน้านี้ใช้กับ "หมุดบนแผนที่" เท่านั้น
+ *    ไม่กระทบจุดลงเวลาทำงาน (clock_sites) เพราะการย้ายจุดลงเวลาจะทำให้
+ *    เจ้าหน้าที่ที่อยู่ในพื้นที่เดิมลงเวลาไม่ได้ทันที
+ *
+ * ⚠️ ต้องประกาศก่อน PUT /schools/:id ไม่งั้น Express จะจับ "office" เป็น :id
+ */
+router.put('/schools/office', auth.requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'กรุณากรอกชื่อ' });
+  const lat = numOrNull(b.lat);
+  const lng = numOrNull(b.lng);
+  if (lat === null || lng === null) {
+    return res.status(400).json({ error: 'กรุณากรอกละติจูดและลองจิจูดให้ครบทั้งคู่' });
+  }
+  if (lat < -90 || lat > 90) return res.status(400).json({ error: 'ละติจูดไม่ถูกต้อง' });
+  if (lng < -180 || lng > 180) return res.status(400).json({ error: 'ลองจิจูดไม่ถูกต้อง' });
+
+  const data = {
+    name,
+    district: String(b.district || '').trim(),
+    address: String(b.address || '').trim(),
+    lat,
+    lng,
+  };
+  await db
+    .prepare('INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value = VALUES(value)')
+    .run('office_location', JSON.stringify(data));
+
+  res.json({ ok: true, message: 'บันทึกข้อมูล สพป.แพร่ เขต 2 เรียบร้อย', office: data });
+});
 
 // เรียงตามรหัสโรงเรียนจากน้อยไปมาก
 // เรียง LENGTH ก่อนเพราะ code เป็น mediumtext (เรียงแบบข้อความ)

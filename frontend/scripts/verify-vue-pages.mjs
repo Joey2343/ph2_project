@@ -120,6 +120,35 @@ const VUE_PAGES = {
           return true;
         })()`,
       },
+      {
+        /* ผู้ใช้ขอ: ปุ่มแก้ไขข้อมูลเบื้องต้นของ สพป.แพร่ เขต 2 (เฉพาะ admin) */
+        name: 'มีปุ่ม ✎ แก้ไขข้อมูล สพป.แพร่ เขต 2 และเปิดฟอร์มได้',
+        check: `(async () => {
+          const btn = document.getElementById('office-edit');
+          if (!btn) throw new Error('ไม่พบปุ่มแก้ไขของ สพป.แพร่ เขต 2');
+          btn.click();
+          await new Promise((r) => setTimeout(r, 900));
+          const need = ['of-name', 'of-district', 'of-address', 'of-lat', 'of-lng'];
+          const miss = need.filter((id) => !document.getElementById(id));
+          if (miss.length) throw new Error('ฟอร์มขาดช่อง: ' + miss.join(', '));
+          const name = document.getElementById('of-name').value;
+          if (!name.includes('สพป.แพร่ เขต 2')) throw new Error('ชื่อในฟอร์มไม่ถูกต้อง: ' + name);
+          return true;
+        })()`,
+      },
+      {
+        name: 'บันทึกข้อมูล สพป.แพร่ เขต 2 ได้ (ฟอร์มปิด)',
+        check: `(async () => {
+          const save = document.getElementById('office-save');
+          if (!save) throw new Error('ไม่พบปุ่มบันทึก');
+          save.click();
+          for (let i = 0; i < 20; i++) {
+            await new Promise((r) => setTimeout(r, 300));
+            if (!document.getElementById('of-name')) return true;
+          }
+          throw new Error('ฟอร์มไม่ปิดหลังบันทึก');
+        })()`,
+      },
     ],
   },
   clock: {

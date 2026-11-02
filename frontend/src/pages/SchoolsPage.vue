@@ -360,6 +360,55 @@ function focusOffice() {
   if (officeMarker) officeMarker.openPopup();
 }
 
+/* ---------- ฟอร์มแก้ไขข้อมูล สพป.แพร่ เขต 2 (เฉพาะ admin) ---------- */
+const officeFormOpen = ref(false);
+const officeSaving = ref(false);
+const of = ref(emptyOfficeEdit());
+
+function emptyOfficeEdit() {
+  return { name: '', district: '', address: '', lat: null, lng: null };
+}
+
+function openOfficeEdit() {
+  const o = office.value || {};
+  of.value = {
+    name: o.name || '',
+    district: o.district || '',
+    address: o.address || '',
+    lat: o.lat != null ? o.lat : null,
+    lng: o.lng != null ? o.lng : null,
+  };
+  officeFormOpen.value = true;
+}
+
+async function saveOffice() {
+  if (!String(of.value.name || '').trim()) return UI.toast('กรุณากรอกชื่อ', 'error');
+  officeSaving.value = true;
+  try {
+    /*
+     * ส่งเป็น JSON (ไม่ใช่ FormData) เพราะ endpoint นี้ไม่มี multer
+     * → ถ้าส่ง multipart มา req.body จะว่าง แล้วได้ 400 "กรุณากรอกชื่อ"
+     */
+    const res = await api.put('/schools/office', {
+      name: String(of.value.name || '').trim(),
+      district: String(of.value.district || '').trim(),
+      address: String(of.value.address || '').trim(),
+      lat: of.value.lat,
+      lng: of.value.lng,
+    });
+    UI.toast(res.message);
+    office.value = res.office || office.value;
+    officeFormOpen.value = false;
+    // วาดหมุดใหม่ให้ตรงกับพิกัดที่แก้ (และ fitBounds ใหม่)
+    await nextTick();
+    initMap();
+  } catch (e) {
+    UI.toast(e.message, 'error');
+  } finally {
+    officeSaving.value = false;
+  }
+}
+
 function disasterTag(s) {
   const d = s.disaster || '';
   if (!d || d === 'ไม่เกิดภัยธรรมชาติ') return null;
@@ -613,12 +662,17 @@ onBeforeUnmount(() => {
     <div class="card-title">🏢 สำนักงานเขตพื้นที่การศึกษา</div>
     <div
       class="card"
-      style="padding: 12px 16px; margin-bottom: 0; cursor: pointer"
+      style="padding: 12px 16px; margin-bottom: 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap"
       @click="focusOffice"
     >
-      <div style="font-weight: 700">🏢 {{ office.name }}</div>
-      <div class="hint">
-        {{ office.address }} • พิกัด {{ office.lat }}, {{ office.lng }} • ไม่อยู่ในรายชื่อโรงเรียนในสังกัด
+      <div>
+        <div style="font-weight: 700">🏢 {{ office.name }}</div>
+        <div class="hint">
+          {{ office.address }} • พิกัด {{ office.lat }}, {{ office.lng }} • ไม่อยู่ในรายชื่อโรงเรียนในสังกัด
+        </div>
+      </div>
+      <div v-if="Auth.isAdmin()" class="status-btns" @click.stop>
+        <button id="office-edit" class="btn btn-xs btn-outline" title="แก้ไขข้อมูล" @click="openOfficeEdit">✎</button>
       </div>
     </div>
   </div>
@@ -756,6 +810,47 @@ onBeforeUnmount(() => {
       <button class="btn btn-outline" :disabled="formSaving" @click="closeForm">ยกเลิก</button>
       <button class="btn btn-primary" :disabled="formSaving" @click="saveSchool">
         {{ formSaving ? 'กำลังบันทึก...' : '▽ บันทึก' }}
+      </button>
+    </template>
+  </AppModal>
+
+  <!-- ---------- ฟอร์มแก้ไขข้อมูล สพป.แพร่ เขต 2 (เฉพาะ admin) ---------- -->
+  <AppModal
+    v-if="officeFormOpen"
+    title="✎ แก้ไขข้อมูล สพป.แพร่ เขต 2"
+    footer
+    @close="officeFormOpen = false"
+  >
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>ชื่อ <span class="req"> *</span></label>
+        <input id="of-name" v-model="of.name" placeholder="เช่น สพป.แพร่ เขต 2" />
+      </div>
+      <div class="form-group">
+        <label>อำเภอ</label>
+        <input id="of-district" v-model="of.district" placeholder="เช่น ลอง" />
+      </div>
+      <div class="form-group">
+        <label>ที่อยู่</label>
+        <input id="of-address" v-model="of.address" placeholder="เช่น อ.ลอง จ.แพร่" />
+      </div>
+      <div class="form-group">
+        <label>ละติจูด (Latitude)</label>
+        <input id="of-lat" v-model.number="of.lat" type="number" step="any" />
+      </div>
+      <div class="form-group">
+        <label>ลองจิจูด (Longitude)</label>
+        <input id="of-lng" v-model.number="of.lng" type="number" step="any" />
+      </div>
+      <div class="form-group full">
+        <div class="hint">พิกัดนี้ใช้กับหมุดบนแผนที่เท่านั้น — ไม่กระทบจุดลงเวลาทำงาน</div>
+      </div>
+    </div>
+
+    <template #footer>
+      <button class="btn btn-outline" :disabled="officeSaving" @click="officeFormOpen = false">ยกเลิก</button>
+      <button id="office-save" class="btn btn-primary" :disabled="officeSaving" @click="saveOffice">
+        {{ officeSaving ? 'กำลังบันทึก...' : '▽ บันทึก' }}
       </button>
     </template>
   </AppModal>
