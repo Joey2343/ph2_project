@@ -878,7 +878,16 @@ router.delete('/documents/:id', auth.requireAuth, async (req, res) => {
   const row = await db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(req.params.id));
   if (!row) return res.status(404).json({ error: 'ไม่พบหนังสือ' });
   if (row.doc_type === 'certificate' && req.user.role !== 'admin' && !await isCertStaffUser(req.user.id)) return res.status(403).json({ error: 'เฉพาะเจ้าหน้าที่หนังสือรับรองเท่านั้นที่ลบได้' });
-  if (req.user.role !== 'admin' && row.created_by !== req.user.id) return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบหนังสือนี้' });
+  /*
+   * สิทธิ์ลบ = admin · เจ้าหน้าที่สารบัญเขต · เจ้าของรายการ
+   *
+   * ⚠️ เดิมอนุญาตแค่ admin กับเจ้าของ (created_by) แต่หน้าเว็บโชว์ปุ่ม ✕ ให้
+   *    "เจ้าหน้าที่สารบัญเขต" ด้วย (canEditRows ใน DocumentsPage.vue)
+   *    → สารบัญเขตกดลบหนังสือที่โรงเรียนส่งมาแล้วได้ 403 "ไม่มีสิทธิ์ลบหนังสือนี้"
+   *      รายการค้างในแท็บหนังสือรับลบไม่ได้เลย (เจอจริง: โรงเรียน 54020001, 54020002)
+   *    ใช้ isOfficeDocStaff() ตัวเดียวกับ PUT /documents/:id เพื่อให้แก้ไข/ลบตรงกัน
+   */
+  if (!await isOfficeDocStaff(req.user) && row.created_by !== req.user.id) return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบหนังสือนี้' });
   if (row.file) deleteUploadedFile(row.file);
   if (row.honor_saved_file) deleteUploadedFile(row.honor_saved_file); // ลบไฟล์เกียรติบัตรที่บันทึกไว้ด้วย
   await cleanup.purgeDocumentChildren(row.id); // ลบผู้รับ + สถานะการอ่านที่ผูกกับหนังสือนี้ (ไม่ทิ้งค่าค้างใน DB)

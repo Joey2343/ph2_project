@@ -23,6 +23,8 @@
  *  ④ เห็น "ทะเบียนหนังสือรับ" ที่คนเก่าลงทะเบียนไว้
  *  ⑤ เจ้าหน้าที่ทั่วไป (ไม่ใช่สารบัญเขต) ยังเห็นหนังสือส่งเฉพาะของตัวเอง
  *  ⑥ หนังสือของโรงเรียนต้องไม่หลุดมาอยู่ในรายการของสำนักงานเขต
+ *  ⑦ เจ้าหน้าที่ทั่วไปยังลบหนังสือของคนอื่นไม่ได้
+ *  ⑧ เจ้าหน้าที่สารบัญเขตลบหนังสือที่โรงเรียนส่งมาได้ (เดิม 403 → ลบไม่ได้)
  *
  * ใช้: node scripts/test-office-doc-handover.js
  */
@@ -64,6 +66,10 @@ const jpostJson = async (p, cookie, body) => {
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
     body: JSON.stringify(body || {}),
   });
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+const jdel = async (p, cookie) => {
+  const res = await fetch(BASE + p, { method: 'DELETE', headers: { Cookie: cookie } });
   return { status: res.status, body: await res.json().catch(() => null) };
 };
 
@@ -255,6 +261,28 @@ async function loginAs(userId) {
         `ได้ id: ${cIds.join(',')} · ต้องมี ${docCOut}`);
       check(!cIds.includes(docOut), 'ไม่เห็นหนังสือส่งของเจ้าหน้าที่คนอื่น',
         `ได้ id: ${cIds.join(',')} · ต้องไม่มี ${docOut}`);
+    }
+
+    /* ── ⑧ สารบัญเขตต้องลบหนังสือที่โรงเรียนส่งมาได้ ───────────────── */
+    console.log('');
+    console.log('⑧ เจ้าหน้าที่สารบัญเขตลบหนังสือรับที่โรงเรียนส่งมาได้ (เดิม 403)');
+    if (!cookieB) {
+      check(false, 'สร้างเซสชันให้เจ้าหน้าที่สารบัญเขตคนใหม่ได้');
+    } else {
+      // หนังสือที่โรงเรียนส่งมา created_by = บัญชีโรงเรียน → เดิมลบไม่ได้เพราะไม่ใช่เจ้าของ
+      const del = await jdel('/api/documents/' + docIn, cookieB);
+      check(del.status === 200, `ลบหนังสือที่โรงเรียนส่งมาได้ (HTTP ${del.status})`,
+        JSON.stringify(del.body));
+      const after = await jget('/api/my-incoming', cookieB);
+      check(!docIds(after).includes(docIn), 'ลบแล้วไม่ค้างอยู่ในรายการหนังสือรับ',
+        `ยังมี id ${docIn} ในรายการ`);
+
+      // เจ้าหน้าที่ทั่วไป (ไม่ใช่สารบัญเขต) ยังลบหนังสือของคนอื่นไม่ได้
+      if (cookieC) {
+        const delOther = await jdel('/api/documents/' + docOut, cookieC);
+        check(delOther.status === 403, `เจ้าหน้าที่ทั่วไปลบหนังสือของคนอื่นไม่ได้ (HTTP ${delOther.status})`,
+          JSON.stringify(delOther.body));
+      }
     }
   } catch (e) {
     check(false, 'ทดสอบไม่จบ', e && e.stack ? e.stack.split('\n').slice(0, 4).join('\n') : String(e));
