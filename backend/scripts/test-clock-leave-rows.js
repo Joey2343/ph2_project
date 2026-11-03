@@ -121,10 +121,63 @@ async function jpost(p, cookie, body) {
     check(!repRows.some((r) => Number(r.user_id) === L2 && r.is_leave),
       'รายงานไม่แสดงผู้ที่ลายัง pending เป็น "ลา"');
 
+    console.log('');
+    console.log('④ ลาที่อนุมัติย้อนหลัง → วันลาตัดบันทึกเวลาของวันนั้น');
+    const L3 = await mkUser('late');
+    const L4 = await mkUser('sameday');
+    const nextDay = (() => {
+      const d = new Date(today + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    const mkLeaveDecided = async (userId, type, decidedDate) => {
+      const info = await db.prepare(`INSERT INTO leave_requests
+        (user_id, leave_type, date_from, date_to, days, reason, status, approval_level, approval_data, created_at, decided_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+        userId, type, today, today, 1, 'ทดสอบอนุมัติย้อนหลัง', 'approved', 1,
+        JSON.stringify([{ level: 1, by: 1, name: 'ผู้ดูแล ระบบ', at: decidedDate + ' 09:00:00', note: '' }]),
+        today + ' 08:00:00', decidedDate + ' 09:00:00'
+      );
+      madeLeaves.push(Number(info.insertId));
+    };
+    // L3 = อนุมัติ "วันถัดไป" (ย้อนหลัง) · L4 = อนุมัติวันเดียวกับวันลา
+    await mkLeaveDecided(L3, 'ลากิจ', nextDay);
+    await mkLeaveDecided(L4, 'ลากิจ', today);
+    for (const uid of [L3, L4]) {
+      await db.prepare('INSERT INTO time_records (user_id, date, clock_in, clock_out) VALUES (?,?,?,?)')
+        .run(uid, today, '08:30:00', '16:30:00');
+    }
+
+    const all2 = await jget('/api/time/all?date=' + today, 'sid=' + adminSid);
+    const rows2 = (all2.body && all2.body.records) || [];
+    const r3 = rows2.filter((r) => Number(r.user_id) === L3);
+    check(
+      r3.length === 1 && r3[0].work_site === 'ลากิจ' && !r3[0].clock_in && r3[0].is_leave === 1,
+      'อนุมัติย้อนหลัง: รายการแสดง "ลากิจ" แทนบันทึกเวลา',
+      JSON.stringify(r3.map((r) => ({ site: r.work_site, i: r.clock_in, lv: r.is_leave }))),
+    );
+
+    const rep2 = await jget('/api/time/report?period=day&date=' + today, 'sid=' + adminSid);
+    const rep2Rows = (rep2.body && rep2.body.records) || [];
+    const repL3 = rep2Rows.filter((r) => Number(r.user_id) === L3);
+    check(
+      repL3.length === 1 && repL3[0].work_site === 'ลากิจ' && !repL3[0].clock_in,
+      'อนุมัติย้อนหลัง: รายงานแสดง "ลากิจ" แทนบันทึกเวลา',
+      JSON.stringify(repL3.map((r) => ({ site: r.work_site, i: r.clock_in }))),
+    );
+
+    const r4 = rows2.filter((r) => Number(r.user_id) === L4);
+    check(
+      r4.length === 1 && r4[0].clock_in === '08:30:00',
+      'อนุมัติวันเดียวกับวันลา: ยังแสดงบันทึกเวลาของวันนั้น (ลำดับ ลงเวลา > ลา)',
+      JSON.stringify(r4.map((r) => ({ site: r.work_site, i: r.clock_in }))),
+    );
+
     for (const id of madeLeaves) {
       try { await db.prepare('DELETE FROM leave_requests WHERE id = ?').run(id); } catch (e) { /* ignore */ }
     }
     for (const id of madeUsers) {
+      try { await db.prepare('DELETE FROM time_records WHERE user_id = ?').run(id); } catch (e) { /* ignore */ }
       try { await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); } catch (e) { /* ignore */ }
       try { await db.prepare('DELETE FROM users WHERE id = ?').run(id); } catch (e) { /* ignore */ }
     }

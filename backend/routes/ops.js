@@ -198,6 +198,53 @@ async function leaveUsersOn(date) {
   return out;
 }
 
+/** วันที่ที่อนุมัติ (YYYY-MM-DD) — ใช้ตรวจว่า "อนุมัติย้อนหลัง" หรือไม่ */
+function decidedDateOf(row) {
+  const s = String((row && (row.decided_at || row.created_at)) || '');
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+}
+
+/**
+ * คำขอลาที่ "อนุมัติย้อนหลัง" — อนุมัติ *หลังจาก* วันที่ลาจริง
+ *
+ * ผู้ใช้สั่ง (3 พ.ย. 2569): ถ้าอนุมัติลาหลังจากวันลาแล้ว ให้วันลานั้น
+ *   "ตัด" (แทนที่) บันทึกเวลาทำงานของวันนั้น ในรายการ/รายงาน ด้วย
+ *   เพราะตอนนั้นยังไม่อนุมัติ เจ้าหน้าที่จึงอาจลงเวลาไปแล้ว
+ *
+ * @returns {Promise<Map<number, Set<string>>>} userId → วันที่ต้องให้ "ลา" ทับ
+ */
+async function lateLeaveDates(start, end) {
+  const out = new Map();
+  if (!start || !end) return out;
+  const rows = await db.prepare(`SELECT l.user_id, l.leave_type, l.date_from, l.date_to, l.decided_at, l.created_at
+    FROM leave_requests l JOIN users u ON u.id = l.user_id
+    WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ?
+      AND u.status = 'active' AND COALESCE(u.user_group, 'office') = 'office'`).all(end, start);
+
+  for (const r of rows) {
+    const decided = decidedDateOf(r);
+    if (!decided) continue;
+    const from = String(r.date_from || '').slice(0, 10);
+    const to = String(r.date_to || r.date_from || '').slice(0, 10);
+    // ช่วงวันที่ลาที่ intersect กับช่วงรายงาน
+    let first = from > start ? from : start;
+    let stop = to < end ? to : end;
+    if (first > stop) continue;
+    const uid = Number(r.user_id);
+    if (!out.has(uid)) out.set(uid, new Set());
+    const set = out.get(uid);
+    const d = new Date(first + 'T00:00:00');
+    for (let guard = 0; guard < 400; guard++) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (iso > stop) break;
+      // เฉพาะวันลาที่อยู่ "ก่อน" วันอนุมัติ (อนุมัติวันเดียวกับวันลา = ไม่นับย้อนหลัง)
+      if (iso < decided) set.add(iso);
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return out;
+}
+
 /**
  * วันที่นั้น "จบแล้ว" หรือยัง (ใช้ตัดสินว่าจะแสดงผู้ที่ไม่ได้ลงชื่อปฏิบัติงาน)
  *   - วันในอดีต = จบแล้ว
@@ -591,15 +638,27 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
    *
    * ⚠️ ทำที่ฝั่งเซิร์ฟเวอร์ เพราะหน้าแรกใช้ความยาวของแต่ละรายการเป็นตัวเลขบนการ์ด
    *    (ถ้ากรองแค่ตอนแสดง ตัวเลขจะยังนับซ้ำ)
+   *
+   * ⚠️ ลาที่ "อนุมัติย้อนหลัง" (decided_at หลังวันที่ลา) ให้ย้ายคนนั้นจากการ์ด
+   *    "มาทำงาน" ไปการ์ด "ลา" แม้จะมีการลงเวลาในวันนั้น
+   *    (ปกติเป็นไปได้เฉพาะโหมดจำลองวันที่ ซึ่งวันจำลองอยู่ก่อนวันอนุมัติจริง)
    */
-  const workedIds = new Set(worked.map((r) => Number(r.id ?? r.user_id)));
+  const lateToday = await lateLeaveDates(today, today);
+  const workedFinal = lateToday.size
+    ? worked.filter((r) => {
+      const set = lateToday.get(Number(r.id));
+      return !(set && set.has(today));
+    })
+    : worked;
+
+  const workedIds = new Set(workedFinal.map((r) => Number(r.id ?? r.user_id)));
   const leaveFiltered = leave.filter((r) => !workedIds.has(Number(r.user_id)));
   const leaveIds = new Set(leaveFiltered.map((r) => Number(r.user_id)));
   const travelFiltered = travel.filter(
     (r) => !workedIds.has(Number(r.user_id)) && !leaveIds.has(Number(r.user_id)),
   );
 
-  res.json({ today, worked, birthdays, leave: leaveFiltered, travel: travelFiltered });
+  res.json({ today, worked: workedFinal, birthdays, leave: leaveFiltered, travel: travelFiltered });
 });
 
 // ---------- งานที่ค้าง/รออนุมัติของฉัน (เฉพาะ user นั้น ๆ) ----------
@@ -968,6 +1027,21 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
      */
 
     /*
+     * อนุมัติลาย้อนหลัง (อนุมัติหลังวันที่ลาจริง) → ให้แถว "ลา" แทนบันทึกเวลาเดิม
+     *   ตอนนั้นยังไม่อนุมัติ เจ้าหน้าที่จึงอาจลงเวลาไปแล้ว
+     *   → เอาบันทึกเวลาของวันนั้นออกจากรายการก่อน แล้วค่อยใส่แถว "ลา" ด้านล่าง
+     */
+    const lateMap = await lateLeaveDates(date, date);
+    if (lateMap.size) {
+      for (let i = records.length - 1; i >= 0; i--) {
+        const r = records[i];
+        if (String(r.date || '') !== date) continue;
+        const set = lateMap.get(Number(r.user_id));
+        if (set && set.has(date)) records.splice(i, 1);
+      }
+    }
+
+    /*
      * ผู้ที่ "ลา" ของวันนั้น (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว)
      * → สถานที่ทำงาน = ประเภทการลา · ไม่มีเวลาเข้า/ออก · id = null + is_leave = 1
      */
@@ -1116,6 +1190,24 @@ async function addNonWorkingReportRows(records, start, end) {
     return haveByDate.get(date);
   };
   for (const r of records) haveOf(String(r.date)).add(Number(r.user_id));
+
+  /*
+   * อนุมัติลาย้อนหลัง (อนุมัติหลังวันที่ลาจริง) → ให้แถว "ลา" แทนบันทึกเวลาเดิม
+   *   ตอนนั้นยังไม่อนุมัติ เจ้าหน้าที่จึงอาจลงเวลาไปแล้ว (หรือระบบปิดเวลาออกอัตโนมัติ 17:00)
+   *   → เอาแถวบันทึกเวลาของวันนั้นออกก่อน แล้วค่อยให้ลูป "ลา" ใส่แถวให้
+   */
+  const lateMap = await lateLeaveDates(start, end);
+  if (lateMap.size) {
+    for (let i = records.length - 1; i >= 0; i--) {
+      const r = records[i];
+      const uid = Number(r.user_id);
+      const d = String(r.date || '');
+      const set = lateMap.get(uid);
+      if (!set || !set.has(d)) continue;
+      records.splice(i, 1);
+      if (haveByDate.has(d)) haveByDate.get(d).delete(uid);
+    }
+  }
 
   const pushRow = (row) => {
     const set = haveOf(String(row.date));
