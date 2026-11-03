@@ -814,8 +814,11 @@ ph2_project/
     (ค่า option = `'office'` — `pickRoute()` แยกจาก id ของโรงเรียน)
   - พิกัดใช้ค่าเดียวกับหน้าลงเวลาทำงาน (`settings.clock_sites` คีย์ `office`
     → fallback `clock_lat`/`clock_lng` → ค่าคงที่ 18.08346, 99.84805)
-  - **แก้ไขข้อมูลได้ (admin)** — ปุ่ม ✎ บนการ์ด เปิดฟอร์มชื่อ/อำเภอ/ที่อยู่/ละติจูด/ลองจิจูด
+  - **แก้ไขข้อมูลได้ (admin)** — ปุ่ม ✎ บนการ์ด เปิดฟอร์มชื่อ/อำเภอ/ที่อยู่/
+    **เบอร์โทร · อีเมล · เว็บไซต์ · Facebook**/ละติจูด/ลองจิจูด
     - บันทึกที่ `PUT /api/schools/office` → เก็บใน `settings.office_location` (JSON)
+    - ข้อมูลติดต่อแสดงบนการ์ดและในป้าย (popup) ของหมุด — ไม่บังคับกรอก
+    - อีเมลถ้ากรอกต้องมีรูปแบบถูกต้อง (ไม่มี `@`/โดเมน → 400 "อีเมลไม่ถูกต้อง")
     - ค่าที่บันทึกไว้มีสิทธิ์เหนือกว่าพิกัดจากหน้าลงเวลา (แก้แล้วหมุดไม่กลับไปตาม clock_sites)
     - ⚠️ endpoint นี้รับ **JSON** (ไม่มี multer) — ถ้าส่ง `FormData` มา `req.body` จะว่าง → 400
     - ⚠️ ต้องประกาศ route ก่อน `PUT /schools/:id` ไม่งั้น Express จับ `office` เป็น `:id`
@@ -990,7 +993,7 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **219** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **220** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
 | `backend: npm run verify` | ผ่าน 45/45 (MariaDB 11.4) |

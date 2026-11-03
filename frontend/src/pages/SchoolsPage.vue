@@ -140,10 +140,17 @@ function officeMarkerIcon() {
 function officePopupHtml() {
   const o = office.value;
   if (!o) return '';
+  const contact = [
+    o.phone ? '📞 ' + UI.esc(o.phone) : '',
+    o.email ? '✉ ' + UI.esc(o.email) : '',
+    o.website ? '🌐 ' + UI.esc(o.website) : '',
+    o.facebook ? '📘 ' + UI.esc(o.facebook) : '',
+  ].filter(Boolean).map((t) => `<span style="color:#64748b">${t}</span>`).join('<br>');
   return `<div style="min-width:180px">
       <b>🏢 ${UI.esc(o.name)}</b><br>
       <span style="color:#64748b">${UI.esc(o.address || '')}</span><br>
       <span style="color:#64748b">พิกัด ${o.lat}, ${o.lng}</span>
+      ${contact ? '<br>' + contact : ''}
     </div>`;
 }
 
@@ -366,7 +373,11 @@ const officeSaving = ref(false);
 const of = ref(emptyOfficeEdit());
 
 function emptyOfficeEdit() {
-  return { name: '', district: '', address: '', lat: null, lng: null };
+  return {
+    name: '', district: '', address: '',
+    phone: '', email: '', website: '', facebook: '',
+    lat: null, lng: null,
+  };
 }
 
 function openOfficeEdit() {
@@ -375,6 +386,10 @@ function openOfficeEdit() {
     name: o.name || '',
     district: o.district || '',
     address: o.address || '',
+    phone: o.phone || '',
+    email: o.email || '',
+    website: o.website || '',
+    facebook: o.facebook || '',
     lat: o.lat != null ? o.lat : null,
     lng: o.lng != null ? o.lng : null,
   };
@@ -393,6 +408,10 @@ async function saveOffice() {
       name: String(of.value.name || '').trim(),
       district: String(of.value.district || '').trim(),
       address: String(of.value.address || '').trim(),
+      phone: String(of.value.phone || '').trim(),
+      email: String(of.value.email || '').trim(),
+      website: String(of.value.website || '').trim(),
+      facebook: String(of.value.facebook || '').trim(),
       lat: of.value.lat,
       lng: of.value.lng,
     });
@@ -670,6 +689,16 @@ onBeforeUnmount(() => {
         <div class="hint">
           {{ office.address }} • พิกัด {{ office.lat }}, {{ office.lng }} • ไม่อยู่ในรายชื่อโรงเรียนในสังกัด
         </div>
+        <div
+          v-if="office.phone || office.email || office.website || office.facebook"
+          class="hint"
+          style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 14px"
+        >
+          <span v-if="office.phone">📞 {{ office.phone }}</span>
+          <span v-if="office.email">✉ {{ office.email }}</span>
+          <span v-if="office.website">🌐 {{ office.website }}</span>
+          <span v-if="office.facebook">📘 {{ office.facebook }}</span>
+        </div>
       </div>
       <div v-if="Auth.isAdmin()" class="status-btns" @click.stop>
         <button id="office-edit" class="btn btn-xs btn-outline" title="แก้ไขข้อมูล" @click="openOfficeEdit">✎</button>
@@ -833,6 +862,22 @@ onBeforeUnmount(() => {
       <div class="form-group">
         <label>ที่อยู่</label>
         <input id="of-address" v-model="of.address" placeholder="เช่น อ.ลอง จ.แพร่" />
+      </div>
+      <div class="form-group">
+        <label>เบอร์โทรศัพท์</label>
+        <input id="of-phone" v-model="of.phone" placeholder="เช่น 054-551234" />
+      </div>
+      <div class="form-group">
+        <label>อีเมล</label>
+        <input id="of-email" v-model="of.email" type="email" placeholder="เช่น saraban@phrae2.go.th" />
+      </div>
+      <div class="form-group">
+        <label>เว็บไซต์</label>
+        <input id="of-website" v-model="of.website" placeholder="เช่น https://p2-smart.phrae2.go.th" />
+      </div>
+      <div class="form-group">
+        <label>Facebook</label>
+        <input id="of-facebook" v-model="of.facebook" placeholder="เช่น https://www.facebook.com/phrae2" />
       </div>
       <div class="form-group">
         <label>ละติจูด (Latitude)</label>

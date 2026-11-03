@@ -128,7 +128,7 @@ const VUE_PAGES = {
           if (!btn) throw new Error('ไม่พบปุ่มแก้ไขของ สพป.แพร่ เขต 2');
           btn.click();
           await new Promise((r) => setTimeout(r, 900));
-          const need = ['of-name', 'of-district', 'of-address', 'of-lat', 'of-lng'];
+          const need = ['of-name', 'of-district', 'of-address', 'of-phone', 'of-email', 'of-website', 'of-facebook', 'of-lat', 'of-lng'];
           const miss = need.filter((id) => !document.getElementById(id));
           if (miss.length) throw new Error('ฟอร์มขาดช่อง: ' + miss.join(', '));
           const name = document.getElementById('of-name').value;
@@ -147,6 +147,51 @@ const VUE_PAGES = {
             if (!document.getElementById('of-name')) return true;
           }
           throw new Error('ฟอร์มไม่ปิดหลังบันทึก');
+        })()`,
+      },
+      {
+        /* ผู้ใช้ขอ: เพิ่มเบอร์โทร · อีเมล · เว็บไซต์ · Facebook — บันทึกแล้วต้องขึ้นบนการ์ด */
+        name: 'บันทึกเบอร์โทร/อีเมล/เว็บไซต์/Facebook แล้วแสดงบนการ์ด',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          document.getElementById('office-edit').click();
+          await sleep(800);
+          const old = {};
+          for (const id of ['of-phone', 'of-email', 'of-website', 'of-facebook']) old[id] = document.getElementById(id).value;
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            el.value = v;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          set('of-phone', '054-000000');
+          set('of-email', 'test@phrae2.go.th');
+          set('of-website', 'https://testonly.invalid');
+          set('of-facebook', 'https://www.facebook.com/testonly');
+          await sleep(300);
+          document.getElementById('office-save').click();
+          for (let i = 0; i < 20 && document.getElementById('of-name'); i++) await sleep(300);
+          const card = (document.getElementById('sch-office') || {}).innerText || '';
+          const okPhone = card.includes('054-000000');
+          const okEmail = card.includes('test@phrae2.go.th');
+          const okWeb = card.includes('https://testonly.invalid');
+          const okFb = card.includes('https://www.facebook.com/testonly');
+          // คืนค่าเดิม
+          document.getElementById('office-edit').click();
+          await sleep(800);
+          for (const id of Object.keys(old)) {
+            const el = document.getElementById(id);
+            el.value = old[id];
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          await sleep(300);
+          document.getElementById('office-save').click();
+          for (let i = 0; i < 20 && document.getElementById('of-name'); i++) await sleep(300);
+          const after = (document.getElementById('sch-office') || {}).innerText || '';
+          if (after.includes('054-000000') && !old['of-phone'].includes('054-000000')) throw new Error('คืนค่าเดิมไม่สำเร็จ');
+          if (!(okPhone && okEmail && okWeb && okFb)) {
+            throw new Error('การ์ดไม่แสดงข้อมูลติดต่อ (โทร ' + okPhone + ' · อีเมล ' + okEmail + ' · เว็บ ' + okWeb + ' · fb ' + okFb + ')');
+          }
+          return true;
         })()`,
       },
     ],

@@ -112,6 +112,10 @@ async function getOfficeLocation() {
     name: String(saved.name || '').trim() || 'สพป.แพร่ เขต 2',
     district: String(saved.district || '').trim() || 'ลอง',
     address: String(saved.address || '').trim() || 'อ.ลอง จ.แพร่',
+    phone: String(saved.phone || '').trim(),
+    email: String(saved.email || '').trim(),
+    website: String(saved.website || '').trim(),
+    facebook: String(saved.facebook || '').trim(),
     lat,
     lng,
   };
@@ -141,10 +145,19 @@ router.put('/schools/office', auth.requireAdmin, async (req, res) => {
   if (lat < -90 || lat > 90) return res.status(400).json({ error: 'ละติจูดไม่ถูกต้อง' });
   if (lng < -180 || lng > 180) return res.status(400).json({ error: 'ลองจิจูดไม่ถูกต้อง' });
 
+  const email = String(b.email || '').trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'อีเมลไม่ถูกต้อง' });
+  }
+
   const data = {
     name,
     district: String(b.district || '').trim(),
     address: String(b.address || '').trim(),
+    phone: String(b.phone || '').trim(),
+    email,
+    website: String(b.website || '').trim(),
+    facebook: String(b.facebook || '').trim(),
     lat,
     lng,
   };
