@@ -388,8 +388,10 @@ const VUE_PAGES = {
         check: `!!document.querySelector('[data-app-modal]')`,
       },
       {
-        /* ผู้ใช้ขอ: ใส่จำนวนคณะกี่คน → มีช่องเลือกชื่อเท่านั้น ช่องละ 1 คน มีเลขลำดับนำหน้า */
-        name: 'กรอกจำนวนคณะแล้วมีช่องเลือกชื่อตามจำนวน (มีเลขลำดับ 1. 2.)',
+        /* ผู้ใช้ขอ: ใส่จำนวนคณะกี่คน → มีช่องเลือกชื่อเท่านั้น ช่องละ 1 คน มีเลขลำดับนำหน้า
+         * ผู้ใช้ขอ (ต่อมา): ช่องตัวเลือกเดิมยังอยู่ แต่ต้อง "พิมพ์ค้นได้" → เปลี่ยนเป็น combobox
+         *   พิมพ์คำค้นแล้วต้องเหลือเฉพาะรายชื่อที่มีคำนั้น */
+        name: 'กรอกจำนวนคณะแล้วมีช่องเลือก/พิมพ์ชื่อตามจำนวน (มีเลขลำดับ 1. 2.)',
         check: `(async () => {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           const num = [...document.querySelectorAll('[data-app-modal] input[type=number]')].find((i) => i.max === '50');
@@ -401,21 +403,51 @@ const VUE_PAGES = {
           await sleep(500);
           const box = document.getElementById('tf-companions');
           if (!box) throw new Error('ไม่พบช่องเลือกชื่อผู้ร่วมเดินทาง');
-          const sels = [...box.querySelectorAll('select')];
-          if (sels.length !== 2) throw new Error('จำนวนช่องเลือกชื่อ = ' + sels.length + ' (ต้องเป็น 2)');
+          const fields = [...box.querySelectorAll('input')];
+          if (fields.length !== 2) throw new Error('จำนวนช่องเลือกชื่อ = ' + fields.length + ' (ต้องเป็น 2)');
+          if (box.querySelectorAll('select').length) throw new Error('ยังมี select อยู่ (ต้องพิมพ์ได้)');
           const nums = [...box.querySelectorAll('span')].map((s) => s.innerText.trim()).filter(Boolean);
           if (nums[0] !== '1.' || nums[1] !== '2.') throw new Error('เลขลำดับไม่ถูกต้อง: ' + nums.join(','));
 
-          // เลือกชื่อในช่องที่ 1 → ช่องที่ 2 ต้องไม่แสดงชื่อนั้นอีก
-          const sel0 = sels[0], sel1 = sels[1];
-          const pick = sel0.options[1] ? sel0.options[1].value : '';
-          if (!pick) throw new Error('ไม่มีรายชื่อให้เลือก');
-          const sSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-          sSetter.call(sel0, pick);
-          sel0.dispatchEvent(new Event('change', { bubbles: true }));
+          const f0 = document.getElementById('tf-companion-0');
+          const f1 = document.getElementById('tf-companion-1');
+          if (!f0 || !f1) throw new Error('ไม่พบช่องคณะช่องที่ 1/2');
+          if (f0.tagName !== 'INPUT' || f1.tagName !== 'INPUT') throw new Error('ช่องคณะต้องเป็น INPUT (พิมพ์ได้)');
+
+          // เปิดรายการด้วยการคลิก (เหมือนผู้ใช้จริง) → ต้องมีตัวเลือกให้เลือก (ของเดิมยังอยู่)
+          // ⚠️ อย่าใช้ .focus() อย่างเดียว: ถ้าหน้าต่างเบราว์เซอร์ไม่ได้โฟกัส
+          //    Chrome จะไม่ dispatch event focus ให้ (headless เจอตลอด)
+          f0.click();
+          let all = [];
+          for (let i = 0; i < 25; i++) {
+            all = [...document.querySelectorAll('.tf-combo-list .tf-combo-item')];
+            if (all.length) break;
+            await sleep(200);
+          }
+          if (!all.length) throw new Error('คลิกแล้วไม่มีรายชื่อให้เลือก');
+          const sample = (all[0].innerText || '').trim().split('\\n')[0];
+          if (!sample) throw new Error('รายการตัวเลือกว่าง');
+
+          // พิมพ์คำค้น (ตัดคำนำหน้าชื่อออก) → ต้องเหลือเฉพาะรายชื่อที่มีคำนั้น
+          const kw = sample.slice(2, 5);
+          setter.call(f0, kw);
+          f0.dispatchEvent(new Event('input', { bubbles: true }));
+          await sleep(500);
+          const filtered = [...document.querySelectorAll('.tf-combo-list .tf-combo-item')].map((x) => (x.innerText || '').split('\\n')[0]);
+          if (!filtered.length) throw new Error('พิมพ์คำค้น "' + kw + '" แล้วไม่พบรายชื่อ');
+          if (!filtered.every((t) => t.includes(kw))) throw new Error('รายการที่กรองไม่ตรงคำค้น: ' + filtered.slice(0, 3).join(' / '));
+
+          // เลือกรายการแรก → ชื่อต้องถูกเติมลงช่อง
+          document.querySelector('.tf-combo-list .tf-combo-item').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
           await sleep(400);
-          const names1 = [...sel1.options].map((o) => o.value).filter(Boolean);
-          if (names1.includes(pick)) throw new Error('ช่องที่ 2 ยังแสดงชื่อที่เลือกแล้ว: ' + pick);
+          const picked = f0.value;
+          if (!picked) throw new Error('เลือกแล้วช่องว่าง');
+
+          // ช่องที่ 2 ต้องไม่แสดงชื่อที่เลือกแล้ว
+          f1.click();
+          await sleep(500);
+          const names1 = [...document.querySelectorAll('.tf-combo-list .tf-combo-item')].map((x) => (x.innerText || '').split('\\n')[0]);
+          if (names1.includes(picked)) throw new Error('ช่องที่ 2 ยังแสดงชื่อที่เลือกแล้ว: ' + picked);
           return true;
         })()`,
       },

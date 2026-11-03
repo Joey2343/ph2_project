@@ -212,7 +212,7 @@ function initMap() {
     bounds.push([office.value.lat, office.value.lng]);
   }
 
-  if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+  if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40], animate: false });
 }
 
 /* ---------- คำนวณระยะทาง ---------- */
@@ -418,9 +418,21 @@ async function saveOffice() {
     UI.toast(res.message);
     office.value = res.office || office.value;
     officeFormOpen.value = false;
-    // วาดหมุดใหม่ให้ตรงกับพิกัดที่แก้ (และ fitBounds ใหม่)
-    await nextTick();
-    initMap();
+    /*
+     * อัปเดตหมุดเดิมถ้ามีอยู่แล้ว — ไม่สร้างแผนที่ใหม่ทั้งใบ
+     * (การ initMap() ใหม่ทันทีหลังบันทึกทำให้ Leaflet มี animation ค้าง
+     *  แล้วพัง "_leaflet_pos" ตอนเปลี่ยนหน้า — เจอใน verify:pages)
+     */
+    if (officeMarker && office.value && office.value.lat != null && office.value.lng != null) {
+      officeMarker.setLatLng([office.value.lat, office.value.lng]);
+      officeMarker.setPopupContent(officePopupHtml());
+      if (map && !map.getBounds().contains([office.value.lat, office.value.lng])) {
+        map.setView([office.value.lat, office.value.lng], 12, { animate: false });
+      }
+    } else {
+      await nextTick();
+      initMap();
+    }
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {

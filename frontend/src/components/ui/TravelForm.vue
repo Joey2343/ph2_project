@@ -123,6 +123,46 @@ function optionsFor(index) {
   return staff.value.filter((u) => !taken.has(UI.personName(u)));
 }
 
+/*
+ * ---------- ช่องคณะแบบ "เลือกได้ + พิมพ์ค้นได้" (combobox) ----------
+ *
+ * ผู้ใช้ขอ: ช่องตัวเลือกเดิมยังอยู่ แต่ต้องพิมพ์ได้ด้วย
+ *   และเมื่อพิมพ์ต้องกรองรายชื่อที่มีคำค้นให้เห็น
+ *
+ * เก็บค่าที่เลือกเป็น "ชื่อ-นามสกุล" เหมือนเดิม (ไม่เปลี่ยนโครงข้อมูลที่บันทึก)
+ *   → พิมพ์ชื่อคนที่ไม่มีในรายการก็ได้ (ผู้ร่วมเดินทางคนนอกได้)
+ */
+const comboOpen = ref(-1);
+
+/** รายชื่อที่ตรงกับคำที่พิมพ์ในช่องนั้น (ว่าง = แสดงทั้งหมด) */
+function comboOptions(index) {
+  const q = String(companionNames.value[index] || '').trim().toLowerCase();
+  const list = optionsFor(index);
+  if (!q) return list;
+  return list.filter((u) => UI.personName(u).toLowerCase().includes(q));
+}
+
+function pickCombo(index, name) {
+  companionNames.value[index] = name;
+  comboOpen.value = -1;
+}
+
+/** กด Enter → เลือกรายการแรกที่กรองไว้ (ถ้าพิมพ์ตรงชื่อพอดีก็ปิดรายการ) */
+function pickFirstCombo(index) {
+  const opts = comboOptions(index);
+  if (!opts.length) return;
+  const typed = String(companionNames.value[index] || '').trim();
+  const exact = opts.find((u) => UI.personName(u) === typed);
+  pickCombo(index, UI.personName(exact || opts[0]));
+}
+
+/*
+ * ปิดรายการเมื่อคลิกออก — ใช้ @blur ตรง ๆ ไม่หน่วงเวลา
+ *   ตัวเลือกใช้ @mousedown.prevent จึงไม่ทำให้ช่องเสียโฟกัสตอนคลิกเลือกรายการ
+ *   (เดิมตั้ง setTimeout 120ms แล้วมีปัญหา: blur+focus เร็ว ๆ ทำให้ตัวจับเวลา
+ *    ของรอบก่อนมาปิดรายการที่เพิ่งเปิด → เทสต์/ผู้ใช้เห็นรายการหาย)
+ */
+
 function reset() {
   f.value = {
     writing_at: defaultWritingAt(),
@@ -148,6 +188,7 @@ function reset() {
   attachment.value = null;
   attachmentName.value = '';
   companionNames.value = [];
+  comboOpen.value = -1;
   expenseChecked.value = { baht: false, hotel: false, transport: false, other: false };
 }
 watch(() => props.saving, reset);
@@ -317,10 +358,16 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
       <!--
         ช่องระบุชื่อผู้ร่วมเดินทาง — จำนวนช่องตามจำนวนคณะที่กรอก
         มีเลขลำดับนำหน้า (1. 2. 3. ...)
-        · สพป.   → เลือกจากรายชื่อบุคลากร สพป. (คอลัมน์ละ 15 ช่อง)
+        · สพป.   → เลือกจากรายชื่อบุคลากร สพป. **หรือพิมพ์ค้นได้** (combobox, คอลัมน์ละ 15 ช่อง)
         · สถานศึกษา → ช่องพิมพ์ข้อความอิสระ (ผู้ร่วมเดินทางอาจไม่ใช่บุคลากรใน สพป.)
       -->
-      <div v-if="companionNames.length" id="tf-companions" class="tf-companions" style="margin: 0 0 12px 20px">
+      <div
+        v-if="companionNames.length"
+        id="tf-companions"
+        class="tf-companions"
+        :class="{ 'tf-combos-open': comboOpen >= 0 }"
+        style="margin: 0 0 12px 20px"
+      >
         <div v-for="(name, i) in companionNames" :key="i" class="tf-companion-row">
           <span class="tf-companion-no">{{ i + 1 }}.</span>
           <input
@@ -332,15 +379,35 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
             placeholder="พิมพ์ชื่อ-นามสกุลผู้ร่วมเดินทาง"
             autocomplete="off"
           />
-          <select
-            v-else
-            :id="'tf-companion-' + i"
-            v-model="companionNames[i]"
-            class="tf-companion-select"
-          >
-            <option value="">— เลือกบุคลากร —</option>
-            <option v-for="u in optionsFor(i)" :key="u.id" :value="UI.personName(u)">{{ UI.personName(u) }}</option>
-          </select>
+          <div v-else class="tf-combo">
+            <input
+              :id="'tf-companion-' + i"
+              v-model="companionNames[i]"
+              type="text"
+              class="tf-companion-select"
+              placeholder="— เลือกหรือพิมพ์ชื่อบุคลากร —"
+              autocomplete="off"
+              @click="comboOpen = i"
+              @focus="comboOpen = i"
+              @input="comboOpen = i"
+              @keydown.esc="comboOpen = -1"
+              @keydown.enter.prevent="pickFirstCombo(i)"
+              @blur="comboOpen = -1"
+            />
+            <div v-if="comboOpen === i" class="tf-combo-list">
+              <div v-if="!comboOptions(i).length" class="tf-combo-empty">ไม่พบรายชื่อที่ตรงกับคำค้น</div>
+              <button
+                v-for="u in comboOptions(i)"
+                :key="u.id"
+                type="button"
+                class="tf-combo-item"
+                @mousedown.prevent="pickCombo(i, UI.personName(u))"
+              >
+                <span>{{ UI.personName(u) }}</span>
+                <span v-if="u.position" class="tf-combo-sub">{{ u.position }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -500,5 +567,62 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
   width: 300px;
   max-width: 100%;
   font-size: 14px;
+}
+
+/*
+ * combobox ของช่องคณะ (สพป.)
+ *   ต้องปล่อย overflow ของกริดให้เห็นรายการที่เปิดอยู่ (ปกติ overflow-x:auto จะตัดแนวตั้งด้วย)
+ */
+.tf-companions.tf-combos-open {
+  overflow: visible;
+}
+.tf-combo {
+  position: relative;
+  width: 300px;
+  max-width: 100%;
+}
+.tf-combo .tf-companion-select {
+  width: 100%;
+}
+.tf-combo-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 80;
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  padding: 4px;
+}
+.tf-combo-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.tf-combo-item:hover,
+.tf-combo-item:focus {
+  background: #eff6ff;
+}
+.tf-combo-sub {
+  font-size: 11.5px;
+  color: #64748b;
+}
+.tf-combo-empty {
+  padding: 8px;
+  font-size: 13px;
+  color: #64748b;
 }
 </style>
