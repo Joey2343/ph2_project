@@ -12,6 +12,10 @@
  *   ① /time/all?date=... มีแถวของผู้ที่ไปราชการ (work_site = "ไปราชการ", clock_in/out ว่าง)
  *   ② ถ้าคนนั้นมีบันทึกเวลาของวันนั้นอยู่แล้ว ต้องไม่เกิดแถวซ้ำ
  *   ③ คำขอที่ยังไม่อนุมัติ (pending) ต้องไม่ถูกดึงมาแสดง
+ *   ④ คณะผู้ร่วมเดินทาง (companion_ids) ถือว่าไปราชการด้วย
+ *   ⑤ ผู้ที่ไปราชการ **ลงเวลาทำงานได้ตามปกติ** (ผู้ใช้สั่ง 3 พ.ย. 2569) แต่ยังมีข้อความเตือน
+ *   ⑥ คนเดียวมีหลายสถานะ → แสดงแถวเดียว ตามลำดับ ลงเวลา > ลา > ไปราชการ
+ *      (รายการ · รายงาน · การ์ดหน้าแรก)
  *
  * ใช้: node scripts/test-clock-travel-rows.js
  */
@@ -39,6 +43,7 @@ async function jget(p, cookie) {
   await db.init();
 
   const madeUsers = [];
+  const madeLeaves = [];
   const mkUser = async (tag) => {
     const hash = await auth.hashPassword('Test1234**');
     const info = await db.prepare(`INSERT INTO users
@@ -144,29 +149,83 @@ async function jget(p, cookie) {
       `ลำดับ B=${iB} · A=${iA}`);
 
     console.log('');
-    console.log('⑤ ผู้ที่ไปราชการลงเวลาเข้า/ออกไม่ได้');
+    console.log('⑤ ผู้ที่ไปราชการยังลงเวลาทำงานได้ (ยังมีข้อความเตือนเหมือนเดิม)');
     const dCookie = 'sid=' + (await auth.newSession(D));
     const todayD = await jget('/api/time/today', dCookie);
-    check(todayD.body && todayD.body.on_travel === true, '/time/today บอกว่าไปราชการ (on_travel = true)',
+    check(todayD.body && todayD.body.on_travel === true, '/time/today ยังบอกว่าไปราชการ (on_travel = true)',
       JSON.stringify(todayD.body && todayD.body.on_travel));
-    const inB = await fetch(BASE + '/api/time/check', {
+
+    // ลงเวลาเข้า: ต้องไม่ถูกบล็อกด้วยเหตุผล "ไปราชการ"
+    //   (ถ้าฐานทดสอบตั้งพิกัดไว้ อาจติด GPS ก็ได้ — ไม่ใช่เรื่องของเทสต์นี้)
+    const inD = await fetch(BASE + '/api/time/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: dCookie },
       body: JSON.stringify({ type: 'in', lat: 18.1, lng: 100.1 }),
     });
-    const inBody = await inB.json().catch(() => ({}));
-    check(inB.status === 403, 'คณะกดลงเวลาเข้างาน → 403', `ได้ ${inB.status}`);
-    check(String(inBody.error || '').includes('ไปราชการ'), 'ข้อความแจ้งว่าอยู่ระหว่างไปราชการ', JSON.stringify(inBody.error));
+    const inBody = await inD.json().catch(() => ({}));
+    const blockedByTravel = inD.status === 403 && String(inBody.error || '').includes('ไปราชการ');
+    check(!blockedByTravel, 'ลงเวลาเข้าไม่ถูกบล็อกเพราะไปราชการ',
+      `HTTP ${inD.status} · ${JSON.stringify(inBody.error || '')}`);
 
-    const aCookie = 'sid=' + (await auth.newSession(A));
-    const outA = await fetch(BASE + '/api/time/check', {
+    // ลงเวลาออกงาน (ไม่ต้องใช้ GPS) → ต้องสำเร็จ
+    //   ถ้าการลงเวลาเข้าข้างบนสำเร็จจริง (ฐานทดสอบยังไม่ตั้งพิกัด) จะมีแถวอยู่แล้ว
+    const hasRec = await db.prepare('SELECT id FROM time_records WHERE user_id = ? AND date = ?').get(D, today);
+    if (!hasRec) {
+      await db.prepare('INSERT INTO time_records (user_id, date, clock_in) VALUES (?,?,?)')
+        .run(D, today, '08:30:00');
+    }
+    const outD = await fetch(BASE + '/api/time/check', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: aCookie },
+      headers: { 'Content-Type': 'application/json', Cookie: dCookie },
       body: JSON.stringify({ type: 'out' }),
     });
-    check(outA.status === 403, 'ผู้ยื่นคำขอกดลงเวลาออกงาน → 403', `ได้ ${outA.status}`);
+    check(outD.status === 200, 'คณะกดลงเวลาออกงานได้ (เดิม 403)', `ได้ ${outD.status}`);
+
+    console.log('');
+    console.log('⑥ คนเดียวมีหลายสถานะ → แถวเดียว ตามลำดับ ลงเวลา > ลา > ไปราชการ');
+    const E = await mkUser('e');
+    const leaveInfo = await db.prepare(`INSERT INTO leave_requests
+      (user_id, leave_type, date_from, date_to, days, reason, status, approval_level, approval_data, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+      E, 'ลาป่วย', today, today, 1, 'ทดสอบลำดับความสำคัญ', 'approved', 0, '[]', '2026-11-03 09:00:00'
+    );
+    madeLeaves.push(Number(leaveInfo.insertId));
+    travelIds.push(await mkTravel(E, 'approved'));
+
+    const res2 = await jget('/api/time/all?date=' + today, 'sid=' + adminSid);
+    const rowsE = ((res2.body && res2.body.records) || []).filter((r) => Number(r.user_id) === E);
+    check(rowsE.length === 1, `รายการบันทึกเวลามีแถวเดียวสำหรับคนที่ทั้งลาและไปราชการ (ได้ ${rowsE.length})`,
+      JSON.stringify(rowsE.map((r) => r.work_site)));
+    check(
+      rowsE[0] && rowsE[0].work_site === 'ลาป่วย' && rowsE[0].is_leave === 1 && !rowsE[0].is_travel,
+      'แถวที่แสดงเป็น "ลา" (สูงกว่าไปราชการ)',
+      JSON.stringify(rowsE[0] && { site: rowsE[0].work_site, leave: rowsE[0].is_leave, travel: rowsE[0].is_travel }),
+    );
+
+    const rep2 = await jget('/api/time/report?period=day&date=' + today, 'sid=' + adminSid);
+    const repE = ((rep2.body && rep2.body.records) || []).filter((r) => Number(r.user_id) === E);
+    check(repE.length === 1 && repE[0].work_site === 'ลาป่วย',
+      `รายงานมีแถวเดียวและเป็น "ลาป่วย" (ได้ ${repE.length} แถว)`,
+      JSON.stringify(repE.map((r) => r.work_site)));
+
+    const sum2 = await jget('/api/today-summary', 'sid=' + adminSid);
+    const sumLeave = (sum2.body && sum2.body.leave) || [];
+    const sumTravel2 = (sum2.body && sum2.body.travel) || [];
+    check(
+      sumLeave.some((x) => Number(x.user_id) === E) && !sumTravel2.some((x) => Number(x.user_id) === E),
+      'การ์ดหน้าแรก: คนที่ลาและไปราชการแสดงเฉพาะการ์ด "ลา"',
+      `leave ${sumLeave.some((x) => Number(x.user_id) === E)} · travel ${sumTravel2.some((x) => Number(x.user_id) === E)}`,
+    );
+    check(
+      !sumTravel2.some((x) => Number(x.user_id) === B) && sumTravel2.some((x) => Number(x.user_id) === A),
+      'การ์ดหน้าแรก: คนที่ลงเวลาแล้วไม่แสดงซ้ำใน "ไปราชการ" แต่คนที่ไม่ได้ลงเวลายังแสดง',
+      `B ${sumTravel2.some((x) => Number(x.user_id) === B)} · A ${sumTravel2.some((x) => Number(x.user_id) === A)}`,
+    );
 
     // cleanup
+    for (const id of madeLeaves) {
+      try { await db.prepare('DELETE FROM leave_requests WHERE id = ?').run(id); } catch (e) { /* ignore */ }
+    }
     for (const id of travelIds) {
       try { await db.prepare('DELETE FROM travel_requests WHERE id = ?').run(id); } catch (e) { /* ignore */ }
     }

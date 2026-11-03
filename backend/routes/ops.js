@@ -126,9 +126,10 @@ function withWorkSite(row) {
  * เงื่อนไข: คำขอ status = 'approved' และครอบคลุมวันนั้น (date_from <= date <= date_to)
  *
  * ใช้ที่
- *   - /time/check  → คนที่ไปราชการลงเวลาเข้า/ออกไม่ได้
- *   - /time/today  → บอกหน้าเว็บว่าวันนี้ไปราชการ (ปิดปุ่มลงเวลา)
+ *   - /time/today  → บอกหน้าเว็บว่าวันนี้ไปราชการ (แสดงข้อความเตือน — ยังลงเวลาได้)
  *   - /time/all    → แสดงแถว "ไปราชการ" ในรายการบันทึกเวลาของเจ้าหน้าที่
+ *
+ * ⚠️ ไม่ได้ใช้บล็อกการลงเวลาอีกแล้ว (เดิม /time/check ใช้ตอบ 403)
  */
 async function travelUserIdsOn(date) {
   const out = new Set();
@@ -482,7 +483,8 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
   });
 
   // ผู้ที่ลาวันนี้ (คำขอที่อนุมัติแล้วครอบคลุมวันนี้)
-  const leave = await db.prepare(`SELECT l.id, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace, l.leave_type, l.date_from, l.date_to
+  //   ⚠️ ต้องเลือก l.user_id ด้วย — ใช้ตัดคนที่ซ้ำกับการ์ดอื่น (ลงเวลา > ลา > ไปราชการ)
+  const leave = await db.prepare(`SELECT l.id, l.user_id, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace, l.leave_type, l.date_from, l.date_to
     FROM leave_requests l JOIN users u ON u.id = l.user_id
     WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ? AND u.status = 'active'
     ORDER BY u.full_name`).all(today, today);
@@ -583,7 +585,21 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
     }
   }
 
-  res.json({ today, worked, birthdays, leave, travel });
+  /*
+   * คนเดียวกันต้องปรากฏในการ์ดเดียว (ผู้ใช้สั่ง 3 พ.ย. 2569)
+   *   ลำดับความสำคัญ: 1) ลงเวลาทำงาน  2) ลา (ทุกกรณี)  3) ไปราชการ
+   *
+   * ⚠️ ทำที่ฝั่งเซิร์ฟเวอร์ เพราะหน้าแรกใช้ความยาวของแต่ละรายการเป็นตัวเลขบนการ์ด
+   *    (ถ้ากรองแค่ตอนแสดง ตัวเลขจะยังนับซ้ำ)
+   */
+  const workedIds = new Set(worked.map((r) => Number(r.id ?? r.user_id)));
+  const leaveFiltered = leave.filter((r) => !workedIds.has(Number(r.user_id)));
+  const leaveIds = new Set(leaveFiltered.map((r) => Number(r.user_id)));
+  const travelFiltered = travel.filter(
+    (r) => !workedIds.has(Number(r.user_id)) && !leaveIds.has(Number(r.user_id)),
+  );
+
+  res.json({ today, worked, birthdays, leave: leaveFiltered, travel: travelFiltered });
 });
 
 // ---------- งานที่ค้าง/รออนุมัติของฉัน (เฉพาะ user นั้น ๆ) ----------
@@ -789,14 +805,21 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
 router.get('/time/today', auth.requireAuth, async (req, res) => {
   const today = simdate.todayISO();
   const rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
-  // วันนี้ไปราชการหรือลาหรือไม่ → หน้าเว็บปิดปุ่มลงเวลา
+  /*
+   * วันนี้ไปราชการ/ลาหรือไม่ → หน้าเว็บแสดงข้อความเตือน
+   *
+   * ⚠️ ไปราชการ "ลงเวลาได้ตามปกติ" (ผู้ใช้สั่ง 3 พ.ย. 2569) — แค่เตือนไว้
+   *    ลา ยังลงเวลาไม่ได้เหมือนเดิม
+   *    ถ้าเข้าทั้งสองเงื่อนไข (ลา + ไปราชการ) ให้ถือ "ลา" ก่อน (ลำดับความสำคัญ)
+   */
   const onTravel = (await travelUserIdsOn(today)).has(Number(req.user.id));
-  const leaveType = onTravel ? null : ((await leaveUsersOn(today)).get(Number(req.user.id)) || null);
+  const leaveType = (await leaveUsersOn(today)).get(Number(req.user.id)) || null;
+  const onLeave = !!leaveType;
   res.json({
     today,
     record: rec ? withWorkSite(rec) : null,
-    on_travel: onTravel,
-    on_leave: !!leaveType,
+    on_travel: onTravel && !onLeave,
+    on_leave: onLeave,
     leave_type: leaveType,
   });
 });
@@ -809,14 +832,11 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   const today = simdate.todayISO();
 
   /*
-   * ผู้ที่ "ไปราชการ" วันนี้ (ผู้ยื่นคำขอ หรือคณะที่เลือกไว้ในคำขอ)
-   * → ลงเวลาเข้า/ออกไม่ได้ เพราะถือว่าปฏิบัติราชการนอกสถานที่อยู่แล้ว
+   * ⚠️ ผู้ที่ "ไปราชการ" วันนี้ **ลงเวลาได้ตามปกติ** (ผู้ใช้สั่ง 3 พ.ย. 2569)
+   *    เดิมบล็อกด้วย 403 "คุณไปราชการในวันนี้ — ไม่ต้องลงเวลาทำงาน"
+   *    ตอนนี้ให้ลงเวลาได้ แต่หน้าเว็บยังแสดงข้อความเตือนเหมือนเดิม
+   *    (การแสดงผลซ้ำในรายการ/รายงานจัดการด้วยลำดับความสำคัญ ลงเวลา > ลา > ไปราชการ)
    */
-  if ((await travelUserIdsOn(today)).has(Number(req.user.id))) {
-    return res.status(403).json({
-      error: 'คุณไปราชการในวันนี้ — ไม่ต้องลงเวลาทำงาน',
-    });
-  }
 
   /*
    * ผู้ที่ "ลา" (อนุมัติแล้ว) วันนี้ → ลงเวลาเข้า/ออกไม่ได้
@@ -938,38 +958,18 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
    *   - id = null + is_travel = 1 → หน้าเว็บไม่แสดงปุ่มแก้ไข/ลบ
    */
   if (date && !month) {
-    // ผู้ที่ไปราชการของวันนั้น = ผู้ยื่นคำขอ + คณะผู้ร่วมเดินทางที่เลือกไว้
-    const travelIds = await travelUserIdsOn(date);
-    if (travelIds.size) {
-      const have = new Set(records.map((r) => Number(r.user_id)));
-      const ids = [...travelIds].filter((id) => id && !have.has(id));
-      if (ids.length) {
-        const users = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
-          FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
-        for (const u of users) {
-          records.push({
-            id: null,
-            user_id: u.id,
-            date,
-            clock_in: null,
-            clock_out: null,
-            title: u.title,
-            full_name: u.full_name,
-            first_name: u.first_name,
-            last_name: u.last_name,
-            username: u.username,
-            workplace: u.workplace,
-            work_site: 'ไปราชการ',
-            is_travel: 1,
-          });
-        }
-      }
-    }
+    /*
+     * ลำดับความสำคัญของแถวเมื่อคนเดียวกันมีหลายสถานะในวันเดียวกัน
+     *   (ผู้ใช้สั่ง 3 พ.ย. 2569) ลงเวลาทำงาน > ลา > ไปราชการ
+     *
+     * ทำได้ด้วยการใส่แถว "ลา" ก่อน "ไปราชการ" แล้วให้แต่ละก้อนข้ามคนที่มีแถวแล้ว
+     *   - บันทึกเวลาจริงมีอยู่แล้วใน records (มาจาก DB) → ทั้งลา/ไปราชการถูกข้าม
+     *   - คนที่ทั้งลาและไปราชการ → ได้แถว "ลา" (เพราะใส่ก่อน)
+     */
 
     /*
-     * เพิ่มรายชื่อผู้ "ลา" ของวันนั้น (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว)
+     * ผู้ที่ "ลา" ของวันนั้น (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว)
      * → สถานที่ทำงาน = ประเภทการลา · ไม่มีเวลาเข้า/ออก · id = null + is_leave = 1
-     * ข้ามคนที่มีแถวอยู่แล้ว (บันทึกเวลาจริง หรือไปราชการ)
      */
     const leaveMap = await leaveUsersOn(date);
     if (leaveMap.size) {
@@ -993,6 +993,46 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
             workplace: u.workplace,
             work_site: leaveMap.get(Number(u.id)) || 'ลา',
             is_leave: 1,
+          });
+        }
+      }
+    }
+
+    /*
+     * เพิ่มรายชื่อผู้ "ไปราชการ" ของวันนั้น (จากคำขอที่อนุมัติแล้ว)
+     *
+     * ทำไม: ผู้ที่ไปราชการอาจไม่ได้ลงเวลาเข้า/ออก แต่ต้องเห็นในรายการบันทึกเวลาของวันนั้น
+     *   → แสดงชื่อ + กลุ่มงาน + สถานที่ทำงาน = "ไปราชการ" และไม่แสดงเวลาเข้า/ออก
+     *
+     * เงื่อนไข
+     *   - เฉพาะเมื่อดู "วันเดียว" (date) — ไม่ทำกับมุมมองรายเดือน (จะซ้ำหลายวัน)
+     *   - คำขอต้อง status = approved และครอบคลุมวันที่นั้น (date_from <= date <= date_to)
+     *   - ข้ามคนที่มีบันทึกเวลาของวันนั้นอยู่แล้ว (กันแถวซ้ำ)
+     *   - ข้ามคนที่ได้แถว "ลา" ไปแล้ว (ลา > ไปราชการ)
+     *   - id = null + is_travel = 1 → หน้าเว็บไม่แสดงปุ่มแก้ไข/ลบ
+     */
+    const travelIds = await travelUserIdsOn(date);
+    if (travelIds.size) {
+      const have = new Set(records.map((r) => Number(r.user_id)));
+      const ids = [...travelIds].filter((id) => id && !have.has(id));
+      if (ids.length) {
+        const users = await db.prepare(`SELECT id, title, full_name, first_name, last_name, username, workplace
+          FROM users WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+        for (const u of users) {
+          records.push({
+            id: null,
+            user_id: u.id,
+            date,
+            clock_in: null,
+            clock_out: null,
+            title: u.title,
+            full_name: u.full_name,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            username: u.username,
+            workplace: u.workplace,
+            work_site: 'ไปราชการ',
+            is_travel: 1,
           });
         }
       }
@@ -1100,6 +1140,30 @@ async function addNonWorkingReportRows(records, start, end) {
     [flag]: 1,
   });
 
+  /*
+   * ลำดับความสำคัญเมื่อคนเดียวกันมีหลายสถานะในวันเดียว: ลงเวลา > ลา > ไปราชการ
+   *   (ผู้ใช้สั่ง 3 พ.ย. 2569) → ใส่ "ลา" ก่อน "ไปราชการ"
+   *   pushRow() จะข้ามคนที่มีแถวของวันนั้นแล้ว
+   */
+
+  // ---- ลา (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว) ----
+  const leaves = await db.prepare(`SELECT l.user_id, l.leave_type, l.date_from, l.date_to,
+      u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
+    FROM leave_requests l JOIN users u ON u.id = l.user_id
+    WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ?
+      AND u.status = 'active' AND COALESCE(u.user_group, 'office') = 'office'`)
+    .all(end, start);
+
+  for (const l of leaves) {
+    const from = String(l.date_from || '').slice(0, 10);
+    const to = String(l.date_to || l.date_from || '').slice(0, 10);
+    const site = String(l.leave_type || 'ลา');
+    for (const date of dates) {
+      if (date < from || date > to) continue;
+      pushRow(baseRow({ ...l, id: l.user_id }, date, site, 'is_leave'));
+    }
+  }
+
   // ---- ไปราชการ (ผู้ยื่นคำขอ + คณะ) ----
   const travels = await db.prepare(`SELECT t.id, t.user_id, t.form_data, t.date_from, t.date_to,
       u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
@@ -1156,24 +1220,6 @@ async function addNonWorkingReportRows(records, start, end) {
           if (cu) pushRow(baseRow(cu, date, 'ไปราชการ', 'is_travel'));
         }
       }
-    }
-  }
-
-  // ---- ลา (เฉพาะเจ้าหน้าที่ สพป. และอนุมัติแล้ว) ----
-  const leaves = await db.prepare(`SELECT l.user_id, l.leave_type, l.date_from, l.date_to,
-      u.title, u.full_name, u.first_name, u.last_name, u.username, u.position, u.workplace
-    FROM leave_requests l JOIN users u ON u.id = l.user_id
-    WHERE l.status = 'approved' AND l.date_from <= ? AND l.date_to >= ?
-      AND u.status = 'active' AND COALESCE(u.user_group, 'office') = 'office'`)
-    .all(end, start);
-
-  for (const l of leaves) {
-    const from = String(l.date_from || '').slice(0, 10);
-    const to = String(l.date_to || l.date_from || '').slice(0, 10);
-    const site = String(l.leave_type || 'ลา');
-    for (const date of dates) {
-      if (date < from || date > to) continue;
-      pushRow(baseRow({ ...l, id: l.user_id }, date, site, 'is_leave'));
     }
   }
 

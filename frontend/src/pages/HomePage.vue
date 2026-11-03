@@ -467,8 +467,8 @@ const greeting = computed(() => {
           <button
             id="home-clock-in"
             class="btn btn-clock-in btn-sm home-clock-btn home-clock-in"
-            :class="{ 'home-clock-blink': !clockOnTravel && !clockOnLeave && !(clockRec && clockRec.clock_in) }"
-            :disabled="checking || clockOnTravel || clockOnLeave || !!(clockRec && clockRec.clock_in)"
+            :class="{ 'home-clock-blink': !clockOnLeave && !(clockRec && clockRec.clock_in) }"
+            :disabled="checking || clockOnLeave || !!(clockRec && clockRec.clock_in)"
             @click="checkTime('in')"
           >
             ⬡ เข้างาน
@@ -476,8 +476,8 @@ const greeting = computed(() => {
           <button
             id="home-clock-out"
             class="btn btn-clock-out btn-sm home-clock-btn home-clock-out"
-            :class="{ 'home-clock-blink': !clockOnTravel && !clockOnLeave && !!(clockRec && clockRec.clock_in) && !clockRec.clock_out }"
-            :disabled="checking || clockOnTravel || clockOnLeave || !clockRec || !clockRec.clock_in || !!clockRec.clock_out"
+            :class="{ 'home-clock-blink': !clockOnLeave && !!(clockRec && clockRec.clock_in) && !clockRec.clock_out }"
+            :disabled="checking || clockOnLeave || !clockRec || !clockRec.clock_in || !!clockRec.clock_out"
             @click="checkTime('out')"
           >
             🏁 ออกงาน

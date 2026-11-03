@@ -585,16 +585,16 @@ onBeforeUnmount(() => {
       <div class="clock-btns">
         <button
           class="btn clock-btn clock-btn-in"
-          :class="{ 'clock-btn-blink': !onTravel && !onLeave && !checkedIn }"
-          :disabled="onTravel || onLeave || checkedIn || checking === 'in'"
+          :class="{ 'clock-btn-blink': !onLeave && !checkedIn }"
+          :disabled="onLeave || checkedIn || checking === 'in'"
           @click="doCheck('in')"
         >
           {{ checking === 'in' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '⬡ ลงเวลาเข้างาน' }}
         </button>
         <button
           class="btn clock-btn clock-btn-out"
-          :class="{ 'clock-btn-blink': !onTravel && !onLeave && checkedIn && !checkedOut }"
-          :disabled="onTravel || onLeave || !checkedIn || checkedOut || checking === 'out'"
+          :class="{ 'clock-btn-blink': !onLeave && checkedIn && !checkedOut }"
+          :disabled="onLeave || !checkedIn || checkedOut || checking === 'out'"
           @click="doCheck('out')"
         >
           {{ checking === 'out' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '🏁 ลงเวลาออกงาน' }}
