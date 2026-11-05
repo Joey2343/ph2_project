@@ -542,8 +542,11 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        name: 'แบบฟอร์มมีช่องสถานที่และปฏิทินเลือกวันที่',
-        check: `document.body.innerText.includes('สถานที่') && !!document.getElementById('tf-date-picker')`,
+        name: 'แบบฟอร์มมีช่องสถานที่และปฏิทินเลือกวันที่ (หัวข้อ "ในวันที่")',
+        check: `document.body.innerText.includes('สถานที่')
+          && !!document.getElementById('tf-date-picker')
+          && document.getElementById('tf-date-picker').innerText.includes('ในวันที่')
+          && !document.getElementById('tf-date-picker').innerText.includes('ตั้งแต่วันที่')`,
       },
       {
         /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปลี่ยนเป็นปฏิทินติ๊กเลือกหลายวัน + ผลรวมลงช่อง "รวมไปราชการครั้งนี้" */

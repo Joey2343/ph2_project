@@ -610,7 +610,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
       <!-- ---------- วันที่ไปราชการ: ปฏิทินติ๊กเลือกได้หลายวัน ---------- -->
       <div id="tf-date-picker" style="margin-bottom: 10px; padding-left: 20px">
         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px">
-          <span style="white-space: nowrap">วันที่ </span>
+          <span style="white-space: nowrap">ในวันที่ </span>
           <span id="tf-dates-summary" class="hint">
             {{ selectedDates.length ? selectedDatesLabel : 'ยังไม่ได้ติ๊กเลือกวันที่' }}
           </span>
