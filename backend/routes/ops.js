@@ -142,13 +142,24 @@ async function travelUserIdsOn(date) {
   let users = null; // โหลดเฉพาะเมื่อต้องจับคู่จากชื่อ
 
   for (const r of rows) {
-    out.add(Number(r.user_id));
     let fd = {};
     try {
       fd = typeof r.form_data === 'string' ? JSON.parse(r.form_data || '{}') : (r.form_data || {});
     } catch (e) {
       fd = {};
     }
+
+    /*
+     * วันที่ติ๊กในปฏิทิน (form_data.dates) — อาจไม่ต่อเนื่อง
+     *   ถ้ามีรายการนี้ ต้องไปราชการเฉพาะวันที่เลือกเท่านั้น
+     *   (ช่วง date_from..date_to ครอบคลุมวันคั่นกลางที่ไม่ได้รับเลือกด้วย)
+     */
+    const picked = Array.isArray(fd.dates)
+      ? fd.dates.map((x) => String(x || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x))
+      : [];
+    if (picked.length && !picked.includes(String(date).slice(0, 10))) continue;
+
+    out.add(Number(r.user_id));
 
     // วิธีหลัก: id ของคณะ (แม่นยำ)
     const ids = Array.isArray(fd.companion_ids) ? fd.companion_ids : [];
@@ -561,7 +572,11 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
     const nameList = Array.isArray(fd.companion_names)
       ? fd.companion_names.map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
       : [];
-    return { idList, nameList };
+    // วันที่ติ๊กในปฏิทิน — ถ้ามี ต้องตรวจว่าวันนี้ถูกเลือกจริง (ไม่ใช่แค่อยู่ในช่วง)
+    const dateList = Array.isArray(fd.dates)
+      ? fd.dates.map((x) => String(x || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x))
+      : [];
+    return { idList, nameList, dateList };
   });
 
   // id ของคณะทั้งหมด (โหลดผู้ใช้ครั้งเดียว)
@@ -590,6 +605,9 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
   const seenPeople = new Set();
   for (let i = 0; i < travelReqs.length; i++) {
     const t = travelReqs[i];
+    // ข้ามคำขอที่ "วันนี้" ไม่ได้ถูกติ๊ก (กรณีเลือกหลายวันแบบไม่ต่อเนื่อง)
+    const picked = travelFd[i].dateList;
+    if (picked.length && !picked.includes(today)) continue;
     const base = {
       id: t.id,
       topic: t.topic,
@@ -1271,7 +1289,11 @@ async function addNonWorkingReportRows(records, start, end) {
       const nameList = Array.isArray(fd.companion_names)
         ? fd.companion_names.map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
         : [];
-      return { idList, nameList };
+      // วันที่ติ๊กในปฏิทิน (อาจไม่ต่อเนื่อง) — มีแล้วใช้แทนช่วงวันที่
+      const dateList = Array.isArray(fd.dates)
+        ? fd.dates.map((x) => String(x || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x))
+        : [];
+      return { idList, nameList, dateList };
     });
 
     // ข้อมูลคณะ (โหลดครั้งเดียว)
@@ -1295,15 +1317,21 @@ async function addNonWorkingReportRows(records, start, end) {
       }
     }
 
-    const travelDates = (t) => {
+    const travelDates = (t, picked) => {
       const from = String(t.date_from || '').slice(0, 10);
       const to = String(t.date_to || t.date_from || '').slice(0, 10);
-      return dates.filter((d) => d >= from && d <= to);
+      let list = dates.filter((d) => d >= from && d <= to);
+      // มีวันที่ติ๊กไว้ → แสดงเฉพาะวันเหล่านั้น (ข้ามวันคั่นกลางที่ไม่ได้รับเลือก)
+      if (Array.isArray(picked) && picked.length) {
+        const set = new Set(picked);
+        list = list.filter((d) => set.has(d));
+      }
+      return list;
     };
 
     for (let i = 0; i < travels.length; i++) {
       const t = travels[i];
-      const days = travelDates(t);
+      const days = travelDates(t, parsed[i].dateList);
       if (!days.length) continue;
       for (const date of days) {
         pushRow(baseRow({ ...t, id: t.user_id }, date, 'ไปราชการ', 'is_travel'));

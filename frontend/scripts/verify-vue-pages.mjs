@@ -438,7 +438,7 @@ const VUE_PAGES = {
           const w = el.getBoundingClientRect().width;
           if (w < 80) throw new Error('ช่องกว้างเพียง ' + Math.round(w) + 'px (ต้อง >= 80px)');
           // ต้องสูงเท่าช่องวันที่ (ผู้ใช้สั่ง 5 พ.ย. 2569)
-          const dateEl = document.getElementById('tf-from');
+          const dateEl = document.getElementById('tf-date');
           if (dateEl) {
             const h = el.getBoundingClientRect().height;
             const dh = dateEl.getBoundingClientRect().height;
@@ -542,8 +542,32 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        name: 'แบบฟอร์มมีช่องสถานที่และช่วงวันเดินทาง',
-        check: `document.body.innerText.includes('สถานที่') && document.body.innerText.includes('ตั้งแต่วันที่')`,
+        name: 'แบบฟอร์มมีช่องสถานที่และปฏิทินเลือกวันที่',
+        check: `document.body.innerText.includes('สถานที่') && !!document.getElementById('tf-date-picker')`,
+      },
+      {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปลี่ยนเป็นปฏิทินติ๊กเลือกหลายวัน + ผลรวมลงช่อง "รวมไปราชการครั้งนี้" */
+        name: 'ปฏิทินติ๊กเลือกหลายวัน แล้วจำนวนวันอัปเดตตาม',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const cells = [...document.querySelectorAll('#tf-date-picker .tf-cal-day:not(.is-out)')];
+          if (cells.length < 5) throw new Error('ไม่พบวันในปฏิทิน');
+          const daysEl = document.getElementById('tf-days');
+          if (!daysEl) throw new Error('ไม่พบช่อง "รวมไปราชการครั้งนี้"');
+          const free = cells.find((c) => !c.classList.contains('is-selected'));
+          if (!free) throw new Error('ไม่มีวันที่ยังไม่ถูกเลือกให้ทดสอบ');
+          const before = Number(daysEl.value);
+          free.click();
+          await sleep(300);
+          const added = Number(daysEl.value);
+          free.click();
+          await sleep(300);
+          const removed = Number(daysEl.value);
+          if (added !== before + 1) throw new Error('ติ๊กวันแล้วยอดไม่เพิ่ม (ก่อน ' + before + ' · หลัง ' + added + ')');
+          if (removed !== before) throw new Error('ยกเลิกวันแล้วยอดไม่กลับ (ได้ ' + removed + ')');
+          if (!/^\\d+$/.test(String(daysEl.value))) throw new Error('ช่องรวมวันไม่ใช่ตัวเลข');
+          return true;
+        })()`,
       },
       {
         name: 'แบบฟอร์มมีส่วนค่าใช้จ่ายและพาหนะ',
@@ -652,7 +676,7 @@ const VUE_PAGES = {
           const w = el.getBoundingClientRect().width;
           if (w < 80) throw new Error('ช่องกว้างเพียง ' + Math.round(w) + 'px (ต้อง >= 80px)');
           // ต้องสูงเท่าช่องวันที่ (ผู้ใช้สั่ง 5 พ.ย. 2569)
-          const dateEl = document.getElementById('tf-from');
+          const dateEl = document.getElementById('tf-date');
           if (dateEl) {
             const h = el.getBoundingClientRect().height;
             const dh = dateEl.getBoundingClientRect().height;

@@ -83,6 +83,21 @@ function daysBetween(from, to) {
   return Math.max(1, Math.round((b - a) / 86400000) + 1);
 }
 
+/**
+ * วันที่ไปราชการที่ผู้ใช้ติ๊กในปฏิทิน (form_data.dates) — ผู้ใช้สั่ง 5 พ.ย. 2569
+ *   รับได้ทั้ง array และค่าเดียว · ตัดค่าซ้ำ/รูปแบบผิด · เรียงจากน้อยไปมาก
+ *   คืน [] ถ้าไม่มีข้อมูล (ข้อมูลเก่าที่เก็บแต่ช่วงวันที่)
+ */
+function normalizeTravelDates(v) {
+  if (!Array.isArray(v)) return [];
+  const out = new Set();
+  for (const x of v) {
+    const s = String(x || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) out.add(s);
+  }
+  return [...out].sort();
+}
+
 // ---------- เมนู 6: บันทึกข้อความ ----------
 /** แปลง JSON รายการไฟล์ (จากคอลัมน์ ref_files/enc_files/draft_file) เป็น array — รองรับทั้ง array และ object เดียว */
 function parseMemoFiles(data) {
@@ -710,9 +725,23 @@ router.post('/travel', auth.requireAuth, uploadTravelDyn.single('attachment'), u
   if (!b.travel_subject || !String(b.travel_subject).trim()) return res.status(400).json({ error: 'กรุณากรอกเรื่อง/งานที่ไปราชการ' });
   if (!b.destination || !String(b.destination).trim()) return res.status(400).json({ error: 'กรุณากรอกสถานที่ไปราชการ' });
   if (!b.date_from || !b.date_to) return res.status(400).json({ error: 'กรุณาระบุวันเดินทาง (จาก-ถึง)' });
-  const days = daysBetween(b.date_from, b.date_to);
+  const days0 = daysBetween(b.date_from, b.date_to);
   let form_data = b.form_data || {};
   if (typeof form_data === 'string') { try { form_data = JSON.parse(form_data); } catch (_e) {} }
+  /*
+   * วันที่ติ๊กจากปฏิทิน (form_data.dates) — อาจไม่ต่อเนื่อง
+   *   ใช้เป็นตัวกำหนด date_from/date_to/days เพื่อให้รายงาน/การไปราชการตรงกับที่เลือก
+   */
+  const pickedDates = normalizeTravelDates(form_data && form_data.dates);
+  let dateFrom = b.date_from;
+  let dateTo = b.date_to;
+  let days = days0;
+  if (pickedDates.length) {
+    form_data.dates = pickedDates;
+    dateFrom = pickedDates[0];
+    dateTo = pickedDates[pickedDates.length - 1];
+    days = pickedDates.length;
+  }
   const attachment = req.file ? getSchoolPrefix(req) + 'travel/' + req.file.filename : null;
   if (attachment) form_data.attachment = attachment;
   const info = await db.prepare(`INSERT INTO travel_requests
@@ -720,7 +749,7 @@ router.post('/travel', auth.requireAuth, uploadTravelDyn.single('attachment'), u
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
     // ⚠️ nextDocNo เป็น async — ไม่ await จะส่ง Promise ไปแทนเลขที่ → HTTP 500
     .run(await nextDocNo('travel_requests', 'travel_no'), req.user.id,
-    String(b.travel_subject || b.title || '').trim(), String(b.destination).trim(), b.date_from, b.date_to, days,
+    String(b.travel_subject || b.title || '').trim(), String(b.destination).trim(), dateFrom, dateTo, days,
     b.vehicle_id ? Number(b.vehicle_id) : null, Number(b.budget) || 0, (b.detail || '').trim(),
     JSON.stringify(form_data));
   // แจ้งเตือนผู้บังคับบัญชาขั้นต้นผ่าน Telegram
@@ -780,13 +809,23 @@ router.put('/travel/:id', auth.requireAuth, uploadTravelDyn.single('attachment')
     form_data.attachment = oldFd.attachment;
   }
 
-  const days = daysBetween(b.date_from, b.date_to);
+  const days0 = daysBetween(b.date_from, b.date_to);
+  const pickedDates = normalizeTravelDates(form_data && form_data.dates);
+  let dateFrom = b.date_from;
+  let dateTo = b.date_to;
+  let days = days0;
+  if (pickedDates.length) {
+    form_data.dates = pickedDates;
+    dateFrom = pickedDates[0];
+    dateTo = pickedDates[pickedDates.length - 1];
+    days = pickedDates.length;
+  }
   await db.prepare(`UPDATE travel_requests
     SET title = ?, destination = ?, date_from = ?, date_to = ?, days = ?, budget = ?, detail = ?, form_data = ?
     WHERE id = ?`).run(
     String(b.travel_subject || b.title || '').trim(),
     String(b.destination).trim(),
-    b.date_from, b.date_to, days,
+    dateFrom, dateTo, days,
     Number(b.budget) || 0,
     String(b.detail || '').trim(),
     JSON.stringify(form_data),

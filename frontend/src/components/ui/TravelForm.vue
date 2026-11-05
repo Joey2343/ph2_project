@@ -150,6 +150,23 @@ function fillFromRecord(rec) {
   companionNames.value = names.slice(0, Math.min(50, Math.max(names.length, f.value.companions)));
   f.value.companions = companionNames.value.length;
 
+  /*
+   * วันที่ไปราชการ — ใช้ form_data.dates ถ้ามี (ข้อมูลใหม่)
+   *   ข้อมูลเก่าที่เก็บแต่ช่วงวันที่ → ขยายเป็นรายวันให้ตรงกับที่เคยติ๊ก
+   */
+  const savedDates = Array.isArray(fd.dates)
+    ? fd.dates.map((x) => String(x || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x))
+    : [];
+  selectedDates.value = savedDates.length
+    ? savedDates
+    : expandRange(rec.date_from, rec.date_to || rec.date_from);
+  syncSelectedDates();
+  const firstDate = selectedDates.value[0];
+  if (firstDate) {
+    const d = new Date(firstDate + 'T00:00:00');
+    calMonth.value = new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
   expenseChecked.value = {
     baht: Number(items.baht) > 0,
     hotel: Number(items.hotel) > 0,
@@ -250,18 +267,101 @@ function reset() {
   attachmentName.value = '';
   companionNames.value = [];
   comboOpen.value = -1;
+  selectedDates.value = [todayISO];
+  calMonth.value = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   expenseChecked.value = { baht: false, hotel: false, transport: false, other: false };
 }
 watch(() => props.saving, reset);
 
-/* ---------- จำนวนวันคำนวณจากช่วงวันที่ ---------- */
-function calcDays() {
-  const a = f.value.date_from;
-  const b = f.value.date_to;
-  if (!a || !b) return;
-  const d1 = new Date(a + 'T00:00:00');
-  const d2 = new Date(b + 'T00:00:00');
-  f.value.days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+/* ---------- ปฏิทินเลือกวันที่ไปราชการ (ติ๊กได้หลายวัน ไม่ต้องต่อเนื่อง) ----------
+ * ผู้ใช้สั่ง 5 พ.ย. 2569: เปลี่ยน "ตั้งแต่วันที่/ถึงวันที่" เป็น "วันที่"
+ *   + ตารางปฏิทินที่ติ๊กเลือกวันได้หลายวัน และผลรวมไปที่ "รวมไปราชการครั้งนี้"
+ *
+ * เก็บวันที่ที่เลือกทั้งหมดใน form_data.dates (array ISO)
+ *   date_from = วันแรก · date_to = วันสุดท้าย · days = จำนวนวันที่เลือก
+ *   (คอลัมน์เดิมยังใช้ต่อได้ — รายงาน/การไปราชการอ่าน form_data.dates ก่อน)
+ */
+const CAL_WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+const CAL_MONTHS = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+];
+
+const selectedDates = ref([todayISO]);
+const calMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+
+function isoOfDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** วันที่ทั้งหมดในช่วง from..to (ISO) — ใช้กับข้อมูลเก่าที่ไม่ได้เก็บ dates */
+function expandRange(from, to) {
+  const out = [];
+  const a = String(from || '').slice(0, 10);
+  const b = String(to || from || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return out;
+  const d = new Date(a + 'T00:00:00');
+  const e = new Date(b + 'T00:00:00');
+  for (let guard = 0; d <= e && guard < 400; guard++) {
+    out.push(isoOfDate(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+const calTitle = computed(() => {
+  const y = calMonth.value.getFullYear();
+  const m = calMonth.value.getMonth();
+  return `${CAL_MONTHS[m]} ${y + 543}`;
+});
+
+const calCells = computed(() => {
+  const y = calMonth.value.getFullYear();
+  const m = calMonth.value.getMonth();
+  const first = new Date(y, m, 1);
+  const start = new Date(y, m, 1 - first.getDay());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = isoOfDate(d);
+    cells.push({
+      iso,
+      day: d.getDate(),
+      inMonth: d.getMonth() === m,
+      selected: selectedDates.value.includes(iso),
+      isToday: iso === todayISO,
+    });
+  }
+  return cells;
+});
+
+const selectedDatesLabel = computed(() =>
+  selectedDates.value
+    .slice()
+    .sort()
+    .map((iso) => UI.thaiDate(iso))
+    .join(' · '),
+);
+
+function shiftCal(delta) {
+  const d = calMonth.value;
+  calMonth.value = new Date(d.getFullYear(), d.getMonth() + delta, 1);
+}
+
+/** รวมยอดวันไปที่ date_from/date_to/days ให้ตรงกับวันที่ติ๊ก */
+function syncSelectedDates() {
+  const arr = [...new Set(selectedDates.value)].sort();
+  selectedDates.value = arr;
+  f.value.date_from = arr[0] || '';
+  f.value.date_to = arr[arr.length - 1] || '';
+  f.value.days = arr.length || 1;
+}
+
+function toggleDate(iso) {
+  const i = selectedDates.value.indexOf(iso);
+  if (i >= 0) selectedDates.value.splice(i, 1);
+  else selectedDates.value.push(iso);
+  syncSelectedDates();
 }
 
 const EXPENSE_ITEMS = [
@@ -303,12 +403,14 @@ function onFile(e) {
 function submit() {
   const v = f.value;
   if (!v.destination.trim()) return UI.toast('กรุณากรอกสถานที่ไปราชการ', 'error');
-  if (!v.date_from || !v.date_to) return UI.toast('กรุณาระบุวันเดินทาง', 'error');
+  if (!selectedDates.value.length) return UI.toast('กรุณาติ๊กเลือกวันที่ไปราชการในปฏิทิน', 'error');
 
   const form_data = {
     writing_at: v.writing_at.trim(),
     form_date: v.form_date || '',
     companions: parseInt(v.companions, 10) || 0,
+    // วันที่ไปราชการทั้งหมดที่ติ๊กในปฏิทิน (อาจไม่ต่อเนื่องกัน)
+    dates: selectedDates.value.slice().sort(),
     // รายชื่อผู้ร่วมเดินทาง (ช่องเลือกชื่อตามจำนวนคณะ)
     companion_names: companionNames.value.map((s) => String(s || '').trim()).filter(Boolean),
     // id ของผู้ร่วมเดินทาง (ใช้ตรวจว่าใคร "ไปราชการ" บ้าง — กันลงเวลา/แสดงในรายการ)
@@ -346,7 +448,7 @@ function submit() {
     destination: v.destination.trim(),
     date_from: v.date_from,
     date_to: v.date_to,
-    days: v.days || 1,
+    days: selectedDates.value.length || 1,
     budget: 0,
     detail: '',
     form_data,
@@ -505,27 +607,52 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
         <ThaiDateField id="tf-order-date" v-model="f.order_date" />
       </div>
 
-      <div style="margin-bottom: 10px; padding-left: 20px; display: flex; align-items: center; flex-wrap: nowrap; gap: 5px">
-        <span style="white-space: nowrap">ตั้งแต่วันที่ </span>
-        <ThaiDateField id="tf-from" v-model="f.date_from" @update:model-value="calcDays" />
-        <span style="white-space: nowrap">ถึงวันที่ </span>
-        <ThaiDateField id="tf-to" v-model="f.date_to" @update:model-value="calcDays" />
-        <span style="white-space: nowrap">รวมไปราชการครั้งนี้ </span>
-        <!--
-          ⚠️ ต้องกว้างพอสำหรับ 3 หลัก (เช่น 120 วัน) และ **สูงเท่าช่องวันที่**
-          เดิม width: 50px / padding 2px → เห็นแค่หลักเดียวและเตี้ยกว่าช่องอื่น
-          (ผู้ใช้แจ้ง 5 พ.ย. 2569) — ใช้ padding แนวตั้ง 9px เท่ากับ input ของ theme
-          แต่ลด padding แนวนอนเพื่อให้มีที่ให้ตัวเลข
-        -->
-        <input
-          id="tf-days"
-          v-model.number="f.days"
-          type="number"
-          min="1"
-          max="999"
-          style="width: 92px; min-width: 92px; font-size: 14.5px; text-align: center; flex-shrink: 0; padding: 9px 6px"
-        />
-        <span style="white-space: nowrap">วัน</span>
+      <!-- ---------- วันที่ไปราชการ: ปฏิทินติ๊กเลือกได้หลายวัน ---------- -->
+      <div id="tf-date-picker" style="margin-bottom: 10px; padding-left: 20px">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px">
+          <span style="white-space: nowrap">วันที่ </span>
+          <span id="tf-dates-summary" class="hint">
+            {{ selectedDates.length ? selectedDatesLabel : 'ยังไม่ได้ติ๊กเลือกวันที่' }}
+          </span>
+        </div>
+
+        <div class="tf-cal">
+          <div class="tf-cal-head">
+            <button type="button" class="btn btn-xs btn-outline" @click="shiftCal(-1)">‹</button>
+            <span class="tf-cal-title">{{ calTitle }}</span>
+            <button type="button" class="btn btn-xs btn-outline" @click="shiftCal(1)">›</button>
+          </div>
+          <div class="tf-cal-grid">
+            <span v-for="w in CAL_WEEKDAYS" :key="w" class="tf-cal-wd">{{ w }}</span>
+            <button
+              v-for="c in calCells"
+              :key="c.iso"
+              type="button"
+              class="tf-cal-day"
+              :class="{ 'is-out': !c.inMonth, 'is-selected': c.selected, 'is-today': c.isToday }"
+              @click="toggleDate(c.iso)"
+            >
+              {{ c.day }}
+            </button>
+          </div>
+        </div>
+
+        <div style="margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px">
+          <span style="white-space: nowrap">รวมไปราชการครั้งนี้ </span>
+          <!--
+            ⚠️ ต้องกว้างพอสำหรับ 3 หลัก (เช่น 120 วัน) และ **สูงเท่าช่องอื่น**
+            (ผู้ใช้แจ้ง 5 พ.ย. 2569) — ค่ามาจากจำนวนวันที่ติ๊กในปฏิทิน (แก้ไม่ได้)
+          -->
+          <input
+            id="tf-days"
+            :value="selectedDates.length"
+            type="number"
+            readonly
+            tabindex="-1"
+            style="width: 92px; min-width: 92px; font-size: 14.5px; text-align: center; flex-shrink: 0; padding: 9px 6px"
+          />
+          <span style="white-space: nowrap">วัน</span>
+        </div>
       </div>
 
       <!-- ---------- โดยข้าพเจ้า ---------- -->
@@ -709,5 +836,65 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
   padding: 8px;
   font-size: 13px;
   color: #64748b;
+}
+
+/*
+ * ปฏิทินติ๊กเลือกวันที่ไปราชการ (หลายวัน)
+ *   ขนาดกะทัดรัด 7 คอลัมน์ (อา.–ส.) — ติ๊ก/ยกเลิกได้ทีละวัน
+ */
+.tf-cal {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.tf-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.tf-cal-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.tf-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 34px);
+  gap: 4px;
+}
+.tf-cal-wd {
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  padding: 2px 0;
+}
+.tf-cal-day {
+  width: 34px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: #f8fafc;
+  font-size: 13.5px;
+  padding: 0;
+  cursor: pointer;
+}
+.tf-cal-day:hover {
+  background: #e0f2fe;
+}
+.tf-cal-day.is-out {
+  color: #cbd5e1;
+  background: transparent;
+}
+.tf-cal-day.is-today {
+  border-color: #93c5fd;
+}
+.tf-cal-day.is-selected,
+.tf-cal-day.is-selected:hover {
+  background: #0f766e;
+  color: #fff;
+  font-weight: 700;
 }
 </style>

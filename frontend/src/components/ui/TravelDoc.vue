@@ -42,6 +42,21 @@ const fullName = computed(() => {
   return first || r.full_name || '-';
 });
 
+/**
+ * วันที่ไปราชการที่แสดงในเอกสาร — ผู้ใช้สั่ง 5 พ.ย. 2569
+ *   เปลี่ยนจาก "ตั้งแต่วันที่ ... ถึงวันที่ ..." เป็น "วันที่ ..." (วันที่ทั้งหมดที่ติ๊กในปฏิทิน)
+ *   · ข้อมูลใหม่ → form_data.dates (อาจไม่ต่อเนื่อง)
+ *   · ข้อมูลเก่า → ใช้วันแรก (date_from) — ไม่มี "ถึงวันที่" แล้ว
+ */
+const travelDatesText = computed(() => {
+  const raw = fd.value.dates;
+  const list = Array.isArray(raw)
+    ? raw.map((x) => String(x || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x))
+    : [];
+  if (list.length) return list.map((iso) => UI.thaiDate(iso)).join(' · ');
+  return UI.thaiDate(props.record.date_from);
+});
+
 const posText = computed(() => props.record.position || '-');
 /** กลุ่ม/หน่วย — ของสถานศึกษาใช้ชื่อโรงเรียน (ตัดรหัสออก) */
 const deptText = computed(() => {
@@ -304,7 +319,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
           สถานที่ {{ record.destination || '-' }} ตามหนังสือ/คำสั่งที่ {{ fd.order_doc || '-' }} ลงวันที่
           {{ fd.order_date ? thaiFull(fd.order_date) : '-' }}
           <br />
-          ตั้งแต่วันที่ {{ UI.thaiDate(record.date_from) }} ถึงวันที่ {{ UI.thaiDate(record.date_to) }}
+          วันที่ {{ travelDatesText }}
           รวมไปราชการครั้งนี้ {{ record.days }} วัน
         </p>
 
