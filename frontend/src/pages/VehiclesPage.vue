@@ -43,14 +43,14 @@ const vehicles = ref([]);
 const curYear = new Date().getFullYear() + 543;
 const myFilter = ref(localStorage.getItem('vehicle_tab') || 'all'); // 'all' | 'mine'
 const yearFilter = ref(String(curYear));
-// มุมมอง (ตาราง/ปฏิทิน) จำค่าไว้ — กดรีเฟรชแล้วต้องอยู่มุมมองเดิม
-const calView = ref(localStorage.getItem('vehicle_view') === 'calendar');
+// มุมมอง (ตาราง/ปฏิทิน) — ผู้ใช้ขอ: "เข้าหน้าให้อยู่มุมมองตารางเสมอ"
+//   → ไม่จำค่าไว้ใน localStorage อีก (เดิมจำแล้วเข้าหน้าครั้งถัดไปได้ปฏิทิน)
+const calView = ref(false);
 const calMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
-/** สลับมุมมองตาราง ↔ ปฏิทิน แล้วจำค่าไว้ใน localStorage */
+/** สลับมุมมองตาราง ↔ ปฏิทิน (ใช้ชั่วคราวในหน้านี้เท่านั้น) */
 function toggleCalView() {
   calView.value = !calView.value;
-  localStorage.setItem('vehicle_view', calView.value ? 'calendar' : 'table');
 }
 
 const bookingsLoading = ref(true);

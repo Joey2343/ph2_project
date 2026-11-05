@@ -284,17 +284,30 @@ const VUE_PAGES = {
         check: `document.querySelectorAll('.cal-weekday').length === 7`,
       },
       {
-        /* ผู้ใช้ขอ: กดรีเฟรชแล้วต้องอยู่มุมมองปฏิทินเหมือนเดิม → ต้องจำค่าไว้ */
-        name: 'จำมุมมองปฏิทินไว้ (กดรีเฟรชแล้วยังเป็นปฏิทิน)',
-        check: `localStorage.getItem('room_view') === 'calendar'`,
-      },
-      {
         name: 'สลับกลับเป็นมุมมองตารางได้',
         check: `(async () => {
           __click('#rb-view-toggle');
           await new Promise((r) => setTimeout(r, 400));
           const b = document.querySelector('#rb-view-toggle');
           return !!b && b.innerText.includes('ปฏิทิน');
+        })()`,
+      },
+      {
+        /* ผู้ใช้ขอ: เข้าหน้า "จองห้องประชุม" ให้อยู่มุมมองตารางเสมอ
+         * (เดิมจำค่าใน localStorage ทำให้เข้าครั้งถัดไปได้ปฏิทิน) */
+        name: 'เข้าหน้าใหม่แล้วเป็นมุมมองตารางเสมอ (ไม่จำค่าเดิม)',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          localStorage.setItem('room_view', 'calendar'); // ค่าเก่าต้องไม่มีผลแล้ว
+          location.hash = '#/home';
+          await sleep(900);
+          location.hash = '#/rooms';
+          await sleep(1400);
+          const toggle = document.getElementById('rb-view-toggle');
+          if (!toggle) throw new Error('ไม่พบปุ่มสลับมุมมองหลังกลับเข้าหน้า');
+          if (document.querySelector('.cal-grid')) throw new Error('กลับเข้าหน้าแล้วยังเป็นมุมมองปฏิทิน');
+          if (!toggle.innerText.includes('ปฏิทิน')) throw new Error('ปุ่มไม่ใช่สถานะตาราง: ' + toggle.innerText);
+          return true;
         })()`,
       },
     ],
@@ -316,11 +329,6 @@ const VUE_PAGES = {
       {
         name: 'ปฏิทินมีช่องวันที่ครบ 7 คอลัมน์',
         check: `document.querySelectorAll('.cal-weekday').length === 7`,
-      },
-      {
-        /* ผู้ใช้ขอ: กดรีเฟรชแล้วต้องอยู่มุมมองปฏิทินเหมือนเดิม → ต้องจำค่าไว้ */
-        name: 'จำมุมมองปฏิทินไว้ (กดรีเฟรชแล้วยังเป็นปฏิทิน)',
-        check: `localStorage.getItem('vehicle_view') === 'calendar'`,
       },
       {
         name: 'สลับกลับเป็นมุมมองตารางได้',
@@ -367,6 +375,24 @@ const VUE_PAGES = {
           if (!good) return false;
           const href = good.getAttribute('href') || '';
           return href.endsWith('.css');
+        })()`,
+      },
+      {
+        /* ผู้ใช้ขอ: เข้าหน้า "จองยานพาหนะ" ให้อยู่มุมมองตารางเสมอ
+         * (เดิมจำค่าใน localStorage ทำให้เข้าครั้งถัดไปได้ปฏิทิน) */
+        name: 'เข้าหน้าใหม่แล้วเป็นมุมมองตารางเสมอ (ไม่จำค่าเดิม)',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          localStorage.setItem('vehicle_view', 'calendar'); // ค่าเก่าต้องไม่มีผลแล้ว
+          location.hash = '#/home';
+          await sleep(900);
+          location.hash = '#/vehicles';
+          await sleep(1600);
+          const toggle = document.getElementById('vb-view-toggle');
+          if (!toggle) throw new Error('ไม่พบปุ่มสลับมุมมองหลังกลับเข้าหน้า');
+          if (document.querySelector('.cal-grid')) throw new Error('กลับเข้าหน้าแล้วยังเป็นมุมมองปฏิทิน');
+          if (!toggle.innerText.includes('ปฏิทิน')) throw new Error('ปุ่มไม่ใช่สถานะตาราง: ' + toggle.innerText);
+          return true;
         })()`,
       },
     ],
