@@ -1736,8 +1736,18 @@ router.put('/vehicle-bookings/:id/edit', auth.requireAuth, async (req, res) => {
   if (!isAdmin && !isLevel1 && !isOwner) {
     return res.status(403).json({ error: 'เฉพาะผู้จอง ผู้อนุมัติขั้นต้น หรือผู้ดูแลระบบเท่านั้นที่แก้ไขการจองได้' });
   }
-  if (isOwner && !isAdmin && !isLevel1 && row.status !== 'pending') {
-    return res.status(403).json({ error: 'รายการนี้ได้รับการอนุมัติแล้ว แก้ไขไม่ได้' });
+  /*
+   * ผู้จองแก้ได้เฉพาะตอนที่ยังไม่มีใครอนุมัติเลย (ผู้ใช้สั่ง 5 พ.ย. 2569)
+   *   · อนุมัติขั้นต้นแล้ว (approval_level >= 1) → แก้ไม่ได้
+   *   · อนุมัติครบทุกขั้น (approved) → แก้ไม่ได้
+   */
+  if (isOwner && !isAdmin && !isLevel1) {
+    if (Number(row.approval_level) > 0) {
+      return res.status(403).json({ error: 'รายการนี้ได้รับการอนุมัติขั้นต้นแล้ว แก้ไขไม่ได้' });
+    }
+    if (row.status !== 'pending') {
+      return res.status(403).json({ error: 'รายการนี้ได้รับการอนุมัติแล้ว แก้ไขไม่ได้' });
+    }
   }
   const ownerOnly = isOwner && !isAdmin && !isLevel1;
 

@@ -11,7 +11,7 @@
  *   ② ผู้จอง **เปลี่ยนยานพาหนะ/พนักงานขับรถไม่ได้** (การจัดรถเป็นหน้าที่เจ้าหน้าที่/ผู้อนุมัติ)
  *   ③ ผู้จองแก้รายการของคนอื่นไม่ได้ (403)
  *   ④ admin ยังแก้ได้ทุกอย่างเหมือนเดิม (รวมจัดรถ)
- *   ⑤ **อนุมัติครบทุกขั้น (approved) แล้ว ผู้จองแก้ไขไม่ได้ (403)**
+ *   ⑤ **อนุมัติขั้นต้นแล้ว หรืออนุมัติครบทุกขั้น ผู้จองแก้ไขไม่ได้ (403)**
  *
  * ใช้: node scripts/test-vehicle-owner-edit.js
  */
@@ -153,7 +153,23 @@ const jput = async (p, cookie, body) => {
     }
 
     console.log('');
-    console.log('⑤ อนุมัติครบทุกขั้น (approved) แล้ว ผู้จองแก้ไขไม่ได้');
+    console.log('⑤ อนุมัติขั้นต้นแล้ว หรืออนุมัติครบทุกขั้น ผู้จองแก้ไขไม่ได้');
+    // อนุมัติขั้นต้น (ยัง pending แต่ approval_level = 1)
+    await db.prepare("UPDATE vehicle_bookings SET approval_level = 1 WHERE id = ?").run(ownerBooking);
+    const r5a = await jput('/api/vehicle-bookings/' + ownerBooking + '/edit', ownerCookie, {
+      date: today,
+      purpose: 'พยายามแก้หลังอนุมัติขั้นต้น',
+      destination: 'แพร่',
+      passenger_count: 2,
+      start_time: '09:00',
+      end_time: '12:00',
+    });
+    check(r5a.status === 403, `ผู้จองแก้รายการที่อนุมัติขั้นต้นแล้ว → 403 (ได้ ${r5a.status})`, JSON.stringify(r5a.body));
+    const after5a = await db.prepare('SELECT purpose FROM vehicle_bookings WHERE id = ?').get(ownerBooking);
+    check(after5a && after5a.purpose !== 'พยายามแก้หลังอนุมัติขั้นต้น', 'ข้อมูลไม่ถูกแก้หลังอนุมัติขั้นต้น',
+      `ได้ "${after5a && after5a.purpose}"`);
+
+    // อนุมัติครบทุกขั้น
     await db.prepare("UPDATE vehicle_bookings SET status = 'approved', approval_level = 2 WHERE id = ?").run(ownerBooking);
     const r5 = await jput('/api/vehicle-bookings/' + ownerBooking + '/edit', ownerCookie, {
       date: today,
