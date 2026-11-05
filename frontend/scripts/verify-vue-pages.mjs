@@ -430,6 +430,25 @@ const VUE_PAGES = {
         check: `!!document.querySelector('[data-app-modal]')`,
       },
       {
+        /* ผู้ใช้แจ้ง 5 พ.ย. 2569: ช่อง "รวมไปราชการครั้งนี้" เห็นแค่หลักเดียว → ต้องกว้างพอ 3 หลัก */
+        name: 'ช่อง "รวมไปราชการครั้งนี้" กว้างพอสำหรับตัวเลข 3 หลัก',
+        check: `(async () => {
+          const el = document.getElementById('tf-days');
+          if (!el) throw new Error('ไม่พบช่อง "รวมไปราชการครั้งนี้"');
+          const w = el.getBoundingClientRect().width;
+          if (w < 80) throw new Error('ช่องกว้างเพียง ' + Math.round(w) + 'px (ต้อง >= 80px)');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(el, '365');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise((r) => setTimeout(r, 300));
+          const shown = el.value;
+          setter.call(el, '1');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          if (shown !== '365') throw new Error('พิมพ์ 3 หลักแล้วค่าไม่ครบ (ได้ "' + shown + '")');
+          return true;
+        })()`,
+      },
+      {
         /* ผู้ใช้ขอ: ใส่จำนวนคณะกี่คน → มีช่องเลือกชื่อเท่านั้น ช่องละ 1 คน มีเลขลำดับนำหน้า
          * ผู้ใช้ขอ (ต่อมา): ช่องตัวเลือกเดิมยังอยู่ แต่ต้อง "พิมพ์ค้นได้" → เปลี่ยนเป็น combobox
          *   พิมพ์คำค้นแล้วต้องเหลือเฉพาะรายชื่อที่มีคำนั้น */
@@ -614,6 +633,25 @@ const VUE_PAGES = {
         check: `(document.body.innerText.includes('แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร')
           && document.body.innerText.includes('ยื่นคำขอไปราชการ (สถานศึกษา)')
           && !document.body.innerText.includes('สำหรับเจ้าหน้าที่สถานศึกษา'))`,
+      },
+      {
+        /* ผู้ใช้แจ้ง 5 พ.ย. 2569: ช่อง "รวมไปราชการครั้งนี้" เห็นแค่หลักเดียว → ต้องกว้างพอ 3 หลัก */
+        name: 'ช่อง "รวมไปราชการครั้งนี้" กว้างพอสำหรับตัวเลข 3 หลัก',
+        check: `(async () => {
+          const el = document.getElementById('tf-days');
+          if (!el) throw new Error('ไม่พบช่อง "รวมไปราชการครั้งนี้"');
+          const w = el.getBoundingClientRect().width;
+          if (w < 80) throw new Error('ช่องกว้างเพียง ' + Math.round(w) + 'px (ต้อง >= 80px)');
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(el, '365');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise((r) => setTimeout(r, 300));
+          const shown = el.value;
+          setter.call(el, '1');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          if (shown !== '365') throw new Error('พิมพ์ 3 หลักแล้วค่าไม่ครบ (ได้ "' + shown + '")');
+          return true;
+        })()`,
       },
       {
         /* ผู้ใช้ขอ: ช่องคณะของสถานศึกษาเป็นช่องพิมพ์ข้อความ (ไม่ใช่ตัวเลือก) */
