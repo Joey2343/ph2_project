@@ -259,15 +259,16 @@ function reset() {
     vehicle_type: 'gov',
     plate_number: '',
     other_vehicle: '',
-    date_from: todayISO,
-    date_to: todayISO,
+    date_from: '',
+    date_to: '',
     days: 1,
   };
   attachment.value = null;
   attachmentName.value = '';
   companionNames.value = [];
   comboOpen.value = -1;
-  selectedDates.value = [todayISO];
+  // ผู้ใช้สั่ง 5 พ.ย. 2569: ค่าเริ่มต้น "ไม่ต้องเลือกวันปัจจุบัน" → เริ่มจากว่าง
+  selectedDates.value = [];
   calMonth.value = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   expenseChecked.value = { baht: false, hotel: false, transport: false, other: false };
 }
@@ -287,7 +288,7 @@ const CAL_MONTHS = [
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
 
-const selectedDates = ref([todayISO]);
+const selectedDates = ref([]);
 const calMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
 function isoOfDate(d) {

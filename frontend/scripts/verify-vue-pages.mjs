@@ -549,6 +549,17 @@ const VUE_PAGES = {
           && !document.getElementById('tf-date-picker').innerText.includes('ตั้งแต่วันที่')`,
       },
       {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: ค่าเริ่มต้นของปฏิทิน "ไม่ต้องเลือกวันปัจจุบัน" */
+        name: 'ปฏิทินเริ่มต้นโดยไม่เลือกวัน (ไม่เลือกวันปัจจุบันอัตโนมัติ)',
+        check: `(() => {
+          const sel = document.querySelectorAll('#tf-date-picker .tf-cal-day.is-selected').length;
+          if (sel !== 0) throw new Error('มีวันที่ถูกเลือกไว้ ' + sel + ' วัน');
+          const days = document.getElementById('tf-days');
+          if (days && Number(days.value) !== 0) throw new Error('ช่องรวมวันไม่ใช่ 0 (ได้ ' + days.value + ')');
+          return true;
+        })()`,
+      },
+      {
         /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปลี่ยนเป็นปฏิทินติ๊กเลือกหลายวัน + ผลรวมลงช่อง "รวมไปราชการครั้งนี้" */
         name: 'ปฏิทินติ๊กเลือกหลายวัน แล้วจำนวนวันอัปเดตตาม',
         check: `(async () => {

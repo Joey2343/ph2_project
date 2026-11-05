@@ -319,7 +319,7 @@ const PARAGRAPH = { textIndent: '80px', margin: '0 0 5px 0', fontSize: '20px' };
           สถานที่ {{ record.destination || '-' }} ตามหนังสือ/คำสั่งที่ {{ fd.order_doc || '-' }} ลงวันที่
           {{ fd.order_date ? thaiFull(fd.order_date) : '-' }}
           <br />
-          วันที่ {{ travelDatesText }}
+          ในวันที่ {{ travelDatesText }}
           รวมไปราชการครั้งนี้ {{ record.days }} วัน
         </p>
 
