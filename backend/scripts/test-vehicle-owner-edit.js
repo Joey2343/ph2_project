@@ -11,6 +11,7 @@
  *   ② ผู้จอง **เปลี่ยนยานพาหนะ/พนักงานขับรถไม่ได้** (การจัดรถเป็นหน้าที่เจ้าหน้าที่/ผู้อนุมัติ)
  *   ③ ผู้จองแก้รายการของคนอื่นไม่ได้ (403)
  *   ④ admin ยังแก้ได้ทุกอย่างเหมือนเดิม (รวมจัดรถ)
+ *   ⑤ **อนุมัติครบทุกขั้น (approved) แล้ว ผู้จองแก้ไขไม่ได้ (403)**
  *
  * ใช้: node scripts/test-vehicle-owner-edit.js
  */
@@ -150,6 +151,21 @@ const jput = async (p, cookie, body) => {
       check(Number(after4.vehicle_id) === 1, 'admin จัดยานพาหนะได้', `ได้ vehicle_id = ${after4.vehicle_id}`);
       check(after4.driver_name === 'พนักงานขับทดสอบ', 'admin ตั้งพนักงานขับรถได้', `ได้ "${after4.driver_name}"`);
     }
+
+    console.log('');
+    console.log('⑤ อนุมัติครบทุกขั้น (approved) แล้ว ผู้จองแก้ไขไม่ได้');
+    await db.prepare("UPDATE vehicle_bookings SET status = 'approved', approval_level = 2 WHERE id = ?").run(ownerBooking);
+    const r5 = await jput('/api/vehicle-bookings/' + ownerBooking + '/edit', ownerCookie, {
+      date: today,
+      purpose: 'พยายามแก้หลังอนุมัติ',
+      destination: 'แพร่',
+      passenger_count: 2,
+      start_time: '09:00',
+      end_time: '12:00',
+    });
+    check(r5.status === 403, `ผู้จองแก้รายการที่อนุมัติแล้ว → 403 (ได้ ${r5.status})`, JSON.stringify(r5.body));
+    const after5 = await db.prepare('SELECT purpose, status FROM vehicle_bookings WHERE id = ?').get(ownerBooking);
+    check(after5 && after5.purpose !== 'พยายามแก้หลังอนุมัติ', 'ข้อมูลไม่ถูกแก้หลังอนุมัติ', `ได้ "${after5 && after5.purpose}"`);
   } catch (e) {
     check(false, 'ทดสอบไม่จบ', e && e.stack ? e.stack.split('\n').slice(0, 4).join('\n') : String(e));
   } finally {

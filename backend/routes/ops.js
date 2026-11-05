@@ -1736,8 +1736,8 @@ router.put('/vehicle-bookings/:id/edit', auth.requireAuth, async (req, res) => {
   if (!isAdmin && !isLevel1 && !isOwner) {
     return res.status(403).json({ error: 'เฉพาะผู้จอง ผู้อนุมัติขั้นต้น หรือผู้ดูแลระบบเท่านั้นที่แก้ไขการจองได้' });
   }
-  if (isOwner && !isAdmin && !isLevel1 && !['pending', 'approved'].includes(row.status)) {
-    return res.status(403).json({ error: 'รายการนี้ปิดแล้ว แก้ไขไม่ได้' });
+  if (isOwner && !isAdmin && !isLevel1 && row.status !== 'pending') {
+    return res.status(403).json({ error: 'รายการนี้ได้รับการอนุมัติแล้ว แก้ไขไม่ได้' });
   }
   const ownerOnly = isOwner && !isAdmin && !isLevel1;
 
