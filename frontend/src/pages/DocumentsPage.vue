@@ -71,16 +71,14 @@ const tabs = computed(() => {
   return out;
 });
 
-/* ---------- แท็บปัจจุบัน ---------- */
-const currentType = ref(
-  tabs.value.some((t) => t.value === (localStorage.getItem('doc_tab') || 'incoming'))
-    ? localStorage.getItem('doc_tab') || 'incoming'
-    : 'incoming',
-);
+/* ---------- แท็บปัจจุบัน ----------
+ * ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้า หนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ
+ *   → ไม่จำแท็บที่เคยเปิด (`localStorage.doc_tab`) อีก
+ */
+const currentType = ref('incoming');
 
 function setTab(v) {
   currentType.value = v;
-  localStorage.setItem('doc_tab', v);
   // เปิดแท็บใหม่ = เริ่มที่หน้าที่เคยค้างไว้ของแท็บนั้น (ไม่มี = หน้า 1)
   currentPage.value = parseInt(localStorage.getItem('doc_page_' + v), 10) || 1;
 }

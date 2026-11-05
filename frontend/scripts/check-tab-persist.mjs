@@ -85,7 +85,6 @@ console.log('③ หน้าอื่นต้องไม่เจอบั๊
  * (LeavePage ถอดออกแล้ว — ผู้ใช้สั่งให้เปิดที่แท็บลาพักผ่อนเสมอ)
  */
 const TAB_PAGES = [
-  ['DocumentsPage.vue', 'doc_tab'],
   ['VehiclesPage.vue', 'vehicle_tab'],
 ];
 for (const [file, key] of TAB_PAGES) {
@@ -103,6 +102,15 @@ for (const [file, key] of [['VehiclesPage.vue', 'vehicle_view'], ['RoomsPage.vue
     `${file}: ไม่จำมุมมอง (${key}) แล้ว`);
   check(/const calView = ref\(false\);/.test(code),
     `${file}: เริ่มที่มุมมองตารางเสมอ (calView = false)`);
+}
+
+/* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าหนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ */
+{
+  const code = stripComments(read('src/pages/DocumentsPage.vue'));
+  check(!/localStorage\.(get|set)Item\('doc_tab'/.test(code),
+    'DocumentsPage.vue: ไม่จำแท็บ (doc_tab) แล้ว');
+  check(/const currentType = ref\('incoming'\);/.test(code),
+    'DocumentsPage.vue: เปิดมาที่แท็บ "หนังสือรับ" เสมอ');
 }
 
 console.log('');

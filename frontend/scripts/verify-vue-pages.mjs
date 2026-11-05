@@ -853,6 +853,17 @@ const VUE_PAGES = {
     actions: [],
     afterActions: [
       {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้า หนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ */
+        name: 'เปิดหน้าแล้วอยู่แท็บ "หนังสือรับ"',
+        check: `(() => {
+          const active = document.querySelector('.segment-row .seg-btn.active');
+          if (!active) throw new Error('ไม่พบแท็บที่กำลังใช้งาน');
+          const t = (active.innerText || '').trim();
+          if (!t.includes('หนังสือรับ') || t.includes('ทะเบียน')) throw new Error('แท็บที่ใช้งานคือ: ' + t);
+          return true;
+        })()`,
+      },
+      {
         name: 'มีแท็บทะเบียนครบ (อย่างน้อย 4 แท็บ)',
         check: `document.querySelectorAll('.segment-row .seg-btn').length >= 4`,
       },
@@ -1337,6 +1348,23 @@ const VUE_PAGES = {
             if (close) close.click();
           }
           await new Promise((r) => setTimeout(r, 600));
+          return true;
+        })()`,
+      },
+      {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าใหม่ทุกครั้ง → กลับไปแท็บ "หนังสือรับ" */
+        name: 'ออกจากหน้าแล้วกลับเข้ามา → กลับไปแท็บ "หนังสือรับ" เสมอ',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          localStorage.setItem('doc_tab', 'honor'); // ค่าเก่าต้องไม่มีผลแล้ว
+          location.hash = '#/home';
+          await sleep(900);
+          location.hash = '#/documents';
+          await sleep(1900);
+          const active = document.querySelector('.segment-row .seg-btn.active');
+          if (!active) throw new Error('ไม่พบแท็บที่กำลังใช้งาน');
+          const t = (active.innerText || '').trim();
+          if (!t.includes('หนังสือรับ') || t.includes('ทะเบียน')) throw new Error('กลับเข้าแล้วได้แท็บ: ' + t);
           return true;
         })()`,
       },
