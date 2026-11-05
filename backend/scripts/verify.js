@@ -194,6 +194,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบผู้จองแก้ไขรายการจองยานพาหนะของตัวเอง — ห้ามเปลี่ยนรถ/แก้ของคนอื่น]');
+  results.push(run('test-vehicle-owner-edit', [path.join(__dirname, 'test-vehicle-owner-edit.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

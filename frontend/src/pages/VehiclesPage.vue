@@ -573,6 +573,118 @@ async function saveEditBooking() {
   }
 }
 
+/* ---------- แก้ไขรายการจองของฉัน (ผู้จอง) ----------
+ * ผู้ใช้สั่ง 5 พ.ย. 2569: แท็บ "ของฉัน" ต้องแก้ไขรายการของตัวเองได้
+ *   · แก้ได้เฉพาะ "ข้อมูลคำขอ" — วัน/เวลา · สถานที่ · วัตถุประสงค์ · จำนวนผู้โดยสาร
+ *   · การจัดยานพาหนะ/พนักงานขับรถ ยังเป็นหน้าที่ของเจ้าหน้าที่/ผู้อนุมัติ (หน้าต่างอีกอัน)
+ */
+const myEditOpen = ref(false);
+const myEditSaving = ref(false);
+const myEditTarget = ref(null);
+const myEditConflict = ref(null);
+const me = ref({
+  date: '',
+  date_to: '',
+  start_time: '',
+  end_time: '',
+  total_days: 1,
+  destination: '',
+  purpose: '',
+  passenger_count: 0,
+});
+let myEditTimer = null;
+
+function openMyEdit(r) {
+  myEditTarget.value = r;
+  me.value = {
+    date: r.date || '',
+    date_to: r.date_to || r.date || '',
+    start_time: r.start_time || '',
+    end_time: r.end_time || '',
+    total_days: r.total_days || 1,
+    destination: r.destination || '',
+    purpose: r.purpose || '',
+    passenger_count: r.passenger_count || 0,
+  };
+  myEditConflict.value = null;
+  myEditOpen.value = true;
+  checkMyEditConflict();
+}
+
+function calcMyEditDays() {
+  if (!me.value.date || !me.value.date_to) {
+    me.value.total_days = 1;
+    return;
+  }
+  const a = new Date(me.value.date + 'T00:00:00');
+  const b = new Date(me.value.date_to + 'T00:00:00');
+  me.value.total_days = b >= a ? Math.max(1, Math.round((b - a) / 86400000) + 1) : 1;
+}
+
+/** เช็คว่าวัน/เวลาที่แก้ไข ยังไม่ชนกับรายการอื่นของรถคันเดิม (ถ้ามีการจัดรถแล้ว) */
+function checkMyEditConflict() {
+  clearTimeout(myEditTimer);
+  myEditTimer = setTimeout(async () => {
+    const r = myEditTarget.value;
+    myEditConflict.value = null;
+    if (!r || !r.vehicle_id || !me.value.date) return;
+    try {
+      const q = new URLSearchParams({
+        vehicle_id: String(r.vehicle_id),
+        date: me.value.date,
+        date_to: me.value.date_to || '',
+        start_time: me.value.start_time || '',
+        end_time: me.value.end_time || '',
+        exclude: String(r.id),
+      });
+      const res = await api.get('/vehicle-bookings/conflicts?' + q.toString());
+      myEditConflict.value = (res.conflicts || [])[0] || null;
+    } catch (e) {
+      /* ไม่ต้องแสดง error */
+    }
+  }, 350);
+}
+
+watch(
+  () => [me.value.date, me.value.date_to, me.value.start_time, me.value.end_time],
+  () => {
+    calcMyEditDays();
+    checkMyEditConflict();
+  },
+);
+
+async function saveMyEdit() {
+  const r = myEditTarget.value;
+  if (!r) return;
+  if (!me.value.date) return UI.toast('กรุณาระบุวันที่', 'error');
+  if (!String(me.value.purpose || '').trim()) return UI.toast('กรุณากรอกวัตถุประสงค์', 'error');
+  if (myEditConflict.value) {
+    return UI.toast(
+      `ไม่สามารถบันทึกได้ — ยานพาหนะคันนี้ถูกจองไว้ในช่วงเวลาที่แก้ไข (${myEditConflict.value.full_name} • ${myEditConflict.value.purpose})`,
+      'error',
+    );
+  }
+  myEditSaving.value = true;
+  try {
+    const res = await api.put(`/vehicle-bookings/${r.id}/edit`, {
+      date: me.value.date,
+      date_to: me.value.date_to || '',
+      start_time: me.value.start_time,
+      end_time: me.value.end_time,
+      destination: String(me.value.destination || '').trim(),
+      purpose: String(me.value.purpose || '').trim(),
+      passenger_count: parseInt(me.value.passenger_count, 10) || 0,
+    });
+    UI.toast(res.message);
+    myEditOpen.value = false;
+    await Promise.all([loadBookings(), loadNotices()]);
+  } catch (e) {
+    UI.toast(e.message, 'error');
+  } finally {
+    myEditSaving.value = false;
+  }
+}
+
 /* ---------- ฟอร์มยานพาหนะ (admin) ---------- */
 const vFormOpen = ref(false);
 const vSaving = ref(false);
@@ -766,6 +878,16 @@ function passengerCell(r) {
 /** แก้ไขได้: ผู้อนุมัติขั้นต้น/admin และรายการยังรออนุมัติหรืออนุมัติแล้ว */
 function canEditRow(r) {
   return (Auth.isAdmin() || canApproveLevel(1)) && (r.status === 'pending' || r.status === 'approved');
+}
+
+/**
+ * ผู้จองแก้ไขรายการของตัวเองได้ (ผู้ใช้สั่ง 5 พ.ย. 2569)
+ *   · เฉพาะรายการที่ยังไม่ถูกปฏิเสธ/ยกเลิก
+ *   · ถ้าเป็นผู้อนุมัติ/admin ใช้หน้าต่าง "แก้ไขการจอง" (จัดรถ/พนักงานขับ) แทน
+ */
+function canEditOwn(r) {
+  if (canEditRow(r)) return false;
+  return isMine(r) && (r.status === 'pending' || r.status === 'approved');
 }
 
 /** ยกเลิกได้: ผู้อนุมัติขั้นต้น/admin (ทุกรายการ) หรือเจ้าของที่ยังรออนุมัติ */
@@ -975,6 +1097,14 @@ function canCancelRow(r) {
                       {{ b.label }}
                     </button>
                     <button v-if="canEditRow(r)" class="btn btn-xs btn-outline" @click="openEditBooking(r)">
+                      ✎ แก้ไข
+                    </button>
+                    <button
+                      v-else-if="canEditOwn(r)"
+                      class="btn btn-xs btn-outline"
+                      title="แก้ไขรายการจองของฉัน"
+                      @click="openMyEdit(r)"
+                    >
                       ✎ แก้ไข
                     </button>
                     <button
@@ -1454,6 +1584,76 @@ function canCancelRow(r) {
       <button class="btn btn-outline" :disabled="editSaving" @click="editOpen = false">ยกเลิก</button>
       <button class="btn btn-primary" :disabled="editSaving || editConflict" @click="saveEditBooking">
         {{ editSaving ? 'กำลังบันทึก...' : '▽ บันทึกการแก้ไข' }}
+      </button>
+    </template>
+  </AppModal>
+
+  <!-- ---------- แก้ไขรายการจองของฉัน (ผู้จอง) ---------- -->
+  <AppModal
+    v-if="myEditOpen"
+    title="✎ แก้ไขรายการจองของฉัน"
+    size="lg"
+    footer
+    @close="myEditOpen = false"
+  >
+    <div class="form-grid">
+      <div class="form-group">
+        <label>ตั้งแต่วันที่</label>
+        <ThaiDateField id="vb-myedit-date-from" v-model="me.date" />
+      </div>
+      <div class="form-group">
+        <label>ตั้งแต่เวลา</label>
+        <input id="vb-myedit-time-from" v-model="me.start_time" type="time" />
+      </div>
+      <div class="form-group">
+        <label>ถึงวันที่</label>
+        <ThaiDateField id="vb-myedit-date-to" v-model="me.date_to" />
+      </div>
+      <div class="form-group">
+        <label>ถึงเวลา</label>
+        <input id="vb-myedit-time-to" v-model="me.end_time" type="time" />
+      </div>
+      <div class="form-group">
+        <label>รวม (วัน)</label>
+        <input id="vb-myedit-total" v-model.number="me.total_days" type="number" min="1" readonly />
+      </div>
+
+      <div class="form-group full">
+        <label>สถานที่</label>
+        <input id="vb-myedit-dest" v-model="me.destination" placeholder="เช่น กรุงเทพมหานคร" />
+      </div>
+      <div class="form-group full">
+        <label>วัตถุประสงค์ <span class="req"> *</span></label>
+        <input id="vb-myedit-purpose" v-model="me.purpose" placeholder="เช่น ไปราชการส่งเอกสารที่ สพฐ." />
+      </div>
+      <div class="form-group">
+        <label>จำนวนผู้โดยสาร (คน)</label>
+        <input id="vb-myedit-passengers" v-model.number="me.passenger_count" type="number" min="0" />
+      </div>
+
+      <div v-if="myEditTarget && myEditTarget.vehicle_name" class="form-group full">
+        <label>ยานพาหนะที่จัดให้</label>
+        <div>{{ myEditTarget.vehicle_name }}{{ myEditTarget.plate ? ` (${myEditTarget.plate})` : '' }}</div>
+        <div class="hint">การเปลี่ยนยานพาหนะ/พนักงานขับรถ เป็นหน้าที่ของเจ้าหน้าที่หรือผู้อนุมัติ</div>
+      </div>
+
+      <div v-if="myEditConflict" class="form-group full" id="vb-myedit-conflict">
+        <div style="background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 10px; padding: 12px 14px">
+          <div style="font-weight: 700; margin-bottom: 6px">⚠️ ยานพาหนะคันนี้ถูกจองไว้ก่อนแล้วในช่วงเวลาที่แก้ไข</div>
+          <div>ผู้จอง: {{ myEditConflict.full_name }} • {{ myEditConflict.purpose }}</div>
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <button class="btn btn-outline" :disabled="myEditSaving" @click="myEditOpen = false">ยกเลิก</button>
+      <button
+        id="vb-myedit-save"
+        class="btn btn-primary"
+        :disabled="myEditSaving || !!myEditConflict"
+        @click="saveMyEdit"
+      >
+        {{ myEditSaving ? 'กำลังบันทึก...' : '▽ บันทึกการแก้ไข' }}
       </button>
     </template>
   </AppModal>

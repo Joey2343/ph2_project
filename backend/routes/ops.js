@@ -1721,18 +1721,45 @@ router.put('/vehicle-bookings/:id/edit', auth.requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const row = await db.prepare('SELECT * FROM vehicle_bookings WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'ไม่พบรายการจอง' });
-  if (req.user.role !== 'admin' && !(await approvals.getUserSystemLevels(req.user, 'vehicle')).includes(1)) {
-    return res.status(403).json({ error: 'เฉพาะผู้อนุมัติขั้นต้นหรือผู้ดูแลระบบเท่านั้นที่แก้ไขการจองได้' });
+
+  /*
+   * สิทธิ์แก้ไข (ผู้ใช้สั่ง 5 พ.ย. 2569)
+   *   · admin / ผู้อนุมัติขั้นต้น → แก้ได้ทุกอย่าง (รวมจัดรถ/พนักงานขับ)
+   *   · ผู้จอง (เจ้าของรายการ) → แก้ได้เฉพาะ "ข้อมูลคำขอ" ของตัวเอง
+   *     (วัน/เวลา · สถานที่ · วัตถุประสงค์ · จำนวนผู้โดยสาร)
+   *     ⚠️ ห้ามเปลี่ยน vehicle_id / driver_name จากฝั่งผู้จอง
+   *        การจัดรถเป็นหน้าที่ของเจ้าหน้าที่/ผู้อนุมัติ
+   */
+  const isAdmin = req.user.role === 'admin';
+  const isLevel1 = (await approvals.getUserSystemLevels(req.user, 'vehicle')).includes(1);
+  const isOwner = Number(row.user_id) === Number(req.user.id);
+  if (!isAdmin && !isLevel1 && !isOwner) {
+    return res.status(403).json({ error: 'เฉพาะผู้จอง ผู้อนุมัติขั้นต้น หรือผู้ดูแลระบบเท่านั้นที่แก้ไขการจองได้' });
   }
+  if (isOwner && !isAdmin && !isLevel1 && !['pending', 'approved'].includes(row.status)) {
+    return res.status(403).json({ error: 'รายการนี้ปิดแล้ว แก้ไขไม่ได้' });
+  }
+  const ownerOnly = isOwner && !isAdmin && !isLevel1;
+
   const b = req.body || {};
   // ค่าที่แก้ไข (ถ้าไม่ส่ง = คงเดิม)
-  const vehicleId = b.vehicle_id !== undefined && b.vehicle_id !== '' ? Number(b.vehicle_id) : row.vehicle_id;
+  const vehicleId = ownerOnly
+    ? row.vehicle_id
+    : (b.vehicle_id !== undefined && b.vehicle_id !== '' ? Number(b.vehicle_id) : row.vehicle_id);
   const date = b.date || row.date;
   const dateTo = b.date_to !== undefined ? (b.date_to || null) : row.date_to;
   const startTime = b.start_time !== undefined ? String(b.start_time || '').trim() : row.start_time;
   const endTime = b.end_time !== undefined ? String(b.end_time || '').trim() : row.end_time;
-  const driverName = b.driver_name !== undefined ? String(b.driver_name || '').trim() : row.driver_name;
+  const driverName = ownerOnly
+    ? row.driver_name
+    : (b.driver_name !== undefined ? String(b.driver_name || '').trim() : row.driver_name);
+  const destination = b.destination !== undefined ? String(b.destination || '').trim() : (row.destination || '');
+  const purpose = b.purpose !== undefined ? String(b.purpose || '').trim() : (row.purpose || '');
+  const passengerCount = b.passenger_count !== undefined
+    ? Math.max(0, parseInt(b.passenger_count, 10) || 0)
+    : (Number(row.passenger_count) || 0);
   if (!date) return res.status(400).json({ error: 'กรุณาระบุวันที่' });
+  if (!purpose) return res.status(400).json({ error: 'กรุณากรอกวัตถุประสงค์' });
   // กันการจองซ้ำกับรายการอื่น (คันเดียวกัน + ช่วงวันที่/เวลาซ้อนทับ)
   if (vehicleId) {
     const clash = await findVehicleClash(vehicleId, date, dateTo, startTime, endTime, id);
@@ -1742,8 +1769,9 @@ router.put('/vehicle-bookings/:id/edit', auth.requireAuth, async (req, res) => {
   }
   const oldDriver = row.driver_name;
   const totalDays = calcTripDays(date, dateTo);
-  await db.prepare(`UPDATE vehicle_bookings SET vehicle_id=?, date=?, start_time=?, date_to=?, end_time=?, total_days=?, driver_name=? WHERE id=?`)
-    .run(vehicleId, date, startTime, dateTo, endTime, totalDays, driverName || null, id);
+  await db.prepare(`UPDATE vehicle_bookings SET vehicle_id=?, date=?, start_time=?, date_to=?, end_time=?, total_days=?, driver_name=?, destination=?, purpose=?, passenger_count=? WHERE id=?`)
+    .run(vehicleId, date, startTime, dateTo, endTime, totalDays, driverName || null,
+      destination, purpose, passengerCount, id);
   // แจ้งเตือนผู้จอง + พนักงานขับรถเดิม + พนักงานขับรถคนใหม่ (ในระบบ + Telegram)
   await telegram.notifyVehicleEdited(id, req.user.full_name, { oldDriver, newDriver: driverName });
   res.json({ ok: true, message: 'แก้ไขการจองยานพาหนะเรียบร้อย — แจ้งเตือนผู้เกี่ยวข้องแล้ว' });
