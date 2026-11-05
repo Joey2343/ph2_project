@@ -437,6 +437,15 @@ const VUE_PAGES = {
           if (!el) throw new Error('ไม่พบช่อง "รวมไปราชการครั้งนี้"');
           const w = el.getBoundingClientRect().width;
           if (w < 80) throw new Error('ช่องกว้างเพียง ' + Math.round(w) + 'px (ต้อง >= 80px)');
+          // ต้องสูงเท่าช่องวันที่ (ผู้ใช้สั่ง 5 พ.ย. 2569)
+          const dateEl = document.getElementById('tf-from');
+          if (dateEl) {
+            const h = el.getBoundingClientRect().height;
+            const dh = dateEl.getBoundingClientRect().height;
+            if (Math.abs(h - dh) > 2) {
+              throw new Error('ความสูง ' + Math.round(h) + 'px ไม่เท่าช่องวันที่ ' + Math.round(dh) + 'px');
+            }
+          }
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           setter.call(el, '365');
           el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -642,6 +651,15 @@ const VUE_PAGES = {
           if (!el) throw new Error('ไม่พบช่อง "รวมไปราชการครั้งนี้"');
           const w = el.getBoundingClientRect().width;
           if (w < 80) throw new Error('ช่องกว้างเพียง ' + Math.round(w) + 'px (ต้อง >= 80px)');
+          // ต้องสูงเท่าช่องวันที่ (ผู้ใช้สั่ง 5 พ.ย. 2569)
+          const dateEl = document.getElementById('tf-from');
+          if (dateEl) {
+            const h = el.getBoundingClientRect().height;
+            const dh = dateEl.getBoundingClientRect().height;
+            if (Math.abs(h - dh) > 2) {
+              throw new Error('ความสูง ' + Math.round(h) + 'px ไม่เท่าช่องวันที่ ' + Math.round(dh) + 'px');
+            }
+          }
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           setter.call(el, '365');
           el.dispatchEvent(new Event('input', { bubbles: true }));

@@ -440,9 +440,10 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
         <ThaiDateField id="tf-to" v-model="f.date_to" @update:model-value="calcDays" />
         <span style="white-space: nowrap">รวมไปราชการครั้งนี้ </span>
         <!--
-          ⚠️ ต้องกว้างพอสำหรับ 3 หลัก (เช่น 120 วัน)
-          เดิม width: 50px → เห็นแค่หลักเดียว เพราะลูกศรปรับตัวเลขของ input[type=number]
-          กินพื้นที่ด้านขวา (ผู้ใช้แจ้ง 5 พ.ย. 2569)
+          ⚠️ ต้องกว้างพอสำหรับ 3 หลัก (เช่น 120 วัน) และ **สูงเท่าช่องวันที่**
+          เดิม width: 50px / padding 2px → เห็นแค่หลักเดียวและเตี้ยกว่าช่องอื่น
+          (ผู้ใช้แจ้ง 5 พ.ย. 2569) — ใช้ padding แนวตั้ง 9px เท่ากับ input ของ theme
+          แต่ลด padding แนวนอนเพื่อให้มีที่ให้ตัวเลข
         -->
         <input
           id="tf-days"
@@ -450,7 +451,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
           type="number"
           min="1"
           max="999"
-          style="width: 92px; min-width: 92px; font-size: 14px; text-align: center; flex-shrink: 0; padding: 2px 4px"
+          style="width: 92px; min-width: 92px; font-size: 14.5px; text-align: center; flex-shrink: 0; padding: 9px 6px"
         />
         <span style="white-space: nowrap">วัน</span>
       </div>
