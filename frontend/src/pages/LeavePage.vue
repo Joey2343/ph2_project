@@ -116,32 +116,36 @@ const roundOptions = computed(() => {
   ];
 });
 
-/** ตั้งแท็บจาก URL/localStorage แล้วกรันตัวที่ผู้ใช้เข้าไม่ได้ออก */
+/**
+ * ตั้งแท็บเริ่มต้นเมื่อเปิดหน้า
+ *
+ * ผู้ใช้สั่ง 5 พ.ย. 2569: **เปิดหน้า ขออนุญาตลา ให้อยู่แท็บ "ขออนุญาตลาพักผ่อน" เสมอ**
+ *   → เลิกอ่านค่าที่จำไว้ใน localStorage (`leave_tab`)
+ *   → ยังเคารพ `?tab=` ที่มาจากการ์ดแจ้งเตือนหน้าแรก (deep-link)
+ *   → ถ้าแท็บนั้นเข้าไม่ได้ (เช่น บัญชีสถานศึกษา) ใช้แท็บลาแรกที่เข้าได้แทน
+ */
 function pickInitialTab() {
   const q = route.query.tab || '';
-  let t = q || localStorage.getItem('leave_tab') || 'general';
-  /*
-   * ⚠️ ตรวจกับ groups เท่านั้น อย่าตรวจกับ LEAVE_GROUPS
-   *
-   *   LEAVE_GROUPS มีแค่ 3 แท็บ (general / vacation / general-school)
-   *   ส่วน "วันลาพักผ่อนสะสม" "สถิติ" "ตั้งค่าเจ้าหน้าที่" อยู่ใน ADMIN_GROUPS
-   *   ถ้าตรวจกับ LEAVE_GROUPS แท็บพวกนั้นจะถูกปฏิเสธทุกครั้งที่เปิดหน้า
-   *   → กดรีเฟรชแล้วเด้งกลับแท็บแรกเสมอ (จุดที่ผู้ใช้แจ้ง)
-   *   groups คือรายการแท็บที่ผู้ใช้คนนี้เข้าถึงได้จริง ครอบคลุมทั้งสองชุดแล้ว
-   */
-  if (!groups.value.some((g) => g.key === t)) t = 'general';
+  let t = q || 'vacation';
+  if (!groups.value.some((g) => g.key === t)) {
+    t = groups.value.some((g) => g.key === 'vacation') ? 'vacation' : 'general';
+  }
   current.value = t;
-  /*
-   * บันทึกเสมอ ไม่ใช่เฉพาะตอนมี ?tab=
-   *   ถ้าแท็บที่บันทึกไว้เข้าไม่ได้ (เช่นเปลี่ยนจาก admin ไปบัญชีอื่น)
-   *   ต้องเขียนทับด้วยค่าที่ใช้ได้จริง ไม่งั้นค่าเก่าจะค้างแล้วลองเดิมทุกครั้งที่เปิดหน้า
-   */
-  localStorage.setItem('leave_tab', t);
+  applyListScope(t);
+}
+
+/**
+ * แท็บรายการลา (ป่วย/กิจ/คลอด · พักผ่อน · สถานศึกษา)
+ * → เริ่มที่ปุ่ม "ขออนุญาตลาทั้งหมด" เสมอ (ผู้ที่ไม่มีสิทธิ์เห็นทั้งหมดเห็นได้เฉพาะของตน)
+ */
+function applyListScope(tabKey) {
+  if (!LEAVE_GROUPS.some((g) => g.key === tabKey)) return;
+  myOnly.value = !canSeeAll.value;
 }
 
 function setTab(k) {
   current.value = k;
-  localStorage.setItem('leave_tab', k);
+  applyListScope(k);
 }
 
 const hideSubmitRow = computed(() => HIDE_FILTERS.includes(current.value) || STATS_TABS.includes(current.value));

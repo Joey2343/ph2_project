@@ -633,12 +633,29 @@ const VUE_PAGES = {
     ],
     afterActions: [
       {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าแล้วต้องอยู่แท็บ "ขออนุญาตลาพักผ่อน" */
+        name: 'เปิดหน้าแล้วอยู่แท็บ "ขออนุญาตลาพักผ่อน"',
+        check: `(() => {
+          const active = [...document.querySelectorAll('.seg-btn')].filter((b) => (b.className || '').includes('active')).map((b) => (b.innerText || '').trim());
+          if (!active.length) throw new Error('ไม่พบแท็บที่กำลังใช้งาน');
+          if (!active.some((t) => t.includes('ลาพักผ่อน'))) throw new Error('แท็บที่ใช้งานคือ: ' + active.join(' | '));
+          return true;
+        })()`,
+      },
+      {
         name: 'แบบฟอร์มยื่นคำลาเปิดได้',
         check: `!!document.querySelector('[data-app-modal]')`,
       },
       {
-        name: 'แบบฟอร์มมีช่องวันลาและประเภทการลา',
-        check: `document.body.innerText.includes('ขอลาตั้งแต่วันที่') && document.body.innerText.includes('ลาป่วย')`,
+        name: 'แบบฟอร์มที่เปิดเป็น "ยื่นคำลาพักผ่อน" และมีช่องวันลา',
+        check: `(async () => {
+          const modal = document.querySelector('[data-app-modal]');
+          if (!modal) throw new Error('ไม่พบแบบฟอร์ม');
+          const txt = (modal.innerText || '') + ' ' + ((modal.querySelector('.modal-title, .modal-head') || {}).innerText || '');
+          if (!txt.includes('ลาพักผ่อน')) throw new Error('แบบฟอร์มไม่ใช่ลาพักผ่อน');
+          if (!txt.includes('วันที่')) throw new Error('ไม่พบช่องวันที่ลา');
+          return true;
+        })()`,
       },
       {
         name: 'แบบฟอร์มมีตารางสถิติการลา',
@@ -654,6 +671,21 @@ const VUE_PAGES = {
           __clickText('[data-app-modal] .btn', 'ยกเลิก');
           await new Promise((r) => setTimeout(r, 400));
           return !document.querySelector('[data-app-modal]');
+        })()`,
+      },
+      {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: แท็บรายการลาทุกแท็บ เปิดมาให้อยู่ที่ "ขออนุญาตลาทั้งหมด" */
+        name: 'สลับแท็บเป็น "ลาป่วย ลากิจ ลาคลอด" แล้วอยู่ที่ "ขออนุญาตลาทั้งหมด"',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const tab = [...document.querySelectorAll('.seg-btn')].find((b) => (b.innerText || '').includes('ลาป่วย ลากิจ ลาคลอด') && !(b.innerText || '').includes('(สถานศึกษา)'));
+          if (!tab) throw new Error('ไม่พบแท็บลาป่วย ลากิจ ลาคลอด');
+          tab.click();
+          await sleep(1200);
+          const all = document.getElementById('lv-all-btn');
+          if (!all) throw new Error('ไม่พบปุ่ม "ขออนุญาตลาทั้งหมด"');
+          if (!(all.className || '').includes('active')) throw new Error('ปุ่ม "ขออนุญาตลาทั้งหมด" ไม่ได้ถูกเลือก (ยังเป็น "ของฉัน")');
+          return true;
         })()`,
       },
       {
@@ -698,6 +730,26 @@ const VUE_PAGES = {
           const b = __clickText('.seg-btn', 'ลาพักผ่อน');
           await new Promise((r) => setTimeout(r, 1800));
           return b && !!document.querySelector('#lv-status');
+        })()`,
+      },
+      {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าใหม่ทุกครั้ง → แท็บ "ลาพักผ่อน" + "ขออนุญาตลาทั้งหมด" */
+        name: 'ออกจากหน้าแล้วกลับเข้ามา → กลับไปแท็บ "ลาพักผ่อน" และ "ทั้งหมด" เสมอ',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const tab = [...document.querySelectorAll('.seg-btn')].find((b) => (b.innerText || '').includes('ลาป่วย ลากิจ ลาคลอด') && !(b.innerText || '').includes('(สถานศึกษา)'));
+          if (tab) { tab.click(); await sleep(800); }
+          const my = document.getElementById('lv-my-btn');
+          if (my) { my.click(); await sleep(600); }
+          location.hash = '#/home';
+          await sleep(900);
+          location.hash = '#/leave';
+          await sleep(1700);
+          const active = [...document.querySelectorAll('.seg-btn')].filter((b) => (b.className || '').includes('active')).map((b) => (b.innerText || '').trim());
+          if (!active.some((t) => t.includes('ลาพักผ่อน'))) throw new Error('กลับเข้าแล้วไม่ใช่แท็บพักผ่อน: ' + active.join(' | '));
+          const all = document.getElementById('lv-all-btn');
+          if (all && !(all.className || '').includes('active')) throw new Error('กลับเข้าแล้วไม่ได้อยู่ที่ "ขออนุญาตลาทั้งหมด"');
+          return true;
         })()`,
       },
     ],
