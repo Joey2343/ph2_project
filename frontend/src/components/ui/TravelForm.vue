@@ -23,9 +23,13 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   /** 'office' = เจ้าหน้าที่ สพป. · 'school' = เจ้าหน้าที่สถานศึกษา (หน้าต่างแยกกันชัดเจน) */
   scope: { type: String, default: 'office' },
+  /** record เดิม — ส่งมาเมื่อ "แก้ไขคำขอ" (ไม่ส่ง = ยื่นใหม่) */
+  record: { type: Object, default: null },
 });
 
 const emit = defineEmits(['close', 'submit']);
+
+const isEdit = computed(() => !!props.record);
 
 const todayISO = UI.today();
 const buddhaYear = new Date().getFullYear() + 543;
@@ -97,7 +101,64 @@ onMounted(async () => {
   } catch {
     /* โหลดรายชื่อไม่ได้ → ยังใช้ฟอร์มได้ (ช่องเลือกจะว่าง) */
   }
+  // โหมดแก้ไข: เติมค่าจาก record เดิม (ต้องรอ staff โหลดก่อน เพื่อจับคู่ชื่อ→id ได้)
+  if (props.record) fillFromRecord(props.record);
 });
+
+/**
+ * เติมค่าฟอร์มจาก record เดิม (โหมดแก้ไข)
+ *   ข้อมูลหลักอยู่ในคอลัมน์ (title/destination/date_from/date_to/days)
+ *   ข้อมูลรายละเอียดอยู่ใน form_data (ดู submit())
+ */
+function fillFromRecord(rec) {
+  let fd = rec.form_data || {};
+  if (typeof fd === 'string') {
+    try { fd = JSON.parse(fd || '{}'); } catch (e) { fd = {}; }
+  }
+  if (!fd || typeof fd !== 'object') fd = {};
+
+  const items = fd.expense_items && typeof fd.expense_items === 'object' ? fd.expense_items : {};
+  const names = Array.isArray(fd.companion_names) ? fd.companion_names.map((s) => String(s || '').trim()).filter(Boolean) : [];
+
+  f.value = {
+    writing_at: fd.writing_at || defaultWritingAt(),
+    form_date: fd.form_date || todayISO,
+    companions: Number(fd.companions) || names.length || 0,
+    travel_subject: fd.travel_subject || rec.title || '',
+    destination: rec.destination || '',
+    order_doc: fd.order_doc || '',
+    order_date: fd.order_date || '',
+    expense_type: fd.expense_type || 'none',
+    expense_budget_amount: Number(fd.expense_budget_amount) || 0,
+    expense_fund_source: fd.expense_fund_source || '',
+    expense_project: fd.expense_project || '',
+    expense_project_amount: Number(fd.expense_project_amount) || 0,
+    expense_items: {
+      baht: Number(items.baht) || 0,
+      hotel: Number(items.hotel) || 0,
+      transport: Number(items.transport) || 0,
+      other: Number(items.other) || 0,
+    },
+    vehicle_type: fd.vehicle_type || 'gov',
+    plate_number: fd.plate_number || '',
+    other_vehicle: fd.other_vehicle || '',
+    date_from: String(rec.date_from || '').slice(0, 10) || todayISO,
+    date_to: String(rec.date_to || rec.date_from || '').slice(0, 10) || todayISO,
+    days: Number(rec.days) || 1,
+  };
+
+  companionNames.value = names.slice(0, Math.min(50, Math.max(names.length, f.value.companions)));
+  f.value.companions = companionNames.value.length;
+
+  expenseChecked.value = {
+    baht: Number(items.baht) > 0,
+    hotel: Number(items.hotel) > 0,
+    transport: Number(items.transport) > 0,
+    other: Number(items.other) > 0,
+  };
+
+  if (fd.attachment) attachmentName.value = 'ไฟล์เดิม: ' + String(fd.attachment).split('/').pop();
+}
 
 /** จำนวนช่องเลือกชื่อ = จำนวนคณะที่กรอก (สูงสุด 50 กันข้อมูลผิดปกติ) */
 watch(
@@ -293,6 +354,17 @@ function submit() {
   });
 }
 
+/**
+ * ชื่อหน้าต่าง — โหมดแก้ไขใช้ "✎ แก้ไขคำขอไปราชการ"
+ * (สถานศึกษาแยกข้อความให้เห็นชัดเหมือนตอนยื่นใหม่)
+ */
+const formTitle = computed(() => {
+  if (isEdit.value) {
+    return isSchoolScope.value ? '✎ แก้ไขคำขอไปราชการ (สถานศึกษา)' : '✎ แก้ไขคำขอไปราชการ';
+  }
+  return isSchoolScope.value ? '✈ ยื่นคำขอไปราชการ (สถานศึกษา)' : '✈ ยื่นคำขอไปราชการ';
+});
+
 const lineStyle = { marginBottom: '5px' };
 const indentStyle = { paddingLeft: '20px' };
 const labelStyle = { marginLeft: '5px' };
@@ -302,7 +374,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
 
 <template>
   <AppModal
-    :title="isSchoolScope ? '✈ ยื่นคำขอไปราชการ (สถานศึกษา)' : '✈ ยื่นคำขอไปราชการ'"
+    :title="formTitle"
     size="lg"
     footer
     @close="emit('close')"
@@ -540,7 +612,7 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
     <template #footer>
       <button class="btn btn-outline" :disabled="saving" @click="emit('close')">ยกเลิก</button>
       <button class="btn btn-primary" :disabled="saving" @click="submit">
-        {{ saving ? 'กำลังส่ง…' : '📨 ส่งคำขอ' }}
+        {{ saving ? 'กำลังส่ง…' : (isEdit ? '▽ บันทึกการแก้ไข' : '📨 ส่งคำขอ') }}
       </button>
     </template>
   </AppModal>

@@ -205,21 +205,56 @@ function openDetail(r) {
   detail.value = r;
 }
 
-/* ---------- ยื่นคำขอ ---------- */
+/* ---------- ยื่นคำขอ / แก้ไขคำขอ ---------- */
 const formOpen = ref(false);
 const formSaving = ref(false);
+/** record ที่กำลังแก้ไข (null = ยื่นใหม่) */
+const editTarget = ref(null);
+
+function openForm() {
+  editTarget.value = null;
+  formOpen.value = true;
+}
+
+function openEdit(r) {
+  editTarget.value = r;
+  formOpen.value = true;
+}
+
+/**
+ * ผู้จองแก้ไขคำขอของตัวเองได้ (ผู้ใช้สั่ง 5 พ.ย. 2569)
+ *   · เฉพาะตอนที่ยังไม่มีใครอนุมัติ (pending + approval_level = 0)
+ *   · admin แก้ได้ตราบที่ยัง pending
+ */
+function canEditTravel(r) {
+  if (Auth.isAdmin()) return r.status === 'pending';
+  return r.user_id === Auth.user?.id && r.status === 'pending' && !Number(r.approval_level || 0);
+}
 
 async function submitForm(payload) {
   formSaving.value = true;
   try {
+    const editing = editTarget.value;
+    const { attachment, ...rest } = payload;
+    const body = { ...rest };
+    for (const [k, v] of Object.entries(body)) {
+      if (v && typeof v === 'object') body[k] = JSON.stringify(v);
+    }
     let res;
-    if (payload.attachment) {
-      // มีไฟล์แนบ → ต้องส่งเป็น multipart/form-data
-      const { attachment, ...rest } = payload;
-      const fd = new FormData();
-      for (const [k, v] of Object.entries(rest)) {
-        fd.append(k, typeof v === 'object' ? JSON.stringify(v) : v);
+    if (editing) {
+      // แก้ไข: PUT /travel/:id (multipart เมื่อมีไฟล์ใหม่)
+      if (attachment) {
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(body)) fd.append(k, v);
+        fd.append('attachment', attachment);
+        res = await api.putForm('/travel/' + editing.id, fd);
+      } else {
+        res = await api.put('/travel/' + editing.id, body);
       }
+    } else if (attachment) {
+      // มีไฟล์แนบ → ต้องส่งเป็น multipart/form-data
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(body)) fd.append(k, v);
       fd.append('attachment', attachment);
       res = await fetch('/api/travel', {
         method: 'POST',
@@ -228,11 +263,11 @@ async function submitForm(payload) {
       }).then((r) => r.json());
       if (res.error) throw new Error(res.error);
     } else {
-      const { attachment, ...rest } = payload;
-      res = await api.post('/travel', rest);
+      res = await api.post('/travel', body);
     }
     UI.toast(res.message);
     formOpen.value = false;
+    editTarget.value = null;
     await load();
   } catch (e) {
     UI.toast(e.message, 'error');
@@ -382,7 +417,7 @@ function openExportDialog() {
       <div class="page-title"><span class="pi">✈</span>{{ pageTitle }}</div>
       <div class="page-desc">ยื่นคำขอเดินทางไปราชการ รอผู้อนุมัติ</div>
     </div>
-    <button v-if="canSubmit" class="btn btn-primary" @click="formOpen = true">
+    <button v-if="canSubmit" class="btn btn-primary" @click="openForm">
       ✈ ยื่นคำขอไปราชการ
     </button>
   </div>
@@ -481,6 +516,14 @@ function openExportDialog() {
                   {{ approveButtonLabel(r) }}
                 </button>
                 <button
+                  v-if="canEditTravel(r)"
+                  class="btn btn-xs btn-outline"
+                  title="แก้ไขคำขอ"
+                  @click="openEdit(r)"
+                >
+                  ✎
+                </button>
+                <button
                   v-if="Auth.isAdmin() || r.user_id === Auth.user?.id"
                   class="btn btn-xs btn-outline danger-btn"
                   @click="remove(r)"
@@ -496,7 +539,14 @@ function openExportDialog() {
   </div>
 
   <!-- ---------- หน้าต่างย่อย ---------- -->
-  <TravelForm v-if="formOpen" :saving="formSaving" :scope="props.scope" @close="formOpen = false" @submit="submitForm" />
+  <TravelForm
+    v-if="formOpen"
+    :saving="formSaving"
+    :scope="props.scope"
+    :record="editTarget"
+    @close="formOpen = false"
+    @submit="submitForm"
+  />
 
   <TravelDoc v-if="detail" :record="detail" @close="detail = null" />
 

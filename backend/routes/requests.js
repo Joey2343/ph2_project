@@ -728,6 +728,77 @@ router.post('/travel', auth.requireAuth, uploadTravelDyn.single('attachment'), u
   res.json({ ok: true, id: info.lastInsertRowid, message: 'ส่งคำขออนุญาตไปราชการเรียบร้อย รอผู้ดูแลระบบอนุมัติ' });
 });
 
+/**
+ * PUT /travel/:id — แก้ไขคำขอของตัวเอง (ผู้ใช้สั่ง 5 พ.ย. 2569)
+ *
+ * สิทธิ์
+ *   · ผู้จอง: แก้ได้เฉพาะตอนที่ยังไม่มีใครอนุมัติ (status = pending และ approval_level = 0)
+ *     — อนุมัติขั้นต้นหรืออนุมัติครบแล้วแก้ไม่ได้
+ *   · admin: แก้ได้ทุกสถานะ
+ *
+ * แก้ได้ทุกช่องเหมือนตอนยื่นใหม่ (เรื่อง สถานที่ วันเดินทาง ค่าใช้จ่าย คณะ ฯลฯ)
+ * ไฟล์แนบ: ถ้าอัปโหลดใหม่ จะลบไฟล์เดิมออกจากดิสก์แล้วใช้ไฟล์ใหม่
+ */
+router.put('/travel/:id', auth.requireAuth, uploadTravelDyn.single('attachment'), uploadErrorHandler, async (req, res) => {
+  const id = Number(req.params.id);
+  const row = await db.prepare('SELECT * FROM travel_requests WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'ไม่พบรายการ' });
+
+  const isAdmin = req.user.role === 'admin';
+  const isOwner = Number(row.user_id) === Number(req.user.id);
+  if (!isAdmin && !isOwner) return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขรายการนี้' });
+  if (!isAdmin) {
+    if (Number(row.approval_level) > 0) {
+      return res.status(403).json({ error: 'รายการนี้ได้รับการอนุมัติขั้นต้นแล้ว แก้ไขไม่ได้' });
+    }
+    if (row.status !== 'pending') {
+      return res.status(403).json({ error: 'รายการนี้ดำเนินการแล้ว แก้ไขไม่ได้' });
+    }
+  }
+
+  const b = req.body || {};
+  if (!b.travel_subject || !String(b.travel_subject).trim()) return res.status(400).json({ error: 'กรุณากรอกเรื่อง/งานที่ไปราชการ' });
+  if (!b.destination || !String(b.destination).trim()) return res.status(400).json({ error: 'กรุณากรอกสถานที่ไปราชการ' });
+  if (!b.date_from || !b.date_to) return res.status(400).json({ error: 'กรุณาระบุวันเดินทาง (จาก-ถึง)' });
+
+  let form_data = b.form_data !== undefined ? b.form_data : row.form_data;
+  if (typeof form_data === 'string') {
+    try { form_data = JSON.parse(form_data || '{}'); } catch (_e) { form_data = {}; }
+  }
+  if (!form_data || typeof form_data !== 'object') form_data = {};
+
+  // ไฟล์แนบเดิม — เก็บไว้เมื่อไม่ได้อัปโหลดไฟล์ใหม่ (ไม่งั้น form_data ใหม่จะทับจนไฟล์หาย)
+  let oldFd = {};
+  try { oldFd = typeof row.form_data === 'string' ? JSON.parse(row.form_data || '{}') : (row.form_data || {}); } catch (_e) { oldFd = {}; }
+  if (!oldFd || typeof oldFd !== 'object') oldFd = {};
+
+  let oldFile = '';
+  if (req.file) {
+    oldFile = String(oldFd.attachment || '');
+    form_data.attachment = getSchoolPrefix(req) + 'travel/' + req.file.filename;
+  } else if (oldFd.attachment) {
+    form_data.attachment = oldFd.attachment;
+  }
+
+  const days = daysBetween(b.date_from, b.date_to);
+  await db.prepare(`UPDATE travel_requests
+    SET title = ?, destination = ?, date_from = ?, date_to = ?, days = ?, budget = ?, detail = ?, form_data = ?
+    WHERE id = ?`).run(
+    String(b.travel_subject || b.title || '').trim(),
+    String(b.destination).trim(),
+    b.date_from, b.date_to, days,
+    Number(b.budget) || 0,
+    String(b.detail || '').trim(),
+    JSON.stringify(form_data),
+    id,
+  );
+
+  // ลบไฟล์แนบเดิม "หลัง" บันทึกสำเร็จเท่านั้น (กันไฟล์หายถ้า UPDATE ล้มเหลว)
+  if (oldFile && oldFile !== form_data.attachment) deleteUploadedFile(oldFile);
+
+  res.json({ ok: true, message: 'บันทึกการแก้ไขคำขอไปราชการเรียบร้อย' });
+});
+
 router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
   const { note, position } = req.body || {};
   // ถ้ามี position ให้ใช้ position ที่เลือกแทน position ของผู้ใช้
