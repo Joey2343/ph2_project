@@ -323,6 +323,16 @@ const VUE_PAGES = {
     ],
     afterActions: [
       {
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้า จองยานพาหนะ → แท็บ "ทั้งหมด" เสมอ */
+        name: 'เปิดหน้าแล้วอยู่แท็บ "ทั้งหมด"',
+        check: `(() => {
+          const all = document.getElementById('v-filter-all');
+          if (!all) throw new Error('ไม่พบแท็บ "ทั้งหมด"');
+          if (!(all.className || '').includes('active')) throw new Error('แท็บ "ทั้งหมด" ไม่ได้ถูกเลือก');
+          return true;
+        })()`,
+      },
+      {
         name: 'สลับเป็นมุมมองปฏิทินได้',
         check: `!!document.querySelector('.cal-grid') && !!document.querySelector('.cal-title')`,
       },
@@ -378,20 +388,26 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        /* ผู้ใช้ขอ: เข้าหน้า "จองยานพาหนะ" ให้อยู่มุมมองตารางเสมอ
-         * (เดิมจำค่าใน localStorage ทำให้เข้าครั้งถัดไปได้ปฏิทิน) */
-        name: 'เข้าหน้าใหม่แล้วเป็นมุมมองตารางเสมอ (ไม่จำค่าเดิม)',
+        /* ผู้ใช้สั่ง 5 พ.ย. 2569: เข้าหน้าใหม่ → มุมมองตาราง + แท็บ "ทั้งหมด" เสมอ */
+        name: 'เข้าหน้าใหม่แล้วเป็นมุมมองตาราง + แท็บ "ทั้งหมด" เสมอ (ไม่จำค่าเดิม)',
         check: `(async () => {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           localStorage.setItem('vehicle_view', 'calendar'); // ค่าเก่าต้องไม่มีผลแล้ว
+          localStorage.setItem('vehicle_tab', 'mine');
+          const mine = document.getElementById('v-filter-mine');
+          if (mine) { mine.click(); await sleep(600); }
           location.hash = '#/home';
           await sleep(900);
           location.hash = '#/vehicles';
-          await sleep(1600);
+          await sleep(1800);
           const toggle = document.getElementById('vb-view-toggle');
           if (!toggle) throw new Error('ไม่พบปุ่มสลับมุมมองหลังกลับเข้าหน้า');
           if (document.querySelector('.cal-grid')) throw new Error('กลับเข้าหน้าแล้วยังเป็นมุมมองปฏิทิน');
           if (!toggle.innerText.includes('ปฏิทิน')) throw new Error('ปุ่มไม่ใช่สถานะตาราง: ' + toggle.innerText);
+          const all = document.getElementById('v-filter-all');
+          if (!all || !(all.className || '').includes('active')) throw new Error('กลับเข้าแล้วไม่ได้อยู่แท็บ "ทั้งหมด"');
+          const mineBtn = document.getElementById('v-filter-mine');
+          if (mineBtn && (mineBtn.className || '').includes('active')) throw new Error('กลับเข้าแล้วยังอยู่แท็บ "ของฉัน"');
           return true;
         })()`,
       },

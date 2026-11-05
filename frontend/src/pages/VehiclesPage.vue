@@ -7,7 +7,7 @@
  *
  * ฟีเจอร์เท่าเดิมทุกอย่าง:
  *   - 2 แท็บ: การจองยานพาหนะ / รายการยานพาหนะ (พร้อมรูป)
- *   - ฟิลเตอร์ ทั้งหมด/ของฉัน (จำค่าใน localStorage) + ปี พ.ศ. + Excel
+ *   - ฟิลเตอร์ ทั้งหมด/ของฉัน + ปี พ.ศ. + Excel (เปิดหน้า = "ทั้งหมด" เสมอ)
  *   - มุมมองตาราง/ปฏิทิน + แจ้งเตือนการยกเลิก/แก้ไขการจอง
  *   - กันจองซ้ำ: เช็คก่อนส่ง + ก่อนอนุมัติ + ก่อนบันทึกการแก้ไข
  *   - อนุมัติ 2 ขั้น: ขั้นต้นเลือกพนักงานขับ+จัดยานพาหนะ · ขั้นสุดท้ายยืนยันซ้ำ
@@ -41,7 +41,9 @@ const tab = ref('bookings'); // 'bookings' | 'list'
 const vehicles = ref([]);
 
 const curYear = new Date().getFullYear() + 543;
-const myFilter = ref(localStorage.getItem('vehicle_tab') || 'all'); // 'all' | 'mine'
+// ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้า จองยานพาหนะ → แท็บ "ทั้งหมด" เสมอ
+//   → ไม่จำตัวกรองที่เคยเลือก (เดิมเก็บใน localStorage คีย์ vehicle_tab)
+const myFilter = ref('all'); // 'all' | 'mine'
 const yearFilter = ref(String(curYear));
 // มุมมอง (ตาราง/ปฏิทิน) — ผู้ใช้ขอ: "เข้าหน้าให้อยู่มุมมองตารางเสมอ"
 //   → ไม่จำค่าไว้ใน localStorage อีก (เดิมจำแล้วเข้าหน้าครั้งถัดไปได้ปฏิทิน)
@@ -125,7 +127,6 @@ watch([tab, yearFilter, myFilter], async (v) => {
 
 function setMyFilter(v) {
   myFilter.value = v;
-  localStorage.setItem('vehicle_tab', v);
 }
 
 function shiftMonth(delta) {

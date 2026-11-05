@@ -79,29 +79,28 @@ check(!/location\.hash\.split\('\?'\)\[1\]/.test(leaveCode),
   'เลิกอ่าน location.hash ตรง ๆ แล้ว (อ่านได้แต่ตอนเปิดหน้าใหม่เท่านั้น)');
 
 console.log('');
-console.log('③ หน้าอื่นต้องไม่เจอบั๊ก "เขียนแต่ไม่อ่าน" + เริ่มมุมมองที่ถูกต้อง');
+console.log('③ หน้าอื่นต้องเริ่มที่ค่าที่กำหนด + ไม่เจอบั๊ก "เขียนแต่ไม่อ่าน"');
 /*
- * ตรวจทุกหน้าที่เก็บแท็บไว้: ต้องอ่านค่ากลับมาได้จริง
- * (LeavePage ถอดออกแล้ว — ผู้ใช้สั่งให้เปิดที่แท็บลาพักผ่อนเสมอ)
+ * ผู้ใช้สั่ง 5 พ.ย. 2569: หน้าจองยานพาหนะ → แท็บ "ทั้งหมด" + มุมมองตาราง เสมอ
+ * (เดิมจำแท็บ/มุมมองใน localStorage)
  */
-const TAB_PAGES = [
-  ['VehiclesPage.vue', 'vehicle_tab'],
-];
-for (const [file, key] of TAB_PAGES) {
-  const code = stripComments(read(`src/pages/${file}`));
-  const writes = new RegExp(`localStorage\\.setItem\\('${key}'`).test(code);
-  const reads = new RegExp(`localStorage\\.getItem\\('${key}'`).test(code);
-  check(!(writes && !reads), `${file}: '${key}' ไม่ได้เขียนอย่างเดียว`,
-    `เขียน ${writes ? 'มี' : 'ไม่มี'} · อ่านกลับ ${reads ? 'มี' : 'ไม่มี'} → เก็บค่าไว้แต่ไม่เคยใช้`);
-}
-
-/* ผู้ใช้สั่ง 5 พ.ย. 2569: เข้าหน้าจองแล้วต้องอยู่ "มุมมองตาราง" เสมอ */
-for (const [file, key] of [['VehiclesPage.vue', 'vehicle_view'], ['RoomsPage.vue', 'room_view']]) {
-  const code = stripComments(read(`src/pages/${file}`));
-  check(!new RegExp(`localStorage\\.(get|set)Item\\('${key}'`).test(code),
-    `${file}: ไม่จำมุมมอง (${key}) แล้ว`);
+{
+  const code = stripComments(read('src/pages/VehiclesPage.vue'));
+  check(!/localStorage\.(get|set)Item\('vehicle_tab'/.test(code),
+    'VehiclesPage.vue: ไม่จำแท็บ (vehicle_tab) แล้ว');
+  check(/const myFilter = ref\('all'\);/.test(code),
+    'VehiclesPage.vue: เปิดมาที่แท็บ "ทั้งหมด" เสมอ');
+  check(!/localStorage\.(get|set)Item\('vehicle_view'/.test(code),
+    'VehiclesPage.vue: ไม่จำมุมมอง (vehicle_view) แล้ว');
   check(/const calView = ref\(false\);/.test(code),
-    `${file}: เริ่มที่มุมมองตารางเสมอ (calView = false)`);
+    'VehiclesPage.vue: เริ่มที่มุมมองตารางเสมอ (calView = false)');
+}
+{
+  const code = stripComments(read('src/pages/RoomsPage.vue'));
+  check(!/localStorage\.(get|set)Item\('room_view'/.test(code),
+    'RoomsPage.vue: ไม่จำมุมมอง (room_view) แล้ว');
+  check(/const calView = ref\(false\);/.test(code),
+    'RoomsPage.vue: เริ่มที่มุมมองตารางเสมอ (calView = false)');
 }
 
 /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าหนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ */
