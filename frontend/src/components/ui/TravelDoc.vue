@@ -177,12 +177,17 @@ function savedChoices(a) {
   return a ? parseNote(a).choices || [] : [];
 }
 const col1Options = computed(() => {
-  const base = ['ควรอนุญาต', 'ไม่ควรอนุญาต'];
+  // สาย สพป. เลือกได้หลายข้อ (4 ตัวเลือก) · สายสถานศึกษาคงเดิม 2 ตัวเลือก
+  const base = reqIsSchool.value
+    ? ['ควรอนุญาต', 'ไม่ควรอนุญาต']
+    : ['ควรอนุญาต', 'ไม่ควรอนุญาต', 'ควรอนุมัติ', 'ไม่ควรอนุมัติ'];
   const extra = savedChoices(col1.value).filter((k) => !base.includes(k));
   return [...extra, ...base];
 });
 const col2Options = computed(() => {
-  const base = ['อนุญาต', 'ไม่อนุญาต'];
+  const base = reqIsSchool.value
+    ? ['อนุญาต', 'ไม่อนุญาต']
+    : ['อนุญาต', 'ไม่อนุญาต', 'อนุมัติ', 'ไม่อนุมัติ'];
   const extra = savedChoices(col2.value).filter((k) => !base.includes(k));
   return [...extra, ...base];
 });

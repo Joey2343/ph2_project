@@ -29,18 +29,38 @@ const props = defineProps({
   mode: { type: String, default: 'level1' },
   /** ชื่อขั้น เช่น "อนุมัติขั้นต้น" (สายสถานศึกษา ขั้น 2) */
   stepTitle: { type: String, default: '' },
+  /** 'office' = สาย สพป. · 'school' = สายสถานศึกษา (ของสถานศึกษาคงเดิม) */
+  scope: { type: String, default: 'office' },
 });
 
 const emit = defineEmits(['close', 'confirm']);
 
 /* ---------- ตัวเลือกของแต่ละขั้น ---------- */
 /*
- * ผู้ใช้กำหนด:
- *   - ผู้บังคับบัญชาขั้นต้น → ติ๊ก "ควรอนุญาต" / "ไม่ควรอนุญาต" (ใส่เหตุผลเมื่อไม่ควรอนุญาต)
- *   - ผู้อนุมัติ (ขั้นสุดท้าย) → ติ๊ก "อนุญาต" / "ไม่อนุญาต" (ใส่เหตุผลเมื่อไม่อนุญาต)
- * เลือกได้ครั้งละ 1 ข้อ (radio) — เลือกทั้ง 2 ข้อพร้อมกันไม่ได้
+ * ผู้ใช้กำหนด (5 พ.ย. 2569)
+ *   สาย สพป. — เลือกได้หลายข้อ (checkbox)
+ *     · ผู้อนุมัติขั้นต้น: ควรอนุญาต · ไม่ควรอนุญาต · ควรอนุมัติ · ไม่ควรอนุมัติ
+ *     · ผู้อนุมัติ (ขั้นสุดท้าย): อนุญาต · ไม่อนุญาต · อนุมัติ · ไม่อนุญาต
+ *   สายสถานศึกษา — คงเดิม (เลือกครั้งละ 1 ข้อ 2 ตัวเลือก)
  */
-const OPTIONS = {
+const isSchool = computed(() => props.scope === 'school');
+
+const OPTIONS_OFFICE = {
+  level1: [
+    { key: 'ควรอนุญาต', reason: false },
+    { key: 'ไม่ควรอนุญาต', reason: true },
+    { key: 'ควรอนุมัติ', reason: false },
+    { key: 'ไม่ควรอนุมัติ', reason: true },
+  ],
+  final: [
+    { key: 'อนุญาต', reason: false },
+    { key: 'ไม่อนุญาต', reason: true },
+    { key: 'อนุมัติ', reason: false },
+    { key: 'ไม่อนุมัติ', reason: true },
+  ],
+};
+
+const OPTIONS_SCHOOL = {
   level1: [
     { key: 'ควรอนุญาต', reason: false },
     { key: 'ไม่ควรอนุญาต', reason: true },
@@ -51,7 +71,10 @@ const OPTIONS = {
   ],
 };
 
-const options = computed(() => OPTIONS[props.mode] || OPTIONS.level1);
+const options = computed(() => {
+  const table = isSchool.value ? OPTIONS_SCHOOL : OPTIONS_OFFICE;
+  return table[props.mode] || table.level1;
+});
 
 /** ปุ่มยืนยันตามขั้น */
 const okText = computed(() => (props.mode === 'forward' ? 'ยืนยัน' : 'ยืนยัน'));
@@ -112,12 +135,26 @@ watch(
   { immediate: true },
 );
 
-/** เลือกได้ครั้งละ 1 ข้อ (radio) — ล้างเหตุผลของข้อที่ไม่ได้เลือก */
+/**
+ * เลือก/ยกเลิกตัวเลือก (checkbox)
+ *   สาย สพป. เลือกได้หลายข้อ · สายสถานศึกษาเลือกได้ครั้งละ 1 ข้อ (เหมือนเดิม)
+ */
 function pick(key) {
-  picked.value = [key];
-  for (const k of Object.keys(reasons.value)) {
-    if (k !== key) delete reasons.value[k];
+  const i = picked.value.indexOf(key);
+  if (i >= 0) {
+    picked.value.splice(i, 1);
+    delete reasons.value[key];
+    return;
   }
+  if (isSchool.value) {
+    // สายสถานศึกษา: คงพฤติกรรมเดิม (เลือกได้ครั้งละ 1)
+    picked.value = [key];
+    for (const k of Object.keys(reasons.value)) {
+      if (k !== key) delete reasons.value[k];
+    }
+    return;
+  }
+  picked.value.push(key);
 }
 
 const isRejectPicked = computed(() => picked.value.some((k) => k.startsWith('ไม่')));
@@ -162,10 +199,10 @@ function confirm() {
         <div style="margin-bottom: 10px; font-weight: 700">กรุณาเลือกการพิจารณา</div>
 
         <div v-for="o in options" :key="o.key">
-          <label style="display: flex; align-items: center; gap: 4px; margin-bottom: 6px; cursor: pointer">
+          <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; cursor: pointer">
             <input
-              type="radio"
-              name="travel-decide-choice"
+              :type="isSchool ? 'radio' : 'checkbox'"
+              :name="isSchool ? 'travel-decide-choice' : undefined"
               :checked="picked.includes(o.key)"
               style="width: 16px; height: 16px; flex-shrink: 0; cursor: pointer"
               @change="pick(o.key)"

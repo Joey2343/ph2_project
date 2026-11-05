@@ -173,7 +173,10 @@ function approveButtonLabel(r) {
   if (school && next === 1) return '⊙ ตรวจสอบ';
   // สายสถานศึกษา ขั้นที่ 2 = ผู้อนุมัติขั้นต้น
   if (school && next === 2) return '● อนุมัติขั้นต้น';
-  return next === 1 ? '● ควรอนุญาต' : '● อนุญาต';
+  // สาย สพป.: ขั้นแรก (ถ้ายังไม่ใช่ขั้นสุดท้าย) = ผู้บังคับบัญชาขั้นต้น
+  const required = Number(r.required_levels) || 0;
+  const isFinalStep = required > 0 && next >= required;
+  return next === 1 && !isFinalStep ? '● ควรอนุญาต' : '● อนุญาต';
 }
 
 /** เลขที่เอกสาร — รายการเก่าที่ไม่มีเลขต้องแสดงเป็นขีดกลาง ไม่ใช่ช่องว่าง */
@@ -293,12 +296,19 @@ const decideStepTitle = ref('');
 function openDecide(r) {
   const next = nextLevel(r);
   const school = requestIsSchool(r);
+  /*
+   * ขั้นสุดท้ายของสายจริง = ผู้อนุมัติ (ไม่ใช่ผู้บังคับบัญชาขั้นต้น)
+   *   ใช้ required_levels ที่ API คืนมา — สายที่มีขั้นเดียว (เช่น approval_travel = 1)
+   *   ผู้อนุมัติคนนั้นคือ "ผู้อนุมัติ" (ปุ่ม/ตัวเลือกแบบ อนุญาต/อนุมัติ) ไม่ใช่ขั้นต้น
+   */
+  const required = Number(r.required_levels) || 0;
+  const isFinalStep = required > 0 && next >= required;
   decideStepTitle.value = '';
   if (school && next === 1) decideMode.value = 'forward';
   else if (school && next === 2) {
     decideMode.value = 'level1';
     decideStepTitle.value = 'อนุมัติขั้นต้น';
-  } else if (next === 1) decideMode.value = 'level1';
+  } else if (!school && next === 1 && !isFinalStep) decideMode.value = 'level1';
   else decideMode.value = 'final';
 
   decideTarget.value = r;
@@ -555,6 +565,7 @@ function openExportDialog() {
     :record="decideTarget"
     :mode="decideMode"
     :step-title="decideStepTitle"
+    :scope="props.scope"
     @close="decideOpen = false"
     @confirm="onDecide"
   />
