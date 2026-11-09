@@ -388,6 +388,35 @@ const VUE_PAGES = {
         })()`,
       },
       {
+        /* ผู้ใช้สั่ง 9 พ.ย. 2569: ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" → เลือกพนักงานขับรถ (รายชื่อชุดเดียวกับหน้าอนุมัติขั้นต้น) */
+        name: 'ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" แล้วมีตัวเลือกพนักงานขับรถ และค่าไปแสดงในหน้าอนุมัติ',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const open = [...document.querySelectorAll('.toolbar .btn')].find((b) => (b.innerText || '').includes('จองยานพาหนะ'));
+          if (!open) throw new Error('ไม่พบปุ่มจองยานพาหนะ');
+          open.click();
+          await sleep(1300);
+          const chk = document.getElementById('vb-selfdrive');
+          if (!chk) throw new Error('ไม่พบช่องติ๊ก "ขออนุญาตเป็นผู้ขับรถ"');
+          if (document.getElementById('vb-booking-driver')) throw new Error('มีช่องเลือกพนักงานขับรถก่อนติ๊ก');
+          chk.click();
+          await sleep(600);
+          const sel = document.getElementById('vb-booking-driver');
+          if (!sel) throw new Error('ติ๊กแล้วไม่แสดงช่องเลือกพนักงานขับรถ');
+          const opts = [...sel.options].filter((o) => o.value);
+          if (!opts.length) throw new Error('ช่องเลือกพนักงานขับรถไม่มีรายชื่อ');
+          // เลือกคนแรก แล้วอ่านค่าที่จะส่ง
+          sel.value = opts[0].value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          await sleep(200);
+          if (sel.value !== opts[0].value) throw new Error('เลือกชื่อแล้วค่าไม่ถูกบันทึกในช่อง');
+          const close = [...document.querySelectorAll('[data-app-modal] .modal-foot .btn')].find((b) => b.innerText.trim() === 'ยกเลิก');
+          if (close) close.click();
+          await sleep(500);
+          return true;
+        })()`,
+      },
+      {
         /* ผู้ใช้สั่ง 5 พ.ย. 2569: เข้าหน้าใหม่ → มุมมองตาราง + แท็บ "ทั้งหมด" เสมอ */
         name: 'เข้าหน้าใหม่แล้วเป็นมุมมองตาราง + แท็บ "ทั้งหมด" เสมอ (ไม่จำค่าเดิม)',
         check: `(async () => {

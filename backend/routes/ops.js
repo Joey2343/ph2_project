@@ -1608,13 +1608,15 @@ router.post('/vehicle-bookings', auth.requireAuth, async (req, res) => {
   const bookingNo = await nextDocNo('vehicle_bookings', 'booking_no');
   const info = await db.prepare(`INSERT INTO vehicle_bookings
     (booking_no, vehicle_id, user_id, date, start_time, date_to, end_time, total_days, purpose, destination,
-     passenger_count, controller, fuel_choice, fuel_project, fuel_activity, fuel_amount, self_drive)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     passenger_count, controller, fuel_choice, fuel_project, fuel_activity, fuel_amount, self_drive, driver_name)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(bookingNo, vehicleId, req.user.id, b.date, (b.start_time || '').trim(), b.date_to || null,
       (b.end_time || '').trim(), totalDays, String(b.purpose).trim(), (b.destination || '').trim(),
       Number(b.passenger_count) || 0, (b.controller || '').trim(), (b.fuel_choice || '').trim(),
       (b.fuel_project || '').trim(), (b.fuel_activity || '').trim(), Number(b.fuel_amount) || 0,
-      b.self_drive ? 1 : 0);
+      b.self_drive ? 1 : 0,
+      // ผู้ขอเลือกพนักงานขับรถไว้ → ผู้อนุมัติขั้นต้นเห็นในช่อง "เลือกพนักงานขับรถ"
+      b.self_drive ? String(b.driver_name || '').trim() || null : null);
   // แจ้งเตือน Telegram ไปยังผู้อนุมัติขั้นต้นว่ามีคำขอใช้ยานพาหนะใหม่
   await telegram.notifyVehicleSubmitted(Number(info.lastInsertRowid));
   res.json({ ok: true, id: info.lastInsertRowid, message: 'ส่งคำขอยืมยานพาหนะเรียบร้อย รอผู้ดูแลระบบอนุมัติ' });

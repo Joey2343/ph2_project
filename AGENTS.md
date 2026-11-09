@@ -922,6 +922,13 @@ ph2_project/
     (`myFilter` เริ่มต้น `'all'` · เลิกใช้ `localStorage.vehicle_tab` แล้ว)
     — ยังสลับเป็น "ของฉัน" ได้ระหว่างใช้งาน
   - เทสต์กันไว้ที่ `verify-vue-pages` (rooms/vehicles) + `check-tab-persist.mjs`
+- **ติ๊ก "ขออนุญาตเป็นผู้ขับรถคันดังกล่าว..." ในฟอร์มจองยานพาหนะ → เลือกพนักงานขับรถได้**
+  - ผู้ใช้สั่ง 9 พ.ย. 2569 — แสดง `<select id="vb-booking-driver">` **เฉพาะเมื่อติ๊ก**
+  - รายชื่อชุดเดียวกับหน้าอนุมัติขั้นต้น (`GET /users/active` ที่ไม่ใช่สถานศึกษา)
+  - ส่ง `driver_name` ไปกับ `POST /vehicle-bookings` — บันทึกเฉพาะเมื่อ `self_drive = 1`
+  - หน้าอนุมัติขั้นต้น (`openApproveLevel1`) เติม `l1Driver` จาก `r.driver_name`
+    → ชื่อที่ผู้ขอเลือกไว้ขึ้นในช่อง "เลือกพนักงานขับรถ" อัตโนมัติ
+  - เทสต์กันไว้ที่ `test-vehicle-owner-edit.js` ข้อ ⑥ + `verify-vue-pages` (`#/vehicles`)
 - **ผู้จองแก้ไขรายการจองยานพาหนะของตัวเองได้ (แท็บ "ของฉัน") — เฉพาะที่ยังไม่มีใครอนุมัติ**
   - ผู้ใช้สั่ง 5 พ.ย. 2569 — ปุ่ม **✎ แก้ไข** ในการ์ด/แถวของตัวเอง
     **เฉพาะ `status = 'pending'` และ `approval_level = 0`** (ยังไม่มีผู้อนุมัติขั้นใดเลย)
@@ -1106,7 +1113,7 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **230** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **231** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
 | `backend: npm run verify` | ผ่าน 47/47 (MariaDB 11.4) |

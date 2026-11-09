@@ -12,6 +12,7 @@
  *   ③ ผู้จองแก้รายการของคนอื่นไม่ได้ (403)
  *   ④ admin ยังแก้ได้ทุกอย่างเหมือนเดิม (รวมจัดรถ)
  *   ⑤ **อนุมัติขั้นต้นแล้ว หรืออนุมัติครบทุกขั้น ผู้จองแก้ไขไม่ได้ (403)**
+ *   ⑥ ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" + เลือกพนักงานขับรถ → บันทึก และไปแสดงในหน้าอนุมัติขั้นต้น
  *
  * ใช้: node scripts/test-vehicle-owner-edit.js
  */
@@ -31,6 +32,14 @@ function check(ok, name, detail = '') {
 const jput = async (p, cookie, body) => {
   const res = await fetch(BASE + p, {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify(body || {}),
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+const jpost = async (p, cookie, body) => {
+  const res = await fetch(BASE + p, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
     body: JSON.stringify(body || {}),
   });
@@ -182,6 +191,30 @@ const jput = async (p, cookie, body) => {
     check(r5.status === 403, `ผู้จองแก้รายการที่อนุมัติแล้ว → 403 (ได้ ${r5.status})`, JSON.stringify(r5.body));
     const after5 = await db.prepare('SELECT purpose, status FROM vehicle_bookings WHERE id = ?').get(ownerBooking);
     check(after5 && after5.purpose !== 'พยายามแก้หลังอนุมัติ', 'ข้อมูลไม่ถูกแก้หลังอนุมัติ', `ได้ "${after5 && after5.purpose}"`);
+
+    console.log('');
+    console.log('⑥ ผู้ขอติ๊ก "ขออนุญาตเป็นผู้ขับรถ" แล้วเลือกพนักงานขับรถ → บันทึกและแสดงในหน้าอนุมัติขั้นต้น');
+    const r6 = await jpost('/api/vehicle-bookings', ownerCookie, {
+      vehicle_id: 0,
+      date: today,
+      date_to: today,
+      start_time: '09:00',
+      end_time: '12:00',
+      purpose: 'ทดสอบผู้ขับรถ',
+      destination: 'แพร่',
+      passenger_count: 1,
+      controller: 'ทดสอบ ผู้จอง owner',
+      self_drive: 1,
+      driver_name: 'ทดสอบ คนขับที่เลือก',
+    });
+    check(r6.status === 200, `POST /vehicle-bookings → 200 (ได้ ${r6.status})`, JSON.stringify(r6.body));
+    if (r6.body && r6.body.id) madeBookings.push(Number(r6.body.id));
+    const row6 = r6.body && r6.body.id
+      ? await db.prepare('SELECT self_drive, driver_name FROM vehicle_bookings WHERE id = ?').get(Number(r6.body.id))
+      : null;
+    check(row6 && Number(row6.self_drive) === 1, 'บันทึก self_drive = 1', JSON.stringify(row6 && row6.self_drive));
+    check(row6 && row6.driver_name === 'ทดสอบ คนขับที่เลือก', 'บันทึกชื่อพนักงานขับรถที่ผู้ขอเลือก',
+      `ได้ "${row6 && row6.driver_name}"`);
   } catch (e) {
     check(false, 'ทดสอบไม่จบ', e && e.stack ? e.stack.split('\n').slice(0, 4).join('\n') : String(e));
   } finally {

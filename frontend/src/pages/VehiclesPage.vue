@@ -196,13 +196,24 @@ function emptyBooking() {
     fuel_activity: '',
     fuel_amount: null,
     self_drive: false,
+    /** พนักงานขับรถที่เลือกไว้ (แสดงในหน้าอนุมัติขั้นต้น) — ใช้เมื่อติ๊ก "ขออนุญาตเป็นผู้ขับรถ" */
+    driver_name: '',
   };
 }
 
-function openBookingForm() {
+const bookingUsers = ref([]);
+
+async function openBookingForm() {
   bk.value = emptyBooking();
   conflict.value = [];
   bookingOpen.value = true;
+  // รายชื่อพนักงานขับรถ = ชุดเดียวกับที่ผู้อนุมัติขั้นต้นใช้ (เจ้าหน้าที่ สพป.)
+  try {
+    const res = await api.get('/users/active');
+    bookingUsers.value = (res.users || []).filter((u) => u.user_group !== 'school');
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 /** รูปยานพาหนะที่เลือก (ด้านบนฟอร์ม) */
@@ -290,6 +301,8 @@ async function submitBooking() {
       fuel_activity: bk.value.fuel_activity.trim(),
       fuel_amount: amount,
       self_drive: bk.value.self_drive ? 1 : 0,
+      // ผู้ขอเลือกพนักงานขับรถไว้ → ผู้อนุมัติขั้นต้นเห็นชื่อนี้ในช่อง "เลือกพนักงานขับรถ"
+      driver_name: bk.value.self_drive ? String(bk.value.driver_name || '').trim() : '',
     });
     UI.toast(res.message);
     bookingOpen.value = false;
@@ -1294,6 +1307,20 @@ function canCancelRow(r) {
           <input id="vb-selfdrive" v-model="bk.self_drive" type="checkbox" />
           ขออนุญาตเป็นผู้ขับรถคันดังกล่าว ซึ่งได้รับใบอนุญาตในการขับขี่รถจากทางราชการประเภทนี้
         </label>
+
+        <!-- ติ๊กขอขับเอง → เลือกพนักงานขับรถ (รายชื่อชุดเดียวกับหน้าอนุมัติขั้นต้น) -->
+        <div v-if="bk.self_drive" style="margin-top: 10px">
+          <label>เลือกพนักงานขับรถ</label>
+          <select id="vb-booking-driver" v-model="bk.driver_name">
+            <option value="">— เลือกพนักงานขับรถ —</option>
+            <option v-for="u in bookingUsers" :key="'bd' + u.id" :value="UI.personName(u)">
+              {{ UI.personName(u) }}{{ u.position ? ' · ' + u.position : '' }}
+            </option>
+          </select>
+          <div class="hint">
+            รายชื่อชุดเดียวกับที่ผู้อนุมัติขั้นต้นใช้เลือก — เมื่อเลือกแล้วจะไปแสดงในช่อง "เลือกพนักงานขับรถ" ของหน้าอนุมัติขั้นต้น
+          </div>
+        </div>
       </div>
     </div>
 
