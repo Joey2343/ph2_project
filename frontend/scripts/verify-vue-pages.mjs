@@ -388,8 +388,8 @@ const VUE_PAGES = {
         })()`,
       },
       {
-        /* ผู้ใช้สั่ง 9 พ.ย. 2569: ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" → เลือกพนักงานขับรถ (รายชื่อชุดเดียวกับหน้าอนุมัติขั้นต้น) */
-        name: 'ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" แล้วมีตัวเลือกพนักงานขับรถ และค่าไปแสดงในหน้าอนุมัติ',
+        /* ผู้ใช้สั่ง 9 พ.ย. 2569: ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" → พิมพ์ชื่อ/ค้นหาได้ + ค่าไปแสดงในหน้าอนุมัติ */
+        name: 'ติ๊ก "ขออนุญาตเป็นผู้ขับรถ" แล้วมีช่องพิมพ์/ค้นหาพนักงานขับรถ',
         check: `(async () => {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           const open = [...document.querySelectorAll('.toolbar .btn')].find((b) => (b.innerText || '').includes('จองยานพาหนะ'));
@@ -398,18 +398,29 @@ const VUE_PAGES = {
           await sleep(1300);
           const chk = document.getElementById('vb-selfdrive');
           if (!chk) throw new Error('ไม่พบช่องติ๊ก "ขออนุญาตเป็นผู้ขับรถ"');
-          if (document.getElementById('vb-booking-driver')) throw new Error('มีช่องเลือกพนักงานขับรถก่อนติ๊ก');
+          if (document.getElementById('vb-booking-driver')) throw new Error('มีช่องพนักงานขับรถก่อนติ๊ก');
           chk.click();
           await sleep(600);
-          const sel = document.getElementById('vb-booking-driver');
-          if (!sel) throw new Error('ติ๊กแล้วไม่แสดงช่องเลือกพนักงานขับรถ');
-          const opts = [...sel.options].filter((o) => o.value);
-          if (!opts.length) throw new Error('ช่องเลือกพนักงานขับรถไม่มีรายชื่อ');
-          // เลือกคนแรก แล้วอ่านค่าที่จะส่ง
-          sel.value = opts[0].value;
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          const el = document.getElementById('vb-booking-driver');
+          if (!el) throw new Error('ติ๊กแล้วไม่แสดงช่องพนักงานขับรถ');
+          if (el.tagName !== 'INPUT' || el.type !== 'text') throw new Error('ช่องพนักงานขับรถไม่ใช่ช่องพิมพ์ (' + el.tagName + '/' + el.type + ')');
+          const listId = el.getAttribute('list');
+          if (!listId) throw new Error('ช่องพิมพ์ไม่มีรายการตัวเลือก (datalist) ให้ค้นหา');
+          const dl = document.getElementById(listId);
+          if (!dl) throw new Error('ไม่พบ datalist ของช่องพนักงานขับรถ');
+          const opts = [...dl.options].map((o) => o.value).filter(Boolean);
+          if (!opts.length) throw new Error('ไม่มีรายชื่อให้ค้นหา');
+          // พิมพ์คำค้น แล้วต้องมีตัวเลือกที่ตรงกับคำนั้น
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          setter.call(el, 'นาย');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
           await sleep(200);
-          if (sel.value !== opts[0].value) throw new Error('เลือกชื่อแล้วค่าไม่ถูกบันทึกในช่อง');
+          if (!opts.some((v) => v.includes('นาย'))) throw new Error('ไม่มีรายชื่อที่มีคำว่า "นาย" ให้ค้นหา');
+          // พิมพ์ชื่ออิสระที่ไม่ในรายการได้
+          setter.call(el, 'ชื่ออิสระทดสอบ');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          await sleep(200);
+          if (el.value !== 'ชื่ออิสระทดสอบ') throw new Error('พิมพ์ชื่ออิสระไม่ได้ (ได้ "' + el.value + '")');
           const close = [...document.querySelectorAll('[data-app-modal] .modal-foot .btn')].find((b) => b.innerText.trim() === 'ยกเลิก');
           if (close) close.click();
           await sleep(500);

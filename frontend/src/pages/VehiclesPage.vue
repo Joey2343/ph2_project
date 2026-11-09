@@ -1311,14 +1311,25 @@ function canCancelRow(r) {
         <!-- ติ๊กขอขับเอง → เลือกพนักงานขับรถ (รายชื่อชุดเดียวกับหน้าอนุมัติขั้นต้น) -->
         <div v-if="bk.self_drive" style="margin-top: 10px">
           <label>เลือกพนักงานขับรถ</label>
-          <select id="vb-booking-driver" v-model="bk.driver_name">
-            <option value="">— เลือกพนักงานขับรถ —</option>
-            <option v-for="u in bookingUsers" :key="'bd' + u.id" :value="UI.personName(u)">
-              {{ UI.personName(u) }}{{ u.position ? ' · ' + u.position : '' }}
-            </option>
-          </select>
+          <!--
+            ผู้ใช้สั่ง 9 พ.ย. 2569: ต้อง "พิมพ์ชื่อได้อิสระ" และพิมพ์คำค้นเพื่อกรองรายชื่อได้
+            → ใช้ input + datalist (พิมพ์อะไรก็ได้ + เบราว์เซอร์กรองตัวเลือกให้ตามคำที่พิมพ์)
+          -->
+          <input
+            id="vb-booking-driver"
+            v-model="bk.driver_name"
+            type="text"
+            list="vb-booking-driver-list"
+            class="vb-driver-select"
+            placeholder="พิมพ์ชื่อเพื่อค้นหา หรือพิมพ์ชื่อได้อิสระ"
+            autocomplete="off"
+          />
+          <datalist id="vb-booking-driver-list">
+            <option v-for="u in bookingUsers" :key="'bd' + u.id" :value="UI.personName(u)" />
+          </datalist>
           <div class="hint">
-            รายชื่อชุดเดียวกับที่ผู้อนุมัติขั้นต้นใช้เลือก — เมื่อเลือกแล้วจะไปแสดงในช่อง "เลือกพนักงานขับรถ" ของหน้าอนุมัติขั้นต้น
+            รายชื่อชุดเดียวกับที่ผู้อนุมัติขั้นต้นใช้เลือก — พิมพ์คำค้นเพื่อกรอง หรือพิมพ์ชื่อเองได้ ·
+            เมื่อเลือกแล้วจะไปแสดงในช่อง "เลือกพนักงานขับรถ" ของหน้าอนุมัติขั้นต้น
           </div>
         </div>
       </div>
