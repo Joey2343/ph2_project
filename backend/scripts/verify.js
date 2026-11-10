@@ -209,6 +209,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบตำแหน่งที่เลือกตอนอนุมัติบันทึกข้อความ (ปฏิบัติราชการฯ) — ต้องบันทึกลง approval_data]');
+  results.push(run('test-memo-approve-position', [path.join(__dirname, 'test-memo-approve-position.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

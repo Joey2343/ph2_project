@@ -425,10 +425,16 @@ router.put('/memos/:id/approve', auth.requireAuth, async (req, res) => {
   // decidedAt ค่าเดียว ใช้ทั้ง approval_data และคอลัมน์ decided_at ต้องตรงกัน
   //   ถ้าเรียก auth.now() สองครั้ง อาจต่างกัน 1 วินาที → หน้าเว็บกับฐานไม่ตรงกัน
   const decidedAt = auth.now();
+  /*
+   * ตำแหน่งที่จะลงนาม (ผู้ใช้สั่ง 10 พ.ย. 2569)
+   *   หน้าอนุมัติส่ง position มาเมื่อเลือก "ปฏิบัติราชการ/รักษาราชการแทน"
+   *   → บันทึกแทนตำแหน่งของบัญชี เพื่อให้เอกสารแสดงตำแหน่งที่เลือก
+   */
+  const pickedPosition = String((req.body || {}).position || '').trim();
   approvalsArr.push({
     level: nextLevel, by: req.user.id, name: req.user.full_name,
     title: req.user.title, first_name: req.user.first_name, last_name: req.user.last_name,
-    position: req.user.position, signature: req.user.signature || null, decide: decide || null,
+    position: pickedPosition || req.user.position, signature: req.user.signature || null, decide: decide || null,
     role: req.user.role, at: decidedAt, note,
     mode: mode || undefined, comment: comment || undefined,
     act_choices: actChoices.length ? actChoices : undefined,

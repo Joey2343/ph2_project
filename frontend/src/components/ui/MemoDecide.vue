@@ -19,7 +19,7 @@
  *   ขั้นที่ 1 ใช้คำว่า "ส่งกลับเพื่อให้แก้ไข" ขั้นที่ 2 ขึ้นไปใช้ "คืนเรื่องเพื่อแก้ไข"
  *   (เมื่อผู้อนุมัติขั้นที่ 2 คืนเรื่อง ผู้บันทึกแก้แล้วส่งใหม่ เรื่องจะกลับมาที่ขั้นที่ 2 ทันที)
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import api from '../../api/client.js';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
@@ -151,6 +151,35 @@ const fileGroups = computed(() => {
 
 const radioStyle = { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 400, whiteSpace: 'nowrap' };
 
+/* ---------- ตำแหน่งที่จะลงนาม (เฉพาะ ปฏิบัติราชการ/รักษาราชการแทน) ----------
+ * ผู้ใช้สั่ง 10 พ.ย. 2569: เมื่อเลือก "ปฏิบัติราชการ/รักษาราชการแทน" ต้องมีตัวเลือก
+ * "กรุณาเลือกตำแหน่งที่จะลงนาม" (ตัวเลือกเดียวกับหน้าอนุมัติไปราชการ/ลา)
+ * และตำแหน่งที่เลือกต้องไปแสดงในฟอร์มดูบันทึกข้อความ (MemoDoc อ่าน approval.position)
+ */
+const signPosition = ref('');
+const posOptions = computed(() => {
+  const p = (Auth.user?.position || '').trim();
+  const DIRECTOR = 'ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
+  if (p.includes(DIRECTOR) && !p.includes('รอง')) {
+    return [DIRECTOR, `${DIRECTOR} ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.`];
+  }
+  if (p.includes(`รอง${DIRECTOR}`)) {
+    return [
+      `รอง${DIRECTOR}`,
+      `รอง${DIRECTOR} รักษาราชการแทน ผอ.สพป.แพร่ เขต 2`,
+      `รอง${DIRECTOR} ปฏิบัติราชการแทน ผอ.สพป.แพร่ เขต 2`,
+    ];
+  }
+  return [p || 'ไม่ระบุตำแหน่ง'];
+});
+
+// เปิดโหมดปฏิบัติราชการฯ → ตั้งค่าเริ่มต้นเป็นตัวเลือกแรก
+watch([mode, posOptions], () => {
+  if (mode.value === 'act' && !signPosition.value) {
+    signPosition.value = posOptions.value[0] || '';
+  }
+}, { immediate: true });
+
 /* ---------- ยืนยัน ---------- */
 async function submit() {
   const p = {};
@@ -185,6 +214,8 @@ async function submit() {
         return UI.toast('กรุณาเลือกอย่างน้อย 1 รายการในส่วน ปฏิบัติราชการ/รักษาราชการแทน', 'error');
       }
       p.act_choices = [...actSet.value];
+      // ตำแหน่งที่จะลงนาม (เลือกจาก dropdown ที่แสดงใต้ส่วนปฏิบัติราชการฯ)
+      p.position = signPosition.value || undefined;
     }
   }
 
@@ -370,6 +401,15 @@ const APPROVAL_RECORD = computed(() => ({
               <input type="checkbox" :checked="actSet.includes(c)" @change="toggle(actSet, c)" />{{ c }}
             </label>
           </div>
+        </div>
+
+        <!-- ตำแหน่งที่จะลงนาม (ต่อจากส่วน ปฏิบัติราชการ/รักษาราชการแทน) -->
+        <div class="form-group full" style="margin-top: 12px">
+          <label>กรุณาเลือกตำแหน่งที่จะลงนาม<span class="req"> *</span></label>
+          <select id="memo-sign-position" v-model="signPosition" style="width: 100%">
+            <option v-for="p in posOptions" :key="'pos-' + p" :value="p">{{ p }}</option>
+          </select>
+          <div class="hint">ตำแหน่งนี้จะแสดงในเอกสาร "ดูบันทึกข้อความ" ใต้ลายเซ็นผู้ลงนาม</div>
         </div>
 
         <div class="form-group full" style="margin-top: 12px">

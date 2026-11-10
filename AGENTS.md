@@ -879,6 +879,15 @@ ph2_project/
   - admin ยังเห็นครบทุกคำขอ (bypass)
   - ใช้สูตรเดียวกับหน้า `#/leave` (`myLevels` + `nextLevelOf`) → ตัวเลขตรงกันเสมอ
   - เทสต์กันไว้ที่ `backend/scripts/test-leave-badge-count.js` (อยู่ใน `npm run verify`)
+- **อนุมัติบันทึกข้อความ: โหมด "ปฏิบัติราชการ/รักษาราชการแทน" มีเลือกตำแหน่งที่จะลงนาม**
+  (ผู้ใช้สั่ง 10 พ.ย. 2569)
+  - หน้าต่าง `MemoDecide.vue` → เมื่อเลือกโหมด `act` แสดง select **"กรุณาเลือกตำแหน่งที่จะลงนาม"**
+    (`#memo-sign-position`) ต่อจากส่วนปฏิบัติราชการฯ — ตัวเลือกเดียวกับหน้าอนุมัติไปราชการ/ลา
+  - ส่ง `position` ไปกับ `PUT /memos/:id/approve` → เขียนลง `approval_data[].position`
+    (ถ้าไม่ส่ง ใช้ตำแหน่งจริงของผู้ใช้)
+  - ฟอร์ม **ดูบันทึกข้อความ** (`MemoDoc`) อ่าน `a.position` อยู่แล้ว → แสดงตำแหน่งที่เลือกทันที
+  - ⚠️ ต้องรีเฟรชรายการก่อนเปิดดูเอกสาร ไม่งั้นแถวในหน่วยความจำยังเป็นข้อมูลก่อนอนุมัติ
+  - เทสต์กันไว้ที่ `backend/scripts/test-memo-approve-position.js` (อยู่ใน `npm run verify`)
 - **"สิ่งที่ให้แก้ไข" ของบันทึกข้อความเก็บเป็น HTML ได้ (ไฮไลท์สี)**
   - หน้าคืนเรื่องเพื่อแก้ไข (`MemoReturnModal.vue`) มีเครื่องมือไฮไลท์ ส้ม · เหลือง · เขียว
     ใช้ `document.execCommand('hiliteColor')` → เก็บเป็น `<span style="background-color:...">`
@@ -1129,7 +1138,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **231** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 48/48 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 49/49 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
