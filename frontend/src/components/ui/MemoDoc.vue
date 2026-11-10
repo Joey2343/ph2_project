@@ -41,12 +41,25 @@ function approvalAt(level) {
 }
 
 /**
+ * แยกตำแหน่งเป็น 2 บรรทัดเมื่อมีคำว่า "รักษาราชการแทน" หรือ "ปฏิบัติหน้าที่/ปฏิบัติราชการแทน"
+ * (ผู้ใช้สั่ง 10 พ.ย. 2569: ตำแหน่งยาวล้นแบบฟอร์มบันทึกข้อความ)
+ *   เช่น "รองผู้อำนวยการ... เขต 2 รักษาราชการแทน ผอ.สพป.แพร่ เขต 2"
+ *   → บรรทัด 1 "รองผู้อำนวยการ... เขต 2" · บรรทัด 2 "รักษาราชการแทน ผอ.สพป.แพร่ เขต 2"
+ */
+function splitPosition(pos) {
+  if (!pos) return ['-'];
+  const i = pos.search(/รักษาราชการแทน|ปฏิบัติหน้าที่|ปฏิบัติราชการแทน/);
+  if (i > 0) return [pos.slice(0, i).trim(), pos.slice(i).trim()];
+  return [pos];
+}
+
+/**
  * คอลัมน์ลายเซ็น (ลายเซ็น + ชื่อ + ตำแหน่ง + ความเห็นก่อนหน้า)
  * extraClass ใช้จัดตำแหน่งให้ตรงตามแบบฟอร์ม
  */
 function sigCol(sig, name, pos, lines, extraClass) {
   const arr = Array.isArray(lines) ? lines : lines ? [lines] : [];
-  return { sig, name, pos, lines: arr, cls: extraClass || '' };
+  return { sig, name, pos, posLines: splitPosition(pos), lines: arr, cls: extraClass || '' };
 }
 
 /** ผู้อนุมัติขั้นที่ 1 — ความเห็นเป็นคำเดียว */
@@ -179,7 +192,9 @@ const cols = computed(() => ({
           />
           <div v-else class="doc-sig-empty">(ยังไม่มีลายเซ็น)</div>
           <div class="doc-sig-name">{{ cols.maker.name }}</div>
-          <div class="doc-sig-pos">{{ cols.maker.pos || '-' }}</div>
+          <div class="doc-sig-pos">
+            <div v-for="(pl, pi) in cols.maker.posLines" :key="'mpos' + pi">{{ pl }}</div>
+          </div>
         </div>
       </div>
 
@@ -191,7 +206,9 @@ const cols = computed(() => ({
             <img v-if="c.c.sig" class="doc-sig" :src="'/uploads/' + UI.encodePath(c.c.sig)" alt="ลายเซ็น" />
             <div v-else class="doc-sig-empty">(ยังไม่มีลายเซ็น)</div>
             <div class="doc-sig-name">{{ c.c.name }}</div>
-            <div class="doc-sig-pos">{{ c.c.pos || '-' }}</div>
+            <div class="doc-sig-pos">
+              <div v-for="(pl, pi) in c.c.posLines" :key="c.key + 'pos' + pi">{{ pl }}</div>
+            </div>
           </div>
         </div>
       </div>
