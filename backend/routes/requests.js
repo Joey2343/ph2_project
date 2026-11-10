@@ -1143,7 +1143,13 @@ router.put('/leaves/:id/review', auth.requireAuth, async (req, res) => {
 });
 
 router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
-  const { note } = req.body || {};
+  const { note, position } = req.body || {};
+  /*
+   * ตำแหน่งที่เลือกจากหน้าต่าง "ยืนยันการดำเนินการ" (ผู้ใช้สั่ง 10 พ.ย. 2569)
+   *   ใช้แทน position ของบัญชีผู้ใช้ตอนบันทึกลง approval_data
+   *   (เหมือนเส้นทางอนุมัติไปราชการ — เลือก "ปฏิบัติหน้าที่ราชการแทน..." ได้)
+   */
+  const approver = position ? Object.assign({}, req.user, { position: String(position) }) : req.user;
   const id = Number(req.params.id);
   // ตรวจสอบว่าผู้ใช้มีสิทธิ์อนุมัติขั้นนี้จริง (ใช้ leave_approvers)
   const row = await db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id);
@@ -1171,7 +1177,7 @@ router.put('/leaves/:id/approve', auth.requireAuth, async (req, res) => {
     canDo = await checkPerLevel(nextLevel, row.user_id, req.user.id);
   }
   if (!canDo) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์อนุมัติขั้นนี้' });
-  const result = await approvals.approveRequest({ table: 'leave_requests', system: 'leave', id, user: req.user, note,
+  const result = await approvals.approveRequest({ table: 'leave_requests', system: 'leave', id, user: approver, note,
     // ⚠️ ต้องส่งสายจริง ไม่ใช่ค่า approval_leave ตรง ๆ
     //   ระบบลามีขั้น "ตรวจสอบ" แยก และแต่ละคนมีจำนวนขั้นไม่เท่ากัน
     //   นับจาก approval_leave เดิม → คนที่ตั้งครบ 3 ขั้นกด "อนุมัติขั้นต้น"แล้วจบทันที

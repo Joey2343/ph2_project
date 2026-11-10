@@ -343,6 +343,28 @@ async function afterChange(payload) {
 }
 
 /* ---------- ตัดสิน ---------- */
+/**
+ * ตำแหน่งที่จะลงนามตอนอนุมัติ (เหมือนหน้าตามอนุมัติไปราชการ)
+ *   · ผอ.สพป. → ตำแหน่งจริง / ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.
+ *   · รอง ผอ.สพป. → 3 ตัวเลือก
+ *   · อื่น ๆ → ตำแหน่งของผู้ใช้ตามจริง
+ */
+const posOptions = computed(() => {
+  const p = (Auth.user?.position || '').trim();
+  const DIRECTOR = 'ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
+  if (p.includes(DIRECTOR) && !p.includes('รอง')) {
+    return [DIRECTOR, `${DIRECTOR} ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.`];
+  }
+  if (p.includes(`รอง${DIRECTOR}`)) {
+    return [
+      `รอง${DIRECTOR}`,
+      `รอง${DIRECTOR} รักษาราชการแทน ผอ.สพป.แพร่ เขต 2`,
+      `รอง${DIRECTOR} ปฏิบัติราชการแทน ผอ.สพป.แพร่ เขต 2`,
+    ];
+  }
+  return [p || 'ไม่ระบุตำแหน่ง'];
+});
+
 async function decide(r, action, customLabel) {
   // ผู้อนุมัติขั้นต้น → เปิดหน้าความเห็นก่อน
   if (action === 'approve' && customLabel === 'อนุมัติขั้นต้น') {
@@ -350,13 +372,29 @@ async function decide(r, action, customLabel) {
     return;
   }
   const label = customLabel || (action === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ');
-  const ok = await UI.confirm(`ต้องการ${label}คำขอลา ${r.leave_type} ของ ${UI.personName(r)} ใช่หรือไม่?`, {
+  /*
+   * ผู้ใช้สั่ง 10 พ.ย. 2569: ตอนอนุมัติ (หน้าต่าง "ยืนยันการดำเนินการ")
+   *   ต้องมีส่วน "กรุณาเลือกตำแหน่งที่จะอนุมัติ/อนุญาต" เหมือนหน้าอนุมัติไปราชการ
+   */
+  let posEl = null;
+  let extraBody = null;
+  if (action === 'approve') {
+    posEl = UI.h('select', { id: 'lv-approve-position', style: { width: '100%', marginTop: '8px' } },
+      ...posOptions.value.map((p) => UI.h('option', { value: p }, p)));
+    extraBody = UI.h('div', {},
+      UI.h('div', { style: { marginTop: '10px', fontWeight: '700' } }, 'กรุณาเลือกตำแหน่งที่จะอนุมัติ/อนุญาต'),
+      posEl);
+  }
+  const out = await UI.confirm(`ต้องการ${label}คำขอลา ${r.leave_type} ของ ${UI.personName(r)} ใช่หรือไม่?`, {
     okText: label,
     danger: action !== 'approve',
+    body: extraBody || undefined,
+    onConfirm: () => (posEl ? { position: posEl.value } : true),
   });
-  if (!ok) return;
+  if (!out) return;
+  const position = out && typeof out === 'object' ? (out.position || '') : '';
   try {
-    const res = await api.put(`/leaves/${r.id}/${action}`, {});
+    const res = await api.put(`/leaves/${r.id}/${action}`, position ? { position } : {});
     UI.toast(res.message);
     // อัปเดตเฉพาะแถวนี้ ตารางไม่หายไปรีโหลดทั้งหน้า
     applyRow(rows.value, r.id, res, load);
