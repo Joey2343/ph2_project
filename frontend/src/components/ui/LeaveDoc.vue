@@ -86,6 +86,19 @@ function signerLabel(s, fallbackName) {
   return first || fallbackName || '-';
 }
 
+/**
+ * ตำแหน่งที่แสดงใต้ลายเซ็น
+ *   ลำดับ: ตำแหน่งที่ "เลือกตอนอนุมัติ" (approval_data.position) → ตำแหน่งจริงของผู้ใช้ → ข้อความสำรอง
+ *   ผู้ใช้สั่ง 10 พ.ย. 2569: เลือกตำแหน่งในหน้าต่างยืนยันแล้วต้องไปแสดงในใบลา
+ */
+function signerPosition(s, fallback) {
+  if (!s) return fallback;
+  const picked = String(s.position || '').trim();
+  if (picked) return picked;
+  const real = s.user && String(s.user.position || '').trim();
+  return real || fallback;
+}
+
 /** ตัวช่วยโหลดข้อมูลผู้ใช้จาก staff-public */
 async function staffPublic(id) {
   if (!id) return null;
@@ -370,7 +383,7 @@ const SPAN = { marginRight: '40px' };
               alt="ลายเซ็น"
             />
             <div>({{ signerLabel(signerL1, signerL1.name) }})</div>
-            <div>{{ (signerL1.user && signerL1.user.position) || 'ผู้ตรวจสอบ' }}</div>
+            <div>{{ signerPosition(signerL1, 'ผู้ตรวจสอบ') }}</div>
             <div v-if="signerL1.at" style="margin-top: 3px">{{ thaiFull(signerL1.at) }}</div>
           </div>
         </div>
@@ -391,7 +404,7 @@ const SPAN = { marginRight: '40px' };
               alt="ลายเซ็น"
             />
             <div>({{ signerLabel(signerL2, signerL2.name) }})</div>
-            <div>{{ (signerL2.user && signerL2.user.position) || 'ผู้อนุมัติขั้นต้น' }}</div>
+            <div>{{ signerPosition(signerL2, 'ผู้อนุมัติขั้นต้น') }}</div>
             <div v-if="signerL2.at" style="margin-top: 3px">{{ thaiFull(signerL2.at) }}</div>
           </template>
 
@@ -411,7 +424,7 @@ const SPAN = { marginRight: '40px' };
               alt="ลายเซ็น"
             />
             <div>({{ signerLabel(signerL3, signerL3.name) }})</div>
-            <div>{{ (signerL3.user && signerL3.user.position) || 'ผู้อนุมัติ' }}</div>
+            <div>{{ signerPosition(signerL3, 'ผู้อนุมัติ') }}</div>
             <div v-if="signerL3.at" style="margin-top: 3px">{{ thaiFull(signerL3.at) }}</div>
           </template>
         </div>
