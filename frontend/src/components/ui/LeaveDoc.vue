@@ -99,6 +99,17 @@ function signerPosition(s, fallback) {
   return real || fallback;
 }
 
+/**
+ * แยกตำแหน่งเป็น 2 บรรทัดเมื่อมีคำว่า "รักษาราชการแทน" หรือ "ปฏิบัติหน้าที่/ปฏิบัติราชการแทน"
+ *   (ผู้ใช้สั่ง 10 พ.ย. 2569 — ตำแหน่งยาวล้นแบบฟอร์มใบลา)
+ */
+function splitPosition(pos) {
+  if (!pos) return ['-'];
+  const i = String(pos).search(/รักษาราชการแทน|ปฏิบัติหน้าที่|ปฏิบัติราชการแทน/);
+  if (i > 0) return [String(pos).slice(0, i).trim(), String(pos).slice(i).trim()];
+  return [String(pos)];
+}
+
 /** ตัวช่วยโหลดข้อมูลผู้ใช้จาก staff-public */
 async function staffPublic(id) {
   if (!id) return null;
@@ -383,7 +394,9 @@ const SPAN = { marginRight: '40px' };
               alt="ลายเซ็น"
             />
             <div>({{ signerLabel(signerL1, signerL1.name) }})</div>
-            <div>{{ signerPosition(signerL1, 'ผู้ตรวจสอบ') }}</div>
+            <div>
+              <div v-for="(pl, pi) in splitPosition(signerPosition(signerL1, 'ผู้ตรวจสอบ'))" :key="'p1' + pi">{{ pl }}</div>
+            </div>
             <div v-if="signerL1.at" style="margin-top: 3px">{{ thaiFull(signerL1.at) }}</div>
           </div>
         </div>
@@ -404,7 +417,9 @@ const SPAN = { marginRight: '40px' };
               alt="ลายเซ็น"
             />
             <div>({{ signerLabel(signerL2, signerL2.name) }})</div>
-            <div>{{ signerPosition(signerL2, 'ผู้อนุมัติขั้นต้น') }}</div>
+            <div>
+              <div v-for="(pl, pi) in splitPosition(signerPosition(signerL2, 'ผู้อนุมัติขั้นต้น'))" :key="'p2' + pi">{{ pl }}</div>
+            </div>
             <div v-if="signerL2.at" style="margin-top: 3px">{{ thaiFull(signerL2.at) }}</div>
           </template>
 
@@ -424,7 +439,9 @@ const SPAN = { marginRight: '40px' };
               alt="ลายเซ็น"
             />
             <div>({{ signerLabel(signerL3, signerL3.name) }})</div>
-            <div>{{ signerPosition(signerL3, 'ผู้อนุมัติ') }}</div>
+            <div>
+              <div v-for="(pl, pi) in splitPosition(signerPosition(signerL3, 'ผู้อนุมัติ'))" :key="'p3' + pi">{{ pl }}</div>
+            </div>
             <div v-if="signerL3.at" style="margin-top: 3px">{{ thaiFull(signerL3.at) }}</div>
           </template>
         </div>
