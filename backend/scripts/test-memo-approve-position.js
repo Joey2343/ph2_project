@@ -51,11 +51,21 @@ function check(ok, name, detail = '') {
       level: 1, by: 1, name: 'ผู้ดูแล ระบบ', title: 'นาย', position: 'เจ้าหน้าที่',
       signature: '', decide: 'เพื่อโปรดพิจารณา', role: 'admin', at: '2026-11-10 09:00:00', note: '',
     }];
+    /*
+     * กำหนดสายอนุมัติ 3 ขั้นไว้ใน approval_chain (snapshot)
+     *   ⚠️ ถ้าไม่กำหนด จำนวนขั้นจะคิดจากผู้ได้รับมอบหมายในฐานนั้น
+     *      ฐานทดสอบของ CI อาจมีขั้นเดียว → อนุมัติขั้นที่ 2 ไม่ได้ (400 ครบทุกขั้นแล้ว)
+     */
+    const chain = [
+      { level: 1, ids: [1] },
+      { level: 2, ids: [1] },
+      { level: 3, ids: [1] },
+    ];
     const info = await db.prepare(`INSERT INTO memos
-      (doc_no, user_id, title, content, date, status, created_at, approval_level, approval_data)
-      VALUES (?,?,?,?,?,?,?,?,?)`).run(
+      (doc_no, user_id, title, content, date, status, created_at, approval_level, approval_data, approval_chain)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
       'ทดสอบ/ตำแหน่ง/' + Date.now(), userId, 'ทดสอบตำแหน่งบันทึกข้อความ', 'เนื้อหา', '2026-11-10',
-      'submitted', '2026-11-10 08:00:00', 1, JSON.stringify(ap)
+      'submitted', '2026-11-10 08:00:00', 1, JSON.stringify(ap), JSON.stringify(chain)
     );
     const id = Number(info.insertId);
     madeMemos.push(id);
