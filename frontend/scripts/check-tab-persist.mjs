@@ -182,6 +182,16 @@ console.log('③.๔ ป้ายแจ้งเตือนบนแท็บ�
 }
 
 console.log('');
+console.log('③.๕ บัญชีสถานศึกษาไม่เห็นแท็บ "วันลาพักผ่อนสะสม"');
+/* ผู้ใช้สั่ง 11 พ.ย. 2569 — โรงเรียนไม่ใช้ระบบวันลาพักผ่อนสะสม */
+{
+  const code = stripComments(read('src/pages/LeavePage.vue'));
+  check(/if \(!isSchool\.value && \(isAdmin\.value \|\| isLeaveStaff\.value \|\| balancePerm\.value\.canView\)\)[\s\S]{0,120}?ADMIN_GROUPS\[0\]/.test(code),
+    'แท็บ "วันลาพักผ่อนสะสม" แสดงเฉพาะบัญชีที่ไม่ใช่สถานศึกษา',
+    'ถ้าไม่กัน บัญชีสถานศึกษาที่เป็นผู้ตรวจสอบการลาจะเห็นแท็บนี้ (ทั้งที่ไม่มีข้อมูลของโรงเรียน)');
+}
+
+console.log('');
 console.log('④ ลิงก์ ?tab= ที่เหลืออยู่ต้องตรงกับ key ของแท็บจริง');
 /*
  * เคยมีการ์ดบนหน้าแรกที่ลิงก์ #/leave?tab=vacation / ?tab=general

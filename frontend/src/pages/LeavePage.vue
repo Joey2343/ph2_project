@@ -89,8 +89,14 @@ const groups = computed(() => {
     const schoolTab = LEAVE_GROUPS.find((g) => g.key === 'general-school');
     if (schoolTab && !out.some((g) => g.key === schoolTab.key)) out.push(schoolTab);
   }
-  // วันลาพักผ่อนสะสม: admin + ผู้ตรวจสอบ + เจ้าหน้าที่วันลาพักผ่อนสะสม
-  if (isAdmin.value || isLeaveStaff.value || balancePerm.value.canView) out.push(ADMIN_GROUPS[0]);
+  /*
+   * วันลาพักผ่อนสะสม: admin + ผู้ตรวจสอบ + เจ้าหน้าที่วันลาพักผ่อนสะสม
+   * ⚠️ บัญชีสถานศึกษา "ห้ามเห็นแท็บนี้" (ผู้ใช้สั่ง 11 พ.ย. 2569)
+   *    โรงเรียนไม่ใช้ระบบวันลาพักผ่อนสะสม (ไม่มีข้อมูลของโรงเรียนในตารางนั้น)
+   */
+  if (!isSchool.value && (isAdmin.value || isLeaveStaff.value || balancePerm.value.canView)) {
+    out.push(ADMIN_GROUPS[0]);
+  }
   // สถิติลาป่วย/กิจ/คลอด + สถิติลาพักผ่อน: เจ้าหน้าที่ สพป. เห็นทุกคน
   if (isAdmin.value || !isSchool.value) out.push(ADMIN_GROUPS[3], ADMIN_GROUPS[4]);
   // สถิติของฉัน: ทุกคนเห็น
