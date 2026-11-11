@@ -1990,9 +1990,17 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
     const prefer = 'ORDER BY (CASE WHEN r.as_school = ? THEN 0 ELSE 1 END), r.id LIMIT 1';
     sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace,
                   COALESCE(u.user_group, 'office') AS creator_group,
-                  (SELECT r.is_read FROM document_recipients r
-                    WHERE r.document_id = d.id AND r.user_id = ? AND ${mine}
-                    ${prefer}) AS is_read,
+                  /*
+                   * สถานะ "อ่านแล้ว" ของโรงเรียน — ผู้ใช้สั่ง 11 พ.ย. 2569
+                   *   เจ้าหน้าที่สารบัญเปิดดู = โรงเรียนอ่านแล้ว → ทุกคนในโรงเรียนเห็น "อ่านแล้ว"
+                   *   (แถวของคนอื่นที่ยังไม่มีแถวผู้รับ ก็ยังขึ้นอ่านแล้ว)
+                   */
+                  CASE WHEN COALESCE((SELECT r.is_read FROM document_recipients r
+                                       WHERE r.document_id = d.id AND r.user_id = ? AND ${mine}
+                                       ${prefer}), 0) = 1
+                         OR EXISTS (SELECT 1 FROM document_recipients rs
+                                     WHERE rs.document_id = d.id AND rs.as_school = ? AND rs.is_read = 1)
+                       THEN 1 ELSE 0 END AS is_read,
                   (SELECT r.read_at FROM document_recipients r
                     WHERE r.document_id = d.id AND r.user_id = ? AND ${mine}
                     ${prefer}) AS read_at,
@@ -2009,7 +2017,7 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
                          WHERE t.document_id = d.id AND t.school_code = ?)
            )`;
     params = [
-      req.user.id, activeCode, activeCode,
+      req.user.id, activeCode, activeCode, activeCode,
       req.user.id, activeCode, activeCode,
       req.user.id, activeCode, activeCode,
       req.user.id, activeCode,
@@ -2125,6 +2133,18 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
           .run(docId, userId, activeCode);
       }
     }
+
+    /*
+     * ④ ผู้ใช้สั่ง 11 พ.ย. 2569: "เจ้าหน้าที่สารบัญสถานศึกษาดูหนังสือแล้ว
+     *    ให้สถานะของคนอื่นในสถานศึกษาเดียวกันเปลี่ยนเป็นอ่านแล้วด้วย"
+     *
+     *    (คนอื่นกดเองยังไม่เปลี่ยน — เฉพาะเจ้าหน้าที่สารบัญที่ลงชื่อรับแทนโรงเรียน)
+     *    ⚠️ เฉพาะแถวของโรงเรียนนี้ (as_school = activeCode) โรงเรียนอื่นไม่ถูกแตะ
+     */
+    await db.prepare(`
+      UPDATE document_recipients SET is_read = 1, read_at = NOW()
+      WHERE document_id = ? AND as_school = ? AND (is_read = 0 OR is_read IS NULL)
+    `).run(docId, activeCode);
   } else {
     await db.prepare(`
       UPDATE document_recipients SET is_read = 1, read_at = NOW()

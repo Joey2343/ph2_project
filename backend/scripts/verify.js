@@ -244,6 +244,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบสารบัญสถานศึกษาอ่านแล้ว — คนอื่นในโรงเรียนเดียวกันเป็นอ่านแล้วด้วย]');
+  results.push(run('test-school-clerk-read-all', [path.join(__dirname, 'test-school-clerk-read-all.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
