@@ -15,6 +15,7 @@ import api from '../../api/client.js';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
 import { fetchNextRegNo, fetchWorkplaceGroups, fetchSchools } from '../../lib/documents-form.js';
+import { parseFiles } from '../../lib/documents.js';
 import ThaiDateField from '../ui/ThaiDateField.vue';
 import DocumentsStampEditor from './DocumentsStampEditor.vue';
 import AppModal from '../ui/AppModal.vue';
@@ -153,6 +154,14 @@ const oldFileRows = computed(() => {
 const stampFile = ref(null);
 /** ไฟล์ที่ปั้มแล้ว (ถ้าทำให้ช่องไฟล์แรกยังไม่ได้เลือกไฟล์) */
 const stampedFile = ref(null);
+/**
+ * path ของไฟล์ "เดิม" ที่ถูกปั้มทับ (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ *
+ * ปั้มรับต้อง "ทับไฟล์เดิม ไม่สร้างไฟล์ใหม่" → ส่ง path นี้ไปกับบันทึก
+ * ให้เซิร์ฟเวอร์เอาไฟล์ที่ปั้มแล้วใส่แทนตำแหน่งเดิม (แล้วลบไฟล์ต้นฉบับ)
+ * (ไม่ใส่ = ไฟล์ใหม่ต่อท้ายเหมือนเดิม)
+ */
+const stampReplacePath = ref('');
 
 /**
  * ไฟล์ต้นฉบับสำหรับปั้ม: ไฟล์ที่เพิ่งเลือก ถ้าไม่มีใช้ไฟล์เดิมของรายการ
@@ -164,11 +173,13 @@ const existingFirstFile = computed(() => (oldFiles.value.length ? oldFiles.value
 function openStamp() {
   const src = stampSource.value;
   if (src) {
+    stampReplacePath.value = '';
     stampFile.value = src;
     return;
   }
   if (existingFirstFile.value) {
-    // โหลดไฟล์เดิมจากเซิร์ฟเวอร์เพื่อปั้มต่อ
+    // โหลดไฟล์เดิมจากเซิร์ฟเวอร์เพื่อปั้มต่อ (ปั้มทับไฟล์เดิม ไม่เพิ่มไฟล์ใหม่)
+    stampReplacePath.value = existingFirstFile.value;
     fetch('/uploads/' + UI.encodePath(existingFirstFile.value))
       .then((r) => {
         if (!r.ok) throw new Error('โหลดไฟล์ไม่สำเร็จ');
@@ -179,7 +190,10 @@ function openStamp() {
         const type = blob.type || (/\.png$/i.test(name) ? 'image/png' : 'application/pdf');
         stampFile.value = new File([blob], name, { type });
       })
-      .catch((e) => UI.toast(e.message || 'โหลดไฟล์ไม่สำเร็จ', 'error'));
+      .catch((e) => {
+        stampReplacePath.value = '';
+        UI.toast(e.message || 'โหลดไฟล์ไม่สำเร็จ', 'error');
+      });
     return;
   }
   UI.toast('Attach file first', 'error');
@@ -227,6 +241,38 @@ function collectEntries() {
 /** ไฟล์ที่จะส่งจริง */
 function collectFiles() {
   return collectEntries().map((e) => e.file);
+}
+
+/** ตั้งชื่อไฟล์ให้มีนามสกุลเหมือนต้นฉบับ (ชื่อที่ผู้ใช้ตั้งอาจไม่มีนามสกุล) */
+function displayName(given, path) {
+  const base = String(path || '').split('/').pop() || 'file';
+  const ext = (base.match(/\.[A-Za-z0-9]+$/) || [''])[0];
+  const name = String(given || '').trim();
+  if (!name) return base;
+  return /\.[A-Za-z0-9]+$/.test(name) ? name : name + ext;
+}
+
+/**
+ * ดึงไฟล์แนบของหนังสือจากเซิร์ฟเวอร์กลับมาเป็น File object
+ * (หน้าต่าง "ส่งไปรษณีย์ภายในเขต" รับได้เฉพาะ File — จึงต้องดาวน์โหลดมาก่อน)
+ * ไฟล์ที่โหลดไม่ได้จะถูกข้าม ไม่ทำให้การบันทึก/ส่งต่อพัง
+ */
+async function loadAttachmentsAsFiles(paths, names) {
+  const out = [];
+  const list = Array.isArray(paths) ? paths : [];
+  for (let i = 0; i < list.length; i += 1) {
+    const p = String(list[i] || '').trim();
+    if (!p) continue;
+    try {
+      const res = await fetch('/uploads/' + UI.encodePath(p));
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      out.push(new File([blob], displayName(names[i], p), { type: blob.type || 'application/octet-stream' }));
+    } catch (e) {
+      /* ข้ามไฟล์ที่โหลดไม่ได้ */
+    }
+  }
+  return out;
 }
 
 /* ---------- โหลดข้อมูล ---------- */
@@ -311,17 +357,26 @@ async function save() {
     const oldNames = editId ? oldFileRows.value.map((o) => String(o.name || '').trim()) : [];
     fd.append('file_names', JSON.stringify(oldNames.concat(entries.map((e) => e.name))));
 
-    if (editId) await api.putForm('/documents/' + editId, fd);
-    else await api.postForm('/documents', fd);
+    /*
+     * ปั้มรับทับไฟล์เดิม (ผู้ใช้สั่ง 11 พ.ย. 2569)
+     *   บอกเซิร์ฟเวอร์ว่าไฟล์ที่อัปโหลดครั้งนี้ "แทนที่" ไฟล์เดิม path ไหน
+     *   → ไฟล์แนบไม่เพิ่มขึ้นเป็น 2 ฉบับ และลบไฟล์ต้นฉบับออกจากดิสก์ให้
+     */
+    if (stampReplacePath.value) fd.append('stamp_replace', stampReplacePath.value);
 
+    const res = editId ? await api.putForm('/documents/' + editId, fd) : await api.postForm('/documents', fd);
     UI.toast('บันทึกเรียบร้อย');
 
     /*
      * ลงทะเบียนรับหนังสือ → เปิดหน้าส่งไปรษณีย์ภายในเขตต่อทันที
-     * ส่งไฟล์ที่แนบใหม่ + เรื่อง/ข้อความ/วันที่ จากการลงทะเบียน
+     * แนบ "ไฟล์แนบทั้งหมดของหนังสือ" (ไฟล์เดิม + ที่ปั้ม/แนบใหม่) ไม่ใช่แค่ไฟล์ที่เพิ่งอัปโหลด
+     * → ดาวน์โหลดกลับมาเป็น File object ก่อน เพราะหน้าส่งไปรษณีย์รับได้เฉพาะ File
      */
+    const savedPaths = Array.isArray(res && res.files) ? res.files : [];
+    const savedNames = parseFileNames(res && res.file_names);
+    const allFiles = await loadAttachmentsAsFiles(savedPaths, savedNames);
     emit('open-postal', {
-      files,
+      files: allFiles.length ? allFiles : files,
       prefill: { title: title.value, message: note.value, date: dateTH.value },
     });
   } catch (e) {

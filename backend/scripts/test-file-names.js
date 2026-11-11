@@ -65,7 +65,8 @@ console.log('โค้ดต่อท้ายไฟล์เดิม (ต้�
 const adminSrc = fs.readFileSync(path.join(ROOT, 'routes', 'admin.js'), 'utf8');
 const iReg = adminSrc.indexOf('oldFiles');
 check(iReg !== -1, 'พบจุดต่อท้ายไฟล์เดิมใน routes/admin.js');
-const region = iReg === -1 ? '' : adminSrc.slice(iReg - 400, iReg + 700);
+// ขยายหน้าต่างให้ครอบทั้งบล็อก (มีการแทรก "ปั้มทับไฟล์เดิม" ก่อนบรรทัด concat)
+const region = iReg === -1 ? '' : adminSrc.slice(iReg - 400, iReg + 2200);
 check(!/unshift\s*\(/.test(region),
   'ไม่มี unshift ต่อทีละไฟล์ (ลำดับไฟล์เดิมจะกลับด้าน)',
   'ต้องใช้ oldFiles.concat(…) เพื่อคงลำดับเดิม');

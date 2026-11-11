@@ -124,6 +124,38 @@ if (openEdit) {
     'ถ้าไม่พา sort ลำดับหัวข้อจะเพี้ยนทุกครั้งที่บันทึก');
 }
 
+/* ── ⑥ ปั้มรับทับไฟล์เดิม + ส่งไฟล์แนบทั้งหมดเข้า "ส่งไปรษณีย์ภายในเขต" ────
+ *
+ * ผู้ใช้สั่ง 11 พ.ย. 2569
+ *   "ลงทะเบียนรับหนังสือ-ลงเลขหนังสือรับ-ปั้มรับ (ทับไฟล์เดิม ไม่สร้างไฟล์ใหม่)-บันทึก
+ *    จะเปิดหน้าต่างส่งไปรษณีย์ภายในเขต (ให้ดึงไฟล์แนบทั้งหมดมาแนบส่งด้วย)"
+ */
+console.log('\n⑥ ปั้มรับทับไฟล์เดิม + ส่งไฟล์แนบทั้งหมดไปหน้าส่งไปรษณีย์');
+
+check(/fd\.append\('stamp_replace',\s*stampReplacePath\.value\)/.test(inc),
+  'DocumentsIncomingFormModal: ส่ง stamp_replace ไปกับ FormData',
+  'ถ้าไม่ส่ง ไฟล์ที่ปั้มจะถูกเพิ่มเป็นไฟล์ใหม่ (มี 2 ฉบับ) แทนที่จะทับไฟล์เดิม');
+check(/stampReplacePath\.value\s*=\s*existingFirstFile\.value/.test(inc),
+  'DocumentsIncomingFormModal: จำ path ไฟล์เดิมตอนปั้มจากไฟล์เดิม');
+check(/stampReplacePath\.value\s*=\s*''\s*;\s*\n\s*stampFile\.value\s*=\s*src/.test(inc),
+  'DocumentsIncomingFormModal: ปั้มจากไฟล์ที่เพิ่งเลือก → ไม่แทนที่ไฟล์เดิม');
+check(/const savedPaths\s*=\s*Array\.isArray\(res\s*&&\s*res\.files\)\s*\?\s*res\.files\s*:\s*\[\]/.test(inc),
+  'DocumentsIncomingFormModal: อ่านรายการไฟล์แนบทั้งหมดจากผลบันทึก (res.files)');
+check(/loadAttachmentsAsFiles\(savedPaths,\s*savedNames\)/.test(inc),
+  'DocumentsIncomingFormModal: ดาวน์โหลดไฟล์แนบเดิมกลับมาเป็น File');
+check(/files:\s*allFiles\.length\s*\?\s*allFiles\s*:\s*files/.test(inc),
+  'DocumentsIncomingFormModal: ส่งไฟล์ทั้งหมด (ไม่ใช่แค่ไฟล์ที่เพิ่งอัปโหลด) เข้า open-postal');
+
+const docsPageSrc = readFileSync(join(ROOT, 'src', 'pages', 'DocumentsPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/DocumentsView\.openPostalForm\(files\s*\|\|\s*\[\],\s*prefill\s*\|\|\s*\{\}\)/.test(docsPageSrc),
+  'DocumentsPage: เปิดหน้าส่งไปรษณีย์พร้อมไฟล์ที่ได้รับจากฟอร์ม');
+
+const viewSrc = readFileSync(join(ROOT, 'src', 'views', 'DocumentsView.js'), 'utf8');
+check(/prefilledFiles\.slice\(0,\s*7\)\.forEach\(function\s*\(f\)\s*\{\s*addPostalFileRow\(f\)/.test(viewSrc),
+  'DocumentsView.openPostalForm: เติมไฟล์ที่ส่งมาให้อัตโนมัติ');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

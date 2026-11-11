@@ -1107,6 +1107,23 @@ ph2_project/
     - ⚠️ ต้องแยกตาม `as_school` เสมอ (สารบัญคนเดียวหลายโรงเรียน — ดูข้อถัดไป)
   - เทสต์กันไว้ที่ `test-school-incoming-by-target.js` · `test-school-clerk-read-all.js`
     · `test-school-multi-school-read.js` (อยู่ใน `npm run verify`)
+- **ลงทะเบียนรับหนังสือ → บันทึก → เปิด "ส่งไปรษณีย์ภายในเขต" พร้อมไฟล์แนบทั้งหมด**
+  (ผู้ใช้สั่ง 11 พ.ย. 2569)
+  - ฟอร์ม `DocumentsIncomingFormModal` (แท็บหนังสือรับ "▼ ลงทะเบียน" และแท็บ
+    ทะเบียนหนังสือรับ "▭ ลงทะเบียนหนังสือรับ") — บันทึกเสร็จ emit `open-postal`
+    → `DocumentsPage.onIncomingSavedForPostal()` เรียก `DocumentsView.openPostalForm(files, prefill)`
+  - **ปั้มรับ = ทับไฟล์เดิม ไม่สร้างไฟล์ใหม่**
+    · `openStamp()` จำ path ไฟล์เดิมที่ถูกปั้ม (`stampReplacePath`) แล้วส่ง `stamp_replace` ตอนบันทึก
+    · `PUT /documents/:id` → เอาไฟล์ที่อัปโหลดไปแทน "ตำแหน่งเดิม" ใน `documents.file`
+      (ไฟล์แนบไม่เพิ่มเป็น 2 ฉบับ) และลบไฟล์ต้นฉบับออกจากดิสก์หลัง UPDATE สำเร็จ
+    · ปั้มจากไฟล์ที่เพิ่งเลือก (ยังไม่เคยบันทึก) → ไม่ส่ง `stamp_replace` (เป็นไฟล์ใหม่ปกติ)
+  - **ดึงไฟล์แนบทั้งหมดไปแนบในหน้าส่งไปรษณีย์**
+    · `PUT /documents/:id` และ `POST /documents` คืน `files` + `file_names` (ไฟล์จริงหลังบันทึก)
+    · หน้าเว็บดาวน์โหลด `/uploads/<path>` เป็น `File` object (`loadAttachmentsAsFiles()`)
+      เพราะหน้าส่งไปรษณีย์รับได้เฉพาะ File — ชื่อที่แสดงใช้ชื่อที่ผู้ใช้ตั้ง (เติมนามสกุลให้ถ้าไม่มี)
+    · ⚠️ อย่าส่งแค่ไฟล์ที่เพิ่งอัปโหลด (เดิมเป็นแบบนั้น) — ไฟล์เดิมจะหายจากหนังสือที่ส่ง
+  - เทสต์กันไว้ที่ `backend/scripts/test-doc-stamp-replace.js` (ยิง API + ตรวจไฟล์บนดิสก์)
+    และ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ⑥
 - **"สังกัด/กลุ่มงาน" ของหนังสือราชการ** (ผู้ใช้สั่ง 11 พ.ย. 2569)
   - ฟอร์ม **ส่งหนังสือไปสถานศึกษา** และ **ส่งไปรษณีย์ภายในเขต** มีช่อง "สังกัด/กลุ่มงาน"
     ต่อจาก "จาก" (แสดงอย่างเดียว) และส่ง `workgroup` ไปกับ `POST /documents`
@@ -1272,7 +1289,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **237** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 56/56 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 57/57 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

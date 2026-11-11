@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const simdate = require('../lib/simdate');
 const auth = require('../lib/auth');
-const { uploadDocuments, uploadStaff, createDynamicUpload, getUploadSubdir, uploadErrorHandler, deleteUploadedFile, renameAsCitizen } = require('../lib/uploads');
+const { uploadDocuments, uploadStaff, createDynamicUpload, getUploadSubdir, uploadErrorHandler, deleteUploadedFile, parseFileList, renameAsCitizen } = require('../lib/uploads');
 const cleanup = require('../lib/cleanup');
 const staffSort = require('../lib/staff-sort');
 const telegram = require('../lib/telegram');
@@ -768,8 +768,7 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   const toOrg = (b.to_org || '').trim();
   const senderType = (b.sender_type || 'office').trim();
   if (senderType === 'office' && toOrg) {
-    const insertRecip = db.prepare('INSERT INTO document_recipients (document_id, user_id) VALUES (?, ?)');
-    if (toOrg.startsWith('ทุกคน')) {
+    const insertRecip = db.prepare('INSERT INTO document_recipients (document_id, user_id) VALUES (?, ?)');    if (toOrg.startsWith('ทุกคน')) {
       // ส่งถึงเจ้าหน้าที่ฝั่งสำนักงานทุกคน
       const officeStaff = await db.prepare("SELECT id FROM users WHERE user_group != 'school' AND status = 'active'").all();
       for (const s of officeStaff) { await insertRecip.run(docId, s.id) };
@@ -879,10 +878,11 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   try {
     const recipCount = (await db.prepare('SELECT COUNT(*) AS c FROM document_recipients WHERE document_id = ?').get(docId)).c;
     if (!recipCount && (senderType === 'office' && toOrg)) {
-      return res.json({ ok: true, id: docId, message: 'บันทึกหนังสือแล้ว ⚠ แต่ไม่พบผู้รับจากช่อง "ถึง": "' + toOrg + '" — หนังสืออาจไม่ถึงปลายทาง กรุณาแก้ไขชื่อผู้รับให้ตรงกับบุคลากรในระบบแล้วส่งใหม่' });
+      return res.json({ ok: true, id: docId, files: parseFileList(file), file_names: (b.file_names || '').trim(), message: 'บันทึกหนังสือแล้ว ⚠ แต่ไม่พบผู้รับจากช่อง "ถึง": "' + toOrg + '" — หนังสืออาจไม่ถึงปลายทาง กรุณาแก้ไขชื่อผู้รับให้ตรงกับบุคลากรในระบบแล้วส่งใหม่' });
     }
   } catch (e) { /* ไม่เป็นผลต่อการบันทึก */ }
-  res.json({ ok: true, id: docId, message: 'ลงทะเบียนหนังสือเรียบร้อย' });
+  // files = รายการไฟล์แนบจริงหลังบันทึก (หน้าเว็บใช้ส่งต่อเข้า "ส่งไปรษณีย์ภายในเขต")
+  res.json({ ok: true, id: docId, files: parseFileList(file), file_names: (b.file_names || '').trim(), message: 'ลงทะเบียนหนังสือเรียบร้อย' });
 });
 
 router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7), uploadErrorHandler, async (req, res) => {
@@ -926,8 +926,23 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
     var newFiles = req.files.map(f => fPrefixUp + 'documents/' + f.filename);
     // Flow ลงทะเบียน/ปั้มรับ (is_registered=1): เก็บไฟล์เดิมไว้ครบ แล้วเพิ่มไฟล์ใหม่ต่อท้าย — ไม่ลบ/ไม่ทับไฟล์เดิม
     if (Number(b.is_registered) === 1 && row.file) {
-      var oldFiles = [];
-      try { var arr = JSON.parse(row.file); oldFiles = Array.isArray(arr) ? arr : [row.file]; } catch (e) { oldFiles = [row.file]; }
+      var oldFiles = parseFileList(row.file);
+      /*
+       * ปั้มรับ "ทับไฟล์เดิม" (ผู้ใช้สั่ง 11 พ.ย. 2569)
+       *   หน้าเว็บส่ง `stamp_replace` = path ของไฟล์ต้นฉบับที่ถูกปั้ม
+       *   → เอาไฟล์ที่อัปโหลดใหม่ใส่แทน "ตำแหน่งเดิม" (ไม่สร้างไฟล์เพิ่มซ้ำ)
+       *     แล้วลบไฟล์ต้นฉบับออกจากดิสก์หลัง UPDATE สำเร็จ
+       *   ไฟล์ใหม่ที่เหลือ (ถ้ามี) ต่อท้ายตามเดิม
+       */
+      var restFiles = newFiles.slice();
+      var replacePath = String(b.stamp_replace || '').trim();
+      if (replacePath) {
+        var replaceIdx = oldFiles.indexOf(replacePath);
+        if (replaceIdx >= 0 && restFiles.length) {
+          fileToDelete = replacePath;
+          oldFiles[replaceIdx] = restFiles.shift();
+        }
+      }
       /*
        * ⚠️ ห้ามใช้ unshift ต่อทีละไฟล์
        *    unshift ดันของเดิมไปหน้าเสมอ → ลำดับไฟล์เดิมกลับด้าน
@@ -937,7 +952,9 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
        *    แต่ documents.file_names ผูกชื่อกับไฟล์ด้วยลำดับ index
        *    ถ้าลำดับเพี้ยน ชื่อจะไปตกกับไฟล์ผิดตัว
        */
-      file = JSON.stringify(oldFiles.concat(newFiles.filter(function(f) { return !oldFiles.includes(f); })));
+      var mergedFiles = oldFiles.concat(restFiles.filter(function(f) { return !oldFiles.includes(f); }));
+      // ไฟล์เดียวเก็บเป็น path ธรรมดา (ให้ตรงกับรูปแบบเดิมของคอลัมน์ file)
+      file = mergedFiles.length === 1 ? mergedFiles[0] : JSON.stringify(mergedFiles);
     } else {
       file = newFiles.length === 1 ? newFiles[0] : JSON.stringify(newFiles);
       fileToDelete = row.file;
@@ -986,6 +1003,9 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
     row: wasReturned
       ? { id, status: 'received', revision_note: '', returned_at: '', returned_by: null }
       : null,
+    // files = ไฟล์แนบทั้งหมดหลังบันทึก (ใช้ส่งต่อเข้า "ส่งไปรษณีย์ภายในเขต")
+    files: parseFileList(file),
+    file_names: (b.file_names ?? (row.file_names || '')).toString().trim(),
     message: wasReturned
       ? 'แก้ไขหนังสือเรียบร้อย — ส่งกลับไปที่ สพป. เรียบร้อย'
       : 'แก้ไขหนังสือเรียบร้อย',
