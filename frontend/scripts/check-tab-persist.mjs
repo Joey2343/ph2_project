@@ -150,6 +150,21 @@ console.log('③.๒ หนังสือราชการของสถา�
 }
 
 console.log('');
+console.log('③.๓ เจ้าหน้าที่การลาของสถานศึกษา (3 ลำดับ) เห็นแท็บลาของสถานศึกษา');
+/* ผู้ใช้สั่ง 11 พ.ย. 2569 — บัญชีฝั่ง สพป. ที่ถูกกำหนดในสายสถานศึกษาต้องเห็นแท็บนั้น */
+{
+  const code = stripComments(read('src/pages/LeavePage.vue'));
+  check(/\(la\.schoolApprovers \|\| \{\}\)\[lv\]/.test(code),
+    'LeavePage: อ่าน schoolApprovers จาก /leave-approvers-public');
+  check(/const isSchoolLeaveStaff = ref\(false\)/.test(code), 'มี isSchoolLeaveStaff');
+  check(/!isSchool\.value && \(isAdmin\.value \|\| isSchoolLeaveStaff\.value\)[\s\S]{0,220}?general-school/.test(code),
+    'เพิ่มแท็บ "ลาป่วย ลากิจ ลาคลอด (สถานศึกษา)" ให้เจ้าหน้าที่การลาสายสถานศึกษา');
+  check(/current\.value === 'general-school' && !isSchool\.value && !isAdmin\.value/.test(code),
+    'ซ่อนปุ่มยื่นคำลาของสถานศึกษาเมื่อเป็นบัญชีฝั่ง สพป. (admin ยังเห็นไว้ตรวจฟอร์ม)',
+    'เจ้าหน้าที่การลาสายสถานศึกษาดูรายการได้ แต่ไม่ต้องยื่นคำลาแทนโรงเรียน');
+}
+
+console.log('');
 console.log('④ ลิงก์ ?tab= ที่เหลืออยู่ต้องตรงกับ key ของแท็บจริง');
 /*
  * เคยมีการ์ดบนหน้าแรกที่ลิงก์ #/leave?tab=vacation / ?tab=general

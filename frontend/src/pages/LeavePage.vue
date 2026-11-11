@@ -57,11 +57,15 @@ const ADMIN_GROUPS = [
 
 const isAdmin = computed(() => Auth.isAdmin());
 const isSchool = computed(() => Auth.user && Auth.user.user_group === 'school');
-
 /* ---------- สิทธิ์เจ้าหน้าที่การลา ---------- */
 const approversData = ref(null);
 const perPerson = ref(null);
 const isLeaveStaff = ref(false);
+/**
+ * เป็น "เจ้าหน้าที่การลาของสถานศึกษา (3 ลำดับ)" หรือไม่ (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ *   → เจ้าหน้าที่ สพป. ที่ถูกกำหนดในสายสถานศึกษาเห็นแท็บ "ลาป่วย ลากิจ ลาคลอด (สถานศึกษา)"
+ */
+const isSchoolLeaveStaff = ref(false);
 /**
  * สิทธิ์แท็บ "วันลาพักผ่อนสะสม" (ผู้ใช้สั่ง 11 พ.ย. 2569)
  *   canView = เห็นตาราง · canEdit = มีปุ่ม ✎ · isAdmin = เห็นปุ่มกำหนดเจ้าหน้าที่
@@ -76,6 +80,15 @@ const groups = computed(() => {
   const out = isAdmin.value
     ? LEAVE_GROUPS.slice()
     : LEAVE_GROUPS.filter((g) => g.ugroup === myUgroup);
+  /*
+   * เจ้าหน้าที่การลาของสถานศึกษา (3 ลำดับ) ที่เป็นบัญชีฝั่ง สพป.
+   * → ต้องเห็นแท็บ "ลาป่วย ลากิจ ลาคลอด (สถานศึกษา)" ด้วย (ผู้ใช้สั่ง 11 พ.ย. 2569)
+   *   (บัญชีสถานศึกษาเห็นอยู่แล้วจาก ugroup = 'school')
+   */
+  if (!isSchool.value && (isAdmin.value || isSchoolLeaveStaff.value)) {
+    const schoolTab = LEAVE_GROUPS.find((g) => g.key === 'general-school');
+    if (schoolTab && !out.some((g) => g.key === schoolTab.key)) out.push(schoolTab);
+  }
   // วันลาพักผ่อนสะสม: admin + ผู้ตรวจสอบ + เจ้าหน้าที่วันลาพักผ่อนสะสม
   if (isAdmin.value || isLeaveStaff.value || balancePerm.value.canView) out.push(ADMIN_GROUPS[0]);
   // สถิติลาป่วย/กิจ/คลอด + สถิติลาพักผ่อน: เจ้าหน้าที่ สพป. เห็นทุกคน
@@ -168,7 +181,15 @@ function setTab(k, syncUrl = true) {
   if (syncUrl) syncTabUrl(k);
 }
 
-const hideSubmitRow = computed(() => HIDE_FILTERS.includes(current.value) || STATS_TABS.includes(current.value));
+/**
+ * ซ่อนปุ่มยื่นคำขอ — แท็บของสถานศึกษาไม่แสดงให้บัญชีฝั่ง สพป. (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ * (เจ้าหน้าที่การลาสายสถานศึกษาดูรายการได้ แต่ไม่ต้องยื่นคำลาแทนโรงเรียน)
+ */
+const hideSubmitRow = computed(() =>
+  HIDE_FILTERS.includes(current.value)
+  || STATS_TABS.includes(current.value)
+  || (current.value === 'general-school' && !isSchool.value && !isAdmin.value),
+);
 const hideFilterRow = computed(() => HIDE_FILTERS.includes(current.value));
 /** แท็บสถิติของฉันต้องเห็นปีงบประมาณด้วย ส่วนแท็บสถิติอื่นใช้แค่รอบ */
 const showFy = computed(() => current.value !== 'my-stats');
@@ -205,6 +226,9 @@ onMounted(async () => {
       (la.approvers['1'] || []).includes(uid) ||
       (la.approvers['2'] || []).includes(uid) ||
       (la.approvers['3'] || []).includes(uid);
+    // สายสถานศึกษา (3 ลำดับ) — ตัดสินการเห็นแท็บ "ลาป่วย ลากิจ ลาคลอด (สถานศึกษา)"
+    const schoolIds = ['1', '2', '3'].flatMap((lv) => (la.schoolApprovers || {})[lv] || []);
+    isSchoolLeaveStaff.value = schoolIds.includes(uid);
   } catch {
     /* โหลดไม่ได้ = ไม่มีสิทธิ์พิจารณา */
   }

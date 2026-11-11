@@ -981,6 +981,16 @@ router.get('/leave-approvers-public', auth.requireAuth, async (req, res) => {
     }
   }
   const result = { 1: flatten(merged['1']), 2: flatten(merged['2']), 3: flatten(merged['3']) };
+  /*
+   * schoolApprovers = ผู้ที่ถูกกำหนดใน "เจ้าหน้าที่การลาของสถานศึกษา (3 ลำดับ)" เท่านั้น
+   *   ใช้ให้เจ้าหน้าที่ สพป. ที่เป็นผู้อนุมัติสายสถานศึกษาเห็นแท็บ
+   *   "ลาป่วย ลากิจ ลาคลอด (สถานศึกษา)" (ผู้ใช้สั่ง 11 พ.ย. 2569)
+   */
+  const schoolApprovers = {
+    1: flatten(objSchool['1']),
+    2: flatten(objSchool['2']),
+    3: flatten(objSchool['3']),
+  };
   // Also include per-person map so frontend can check per-requester assignment
   const perPerson = { 1: {}, 2: {}, 3: {} };
   for (var lv = 1; lv <= 3; lv++) {
@@ -989,7 +999,7 @@ router.get('/leave-approvers-public', auth.requireAuth, async (req, res) => {
       for (var k in lvData) { var v = Number(lvData[k]); if (v) perPerson[lv][String(k)] = v; }
     }
   }
-  res.json({ approvers: result, perPerson });
+  res.json({ approvers: result, perPerson, schoolApprovers });
 });
 
 // ดึงข้อมูลเจ้าหน้าที่ (สำหรับ user ทุกคน)
