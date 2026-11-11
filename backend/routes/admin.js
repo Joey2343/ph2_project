@@ -325,9 +325,28 @@ const SECRET_MIN_LEN = 4;
  * ⚠️ หนังสือลับที่ยังไม่ปลดล็อก → ปิดบังเรื่อง/ข้อความ/หมายเหตุ/ไฟล์ แล้วตั้ง locked = true
  *    หน้าเว็บใช้ locked ตัดสินใจว่าจะเปิดรายละเอียดหรือถามรหัสก่อน
  */
+/**
+ * "สังกัด/กลุ่มงาน" ของหนังสือ (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ *   · ของ สพป. → สังกัด/กลุ่มงาน ของผู้สร้าง (เช่น กลุ่มส่งเสริมการศึกษาทางไกลฯ)
+ *   · ของสถานศึกษา → ชื่อโรงเรียน (ตัดรหัส 7–8 หลักที่นำหน้าออก)
+ * ลำดับ: ค่าที่บันทึกไว้ (workgroup) → ผู้สร้างเป็นสถานศึกษา → workplace ของผู้สร้าง
+ */
+function docSangkad(row) {
+  const saved = String((row && row.workgroup) || '').trim();
+  if (saved) return saved;
+  const group = String((row && row.creator_group) || '').trim();
+  const sender = String((row && row.sender_type) || '').trim();
+  const schoolCode = String((row && row.school_code) || '').trim();
+  const isSchoolDoc = group === 'school' || sender === 'school' || sender === 'school_to_school' || !!schoolCode;
+  if (isSchoolDoc) {
+    const raw = String((row && row.from_org) || '').trim();
+    return raw.replace(/^\d{7,8}\s*/, '') || raw || '';
+  }
+  return String((row && row.creator_workplace) || '').trim();
+}
+
 async function prepareDocRows(rows, req) {
-  const list = Array.isArray(rows) ? rows : (rows ? [rows] : []);
-  const secretIds = list.filter((r) => r && Number(r.is_secret)).map((r) => Number(r.id));
+  const list = Array.isArray(rows) ? rows : (rows ? [rows] : []);  const secretIds = list.filter((r) => r && Number(r.is_secret)).map((r) => Number(r.id));
   let unlocked = new Set();
   if (secretIds.length && req.sessionToken) {
     const ph = secretIds.map(() => '?').join(',');
@@ -342,6 +361,8 @@ async function prepareDocRows(rows, req) {
     if (!r) return r;
     const row = Object.assign({}, r);
     delete row.secret_code_hash;
+    // สังกัด/กลุ่มงาน (ของ สพป. = กลุ่มงาน · ของสถานศึกษา = ชื่อโรงเรียน)
+    row.sangkad = docSangkad(row);
     if (!Number(row.is_secret)) {
       row.locked = false;
       return row;
@@ -363,7 +384,7 @@ async function prepareDocRows(rows, req) {
 
 router.get('/documents', auth.requireAuth, async (req, res) => {
   const { doc_type, q, year } = req.query;
-  let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d
+  let sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d
              LEFT JOIN users u ON u.id = d.created_by WHERE 1=1`;
   const args = [];
   if (doc_type) {
@@ -435,7 +456,7 @@ router.post('/documents/:id/unlock', auth.requireAuth, async (req, res) => {
 /** อ่านหนังสือหนึ่งฉบับแบบเต็ม (ใช้ตอบหลังปลดล็อก) — ตัด hash และปิดบังตามสิทธิ์เหมือนรายการ */
 async function getDocRow(id, req) {
   const row = await db
-    .prepare('SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ?')
+    .prepare("SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ?")
     .get(id);
   if (!row) return null;
   return await prepareDocRows(row, req);
@@ -1675,7 +1696,7 @@ router.get('/document-recipients/:docId', auth.requireAuth, async (req, res) => 
 // GET /my-incoming - get incoming documents for current user
 router.get('/my-incoming', auth.requireAuth, async (req, res) => {
   const q = req.query.q || '';
-  let sql = 'SELECT d.*, u.full_name AS creator_name, dr.is_read, dr.read_at, dr.as_school FROM document_recipients dr JOIN documents d ON d.id = dr.document_id LEFT JOIN users u ON u.id = d.created_by WHERE dr.user_id = ?';
+  let sql = 'SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, \'office\') AS creator_group, dr.is_read, dr.read_at, dr.as_school FROM document_recipients dr JOIN documents d ON d.id = dr.document_id LEFT JOIN users u ON u.id = d.created_by WHERE dr.user_id = ?';
   const params = [req.user.id];
   // ผู้ใช้กลุ่มสถานศึกษา: แยกตามสถานศึกษาที่กำลังใช้งาน (as_school) — ของใครของมัน
   // "to_org ขึ้นต้นด้วยเลข" ต้องใช้ REGEXP ไม่ใช่ GLOB
@@ -1733,7 +1754,7 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   const schoolCode = schoolCodeOf(req.user);
   const q = req.query.q || '';
   // แทปทะเบียนหนังสือรับ: แสดงเฉพาะรายการที่ลงทะเบียนรับหนังสือแล้วเท่านั้น (is_registered = 1)
-  let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE (d.doc_type = 'incoming' OR (d.doc_type = 'outgoing' AND d.sender_type = 'school')) AND d.is_registered = 1`;
+  let sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE (d.doc_type = 'incoming' OR (d.doc_type = 'outgoing' AND d.sender_type = 'school')) AND d.is_registered = 1`;
   const params = [];
   if (isSchool) {
     // ทะเบียนของโรงเรียน = หนังสือที่ "ส่งถึงโรงเรียนนี้" — ต้องไม่หายเมื่อเปลี่ยนตัวเจ้าหน้าที่สารบัญ
@@ -1774,7 +1795,7 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
   const isSchool = req.user.user_group === 'school';
   const q = req.query.q || '';
-  let sql = "SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'outgoing' AND d.sender_type = 'registered'";
+  let sql = "SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'outgoing' AND d.sender_type = 'registered'";
   const params = [];
   if (isSchool) {
     /*
@@ -1808,7 +1829,7 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
 // GET /my-orders - get order documents (คำสั่ง)
 router.get('/my-orders', auth.requireAuth, async (req, res) => {
   const q = req.query.q || '';
-  let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'order'`;
+  let sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'order'`;
   const params = [];
   const yc4 = docYearClause(req.query.year); if (yc4) { sql += yc4.clause; params.push(yc4.arg); }
   const wg4 = (req.query.workgroup || '').trim(); if (wg4) { sql += ' AND d.workgroup = ?'; params.push(wg4); }
@@ -1820,7 +1841,7 @@ router.get('/my-orders', auth.requireAuth, async (req, res) => {
 // GET /my-certificates - get certificate documents (หนังสือรับรอง)
 router.get('/my-certificates', auth.requireAuth, async (req, res) => {
   const q = req.query.q || '';
-  let sql = `SELECT d.*, u.full_name AS creator_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'certificate'`;
+  let sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'certificate'`;
   const params = [];
   const yc5 = docYearClause(req.query.year); if (yc5) { sql += yc5.clause; params.push(yc5.arg); }
   const wg5 = (req.query.workgroup || '').trim(); if (wg5) { sql += ' AND d.workgroup = ?'; params.push(wg5); }

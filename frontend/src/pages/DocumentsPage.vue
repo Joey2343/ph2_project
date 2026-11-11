@@ -792,6 +792,10 @@ const columns = computed(() => {
 
   if (!['honor', 'order', 'certificate'].includes(t)) {
     cols.push({ key: 'from_org', label: 'จาก' });
+    // สังกัด/กลุ่มงาน — ของ สพป. = กลุ่มงาน · ของสถานศึกษา = ชื่อโรงเรียน (ผู้ใช้สั่ง 11 พ.ย. 2569)
+    if (t === 'incoming' || t === 'outgoing') {
+      cols.push({ key: 'sangkad', label: 'สังกัด/กลุ่มงาน', cell: (r) => ({ text: r.sangkad || '-' }) });
+    }
     cols.push({ key: 'to_org', label: t === 'incoming_reg' ? 'กลุ่มปฏิบัติ' : 'ถึง' });
   }
 

@@ -45,6 +45,14 @@ export const DocumentsView = {
     // สถานศึกษาที่ใช้ = สถานศึกษาที่เลือกตอนลงชื่อเข้า (current_school) ไม่ใช่สถานศึกษาหลักในโปรไฟล์
     const activeSchool = (u.user_group === 'school') ? (u.current_school || u.workplace || '') : (u.workplace || '');
     const fromText = isSchool ? activeSchool : ((u.title || '') + ' ' + (u.full_name || '') + ' ' + (u.workplace || ''));
+    /*
+     * สังกัด/กลุ่มงาน (ผู้ใช้สั่ง 11 พ.ย. 2569)
+     *   · ของ สพป. → กลุ่ม/หน่วยของผู้ส่ง
+     *   · ของสถานศึกษา → ชื่อโรงเรียน (ตัดรหัส 7–8 หลักที่นำหน้าออก)
+     */
+    const sangkadText = isSchool
+      ? String(activeSchool || '').replace(/^\d{7,8}\s*/, '')
+      : String(u.workplace || '');
     let allSchools = [], allStaff = [], officeStaff = [];
     try { const d = await api.get('/schools'); allSchools = (d.schools || []).sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'th', { numeric: true })); } catch (_e) {}
     try { const d = await api.get('/staff'); allStaff = d.users || d.staff || []; } catch (_e) {}
@@ -60,6 +68,11 @@ export const DocumentsView = {
     const fromRow = UI.h('div', { className: 'form-group full', marginBottom: '10px' },
       UI.h('label', { style: { fontWeight: '600' } }, 'จาก'),
       UI.h('div', { style: { padding: '8px 12px', background: '#f8fafc', borderRadius: '6px', fontSize: '15px', border: '1px solid #e2e8f0' } }, fromText));
+
+    // === สังกัด/กลุ่มงาน (ต่อจาก จาก) ===
+    const sangkadRow = UI.h('div', { className: 'form-group full', marginBottom: '10px' },
+      UI.h('label', { style: { fontWeight: '600' } }, 'สังกัด/กลุ่มงาน'),
+      UI.h('div', { id: 'send-sangkad', style: { padding: '8px 12px', background: '#f8fafc', borderRadius: '6px', fontSize: '15px', border: '1px solid #e2e8f0' } }, sangkadText));
 
     // === ระดับความสำคัญ ===
     const priorityColors = { normal: '#10b981', urgent: '#f59e0b', very_urgent: '#f97316', most_urgent: '#ef4444' };
@@ -362,7 +375,7 @@ export const DocumentsView = {
 
     // === ประกอบร่าง ===
     const body = UI.h('div', {});
-    body.append(headEl, fromRow, priorityRow, topRow, toContainer, titleRow, contentRow, noteRow, fileRow);
+    body.append(headEl, fromRow, sangkadRow, priorityRow, topRow, toContainer, titleRow, contentRow, noteRow, fileRow);
     const foot = UI.h('div', {},
       UI.h('button', { className: 'btn btn-outline', onclick: () => m.close() }, 'ยกเลิก'),
       UI.h('button', { className: 'btn btn-primary', onclick: save }, '▲ ส่งหนังสือ'));
@@ -381,7 +394,7 @@ export const DocumentsView = {
       fd.append('date', UI.readThaiDateInput('send-date'));
       fd.append('title', titleVal);
       fd.append('from_org', fromText);
-      // หาค่า to_org
+      fd.append('workgroup', sangkadText);
       if (isSchool && !isSchoolToSchool) {
         // สถานศึกษาส่งไป สพป. — คงที่
         fd.append('to_org', 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2');
@@ -457,6 +470,12 @@ export const DocumentsView = {
     const fromRow = UI.h('div', { style: { marginBottom: '10px' } },
       UI.h('label', { style: { fontSize: '13.5px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' } }, 'จาก'),
       UI.h('div', { style: { padding: '8px 12px', background: '#f8fafc', borderRadius: '6px', fontSize: '15px', border: '1px solid #e2e8f0' } }, fromText));
+
+    // === สังกัด/กลุ่มงาน (ต่อจาก จาก) — ผู้ใช้สั่ง 11 พ.ย. 2569 ===
+    const postalSangkad = String(u.workplace || '');
+    const sangkadRow = UI.h('div', { style: { marginBottom: '10px' } },
+      UI.h('label', { style: { fontSize: '13.5px', fontWeight: '600', color: '#334155', display: 'block', marginBottom: '4px' } }, 'สังกัด/กลุ่มงาน'),
+      UI.h('div', { id: 'postal-sangkad', style: { padding: '8px 12px', background: '#f8fafc', borderRadius: '6px', fontSize: '15px', border: '1px solid #e2e8f0' } }, postalSangkad));
 
 
     // === วันที่ ===
@@ -689,7 +708,7 @@ export const DocumentsView = {
 
     const body = UI.h('div', {});
     // ลำดับ: จาก > วันที่ > ส่งถึง > เรื่อง > ข้อความ > หมายเหตุ > ไฟล์แนบ
-    body.append(headEl, fromRow, topRow, toContainer, titleRow, msgRow, noteRow, fileRow);
+    body.append(headEl, fromRow, sangkadRow, topRow, toContainer, titleRow, msgRow, noteRow, fileRow);
     const foot = UI.h('div', {},
       UI.h('button', { className: 'btn btn-outline', onclick: () => m.close() }, 'ยกเลิก'),
       UI.h('button', { className: 'btn btn-primary', onclick: save }, '✉ ส่งไปรษณีย์'));
@@ -735,6 +754,7 @@ export const DocumentsView = {
       fd.append('date', UI.readThaiDateInput('postal-date'));
       fd.append('title', titleVal);
       fd.append('from_org', fromText);
+      fd.append('workgroup', postalSangkad);
       fd.append('to_org', toOrg);
       var msgEl = document.getElementById('postal-message');
       fd.append('body_text', msgEl ? msgEl.value.trim() : '');
