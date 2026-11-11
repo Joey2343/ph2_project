@@ -136,6 +136,20 @@ console.log('③ หน้าอื่นต้องเริ่มที่ค
 }
 
 console.log('');
+console.log('③.๒ หนังสือราชการของสถานศึกษา: แท็บหนังสือส่ง/ทะเบียนหนังสือส่ง ไม่มีตัวกรองกลุ่มงาน');
+/* ผู้ใช้สั่ง 11 พ.ย. 2569 — โรงเรียนไม่ต้องกรอง "สังกัด/กลุ่มงาน" ใน 2 แท็บนี้ */
+{
+  const code = stripComments(read('src/pages/DocumentsPage.vue'));
+  check(/const showWorkgroupFilter = computed/.test(code), 'มี showWorkgroupFilter (คำนวณจากแท็บ + กลุ่มผู้ใช้)');
+  check(/v-if="showWorkgroupFilter"[\s\S]{0,80}?id="doc-workgroup"/.test(code),
+    'ช่องกรองกลุ่มงานผูก v-if="showWorkgroupFilter"');
+  check(/isSchoolUser\.value && \['outgoing', 'outgoing_reg'\]\.includes\(currentType\.value\)/.test(code),
+    'ซ่อนเฉพาะแท็บ "หนังสือส่ง" + "ทะเบียนหนังสือส่ง" ของสถานศึกษา');
+  check(/watch\(showWorkgroupFilter[\s\S]{0,160}?workgroup\.value = ''/.test(code),
+    'ซ่อนแล้วล้างค่ากรองที่ค้างอยู่ (ไม่ให้กรองเงียบ ๆ)');
+}
+
+console.log('');
 console.log('④ ลิงก์ ?tab= ที่เหลืออยู่ต้องตรงกับ key ของแท็บจริง');
 /*
  * เคยมีการ์ดบนหน้าแรกที่ลิงก์ #/leave?tab=vacation / ?tab=general

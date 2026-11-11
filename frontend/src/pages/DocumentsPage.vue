@@ -109,6 +109,14 @@ function setTab(v, syncUrl = true) {
 
 const meta = computed(() => docTypeMeta(currentType.value));
 
+/**
+ * ตัวกรอง "สังกัด/กลุ่มงาน" — ซ่อนในแท็บ หนังสือส่ง / ทะเบียนหนังสือส่ง ของสถานศึกษา
+ * (ผู้ใช้สั่ง 11 พ.ย. 2569: โรงเรียนไม่ต้องกรองกลุ่มงาน เพราะของโรงเรียนมีกลุ่มเดียว)
+ */
+const showWorkgroupFilter = computed(() =>
+  !(isSchoolUser.value && ['outgoing', 'outgoing_reg'].includes(currentType.value)),
+);
+
 /* ---------- ตัวกรอง ---------- */
 const q = ref('');
 const year = ref('');
@@ -253,6 +261,14 @@ watch(currentPage, () => {
 });
 
 watch([year, workgroup], load);
+
+/**
+ * ซ่อนตัวกรองกลุ่มงาน (แท็บหนังสือส่งของสถานศึกษา) → ล้างค่าที่ค้างอยู่ด้วย
+ * ไม่งั้นค่าจากแท็บอื่นจะยังกรองรายการอยู่ทั้งที่ผู้ใช้มองไม่เห็นช่องกรอง
+ */
+watch(showWorkgroupFilter, (show) => {
+  if (!show && workgroup.value) workgroup.value = '';
+});
 
 /**
  * สลับแท็บ = ต้องโหลดข้อมูลของแท็บนั้นใหม่เสมอ
@@ -983,7 +999,7 @@ function showAllYears() {
       <option v-for="y in yearOptions" :key="y" :value="String(y)">ปี พ.ศ. {{ y }}</option>
     </select>
 
-    <select id="doc-workgroup" v-model="workgroup" style="min-width: 210px">
+    <select v-if="showWorkgroupFilter" id="doc-workgroup" v-model="workgroup" style="min-width: 210px">
       <option value="">ทุกกลุ่มงาน</option>
       <option v-for="w in workgroupOptions" :key="w" :value="w">{{ w }}</option>
     </select>
