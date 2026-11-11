@@ -1737,10 +1737,111 @@ router.get('/dashboard', async (req, res) => {
 
 
 // ---------- ทะเบียนหนังสือรับ (document recipients) ----------
+/**
+ * รายชื่อผู้รับ "แบบแสดงสถานศึกษาละ 1 คน" (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ * ────────────────────────────────────────────────────────────────
+ * หนังสือส่งของ สพป. ที่ส่งถึงสถานศึกษา → ในคอลัมน์ "ผู้รับ" ต้องเห็น
+ * "สถานศึกษาละ 1 คน" คือ **เจ้าหน้าที่สารบัญสถานศึกษา** ของโรงเรียนนั้น
+ * (บุคลากรคนอื่นของโรงเรียนยังได้รับหนังสือจริง แต่ไม่แสดงในรายการนี้)
+ * ส่งทุกโรงเรียน → ได้ครบทุกโรงเรียน (โรงเรียนละ 1 ชื่อ ≈ 103 คน)
+ *
+ * โรงเรียนที่ยังไม่ได้กำหนดเจ้าหน้าที่สารบัญ → แสดงผู้รับที่มีอยู่ 1 คน
+ * พร้อมธง clerk_fallback = 1 เพื่อให้หน้าเว็บแจ้งว่า "ยังไม่กำหนดเจ้าหน้าที่สารบัญ"
+ * โรงเรียนปลายทางที่ยังไม่มีบัญชีผู้ใช้เลย → แสดงแถวแทน (no_user = 1) เพื่อให้จำนวน
+ * ตรงกับ "ส่งทุกโรงเรียน (103 โรงเรียน)" ไม่ขาดหาย
+ * ส่วนผู้รับที่ไม่ผูกกับโรงเรียน (เช่น เจ้าหน้าที่สำนักงาน) แสดงตามเดิมทุกคน
+ *
+ * @param {object[]} rows แถวจาก document_recipients (ต้องมี as_school / user_* / as_school_label)
+ * @param {{school_code:string,label:string}[]} [targets] โรงเรียนปลายทางใน document_school_targets
+ * @returns {{ recipients: object[], total: number, hidden: number }}
+ *   total = จำนวนแถวผู้รับจริงในฐาน · hidden = แถวที่ถูกตัดออกจากการแสดงผล
+ */
+async function dedupeSchoolRecipients(rows, targets) {
+  const clerkRows = await db
+    .prepare("SELECT school_code, user_id FROM document_staff WHERE staff_type = 'school'")
+    .all();
+  const clerkMap = new Map();
+  for (const c of clerkRows) {
+    const code = String(c.school_code || '').trim();
+    if (!code) continue;
+    if (!clerkMap.has(code)) clerkMap.set(code, new Set());
+    clerkMap.get(code).add(Number(c.user_id));
+  }
+
+  const kept = [];
+  const buckets = new Map();
+  let shownRows = 0;
+  for (const r of rows) {
+    // โรงเรียนของแถวนี้: as_school ก่อน แล้วค่อยเดาจากบัญชีผู้รับ (แถวเก่าที่ไม่ได้เก็บ as_school)
+    const code = String(r.as_school || '').trim()
+      || (String(r.user_group || '') === 'school'
+        ? schoolCodeOf({
+          school_code: r.user_school_code,
+          workplace: r.workplace,
+          current_school: r.user_current_school,
+        })
+        : '');
+    if (!code) { kept.push(r); shownRows += 1; continue; }
+    let bucket = buckets.get(code);
+    if (!bucket) {
+      bucket = { label: r.as_school_label || r.workplace || code, clerk: [], fallback: [] };
+      buckets.set(code, bucket);
+    }
+    if (!bucket.label && r.as_school_label) bucket.label = r.as_school_label;
+    const ids = clerkMap.get(code);
+    if (ids && ids.has(Number(r.user_id))) bucket.clerk.push(r);
+    else bucket.fallback.push(r);
+  }
+
+  const schools = [];
+  for (const [code, bucket] of buckets) {
+    schools.push({ code, label: bucket.label, clerk: bucket.clerk, fallback: bucket.fallback, noUser: false });
+  }
+  // โรงเรียนปลายทางที่ไม่มีแถวผู้รับเลย → เติมแถวแทน เพื่อให้เห็นครบทุกโรงเรียน
+  const known = new Set(schools.map((s) => s.code));
+  for (const t of (targets || [])) {
+    const code = String((t && t.school_code) || '').trim();
+    if (!code || known.has(code)) continue;
+    known.add(code);
+    schools.push({
+      code,
+      label: String((t && t.label) || '').trim() || code,
+      clerk: [],
+      fallback: [],
+      noUser: true,
+    });
+  }
+  schools.sort((a, b) => String(a.label).localeCompare(String(b.label), 'th'));
+  for (const s of schools) {
+    if (s.noUser) {
+      kept.push({
+        user_id: null,
+        title: '',
+        full_name: 'ยังไม่มีผู้ใช้ในระบบ',
+        position: '',
+        as_school: s.code,
+        as_school_label: s.label,
+        is_read: 0,
+        no_user: 1,
+      });
+    } else if (s.clerk.length) {
+      kept.push(...s.clerk);
+      shownRows += s.clerk.length;
+    } else if (s.fallback.length) {
+      kept.push({ ...s.fallback[0], clerk_fallback: 1 });
+      shownRows += 1;
+    }
+  }
+  return { recipients: kept, total: rows.length, hidden: rows.length - shownRows };
+}
+
 router.get('/document-recipients/:docId', auth.requireAuth, async (req, res) => {
   const docId = Number(req.params.docId);
-  const recipients = await db.prepare(`
+  const rows = await db.prepare(`
     SELECT dr.*, u.title, u.full_name, u.position, u.workplace,
+      COALESCE(u.user_group, 'office') AS user_group,
+      u.school_code AS user_school_code,
+      u.current_school AS user_current_school,
       CASE WHEN dr.as_school IS NOT NULL AND dr.as_school != ''
         THEN (SELECT (s.code || ' ' || s.name) FROM schools s WHERE s.code = dr.as_school LIMIT 1)
         ELSE NULL END AS as_school_label
@@ -1749,7 +1850,15 @@ router.get('/document-recipients/:docId', auth.requireAuth, async (req, res) => 
     WHERE dr.document_id = ?
     ORDER BY u.full_name
   `).all(docId);
-  res.json({ recipients });
+  // โรงเรียนปลายทางที่บันทึกไว้ (ถาวร) — ใช้เติมแถวให้ครบทุกโรงเรียนที่ส่งไป
+  const targets = await db.prepare(`
+    SELECT t.school_code,
+      (SELECT (s.code || ' ' || s.name) FROM schools s WHERE s.code = t.school_code LIMIT 1) AS label
+    FROM document_school_targets t
+    WHERE t.document_id = ?
+  `).all(docId);
+  const { recipients, total, hidden } = await dedupeSchoolRecipients(rows, targets);
+  res.json({ recipients, total, hidden });
 });
 
 // GET /my-incoming - get incoming documents for current user

@@ -832,15 +832,19 @@ const recipsOpen = ref(false);
 const recipsOf = ref(null);
 const recipsRows = ref([]);
 const recipsLoading = ref(false);
+/** จำนวนผู้รับจริงในฐานที่ไม่แสดง (คนของโรงเรียนคนอื่นที่ได้รับหนังสือด้วย) */
+const recipsHidden = ref(0);
 
 async function showRecipients(r) {
   recipsOf.value = r;
   recipsRows.value = [];
+  recipsHidden.value = 0;
   recipsOpen.value = true;
   recipsLoading.value = true;
   try {
     const d = await api.get('/document-recipients/' + r.id);
     recipsRows.value = d.recipients || [];
+    recipsHidden.value = Number(d.hidden || 0);
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {
@@ -1175,6 +1179,11 @@ function showAllYears() {
     <div v-else style="padding: 4px; max-height: 60vh; overflow-y: auto">
       <div style="margin-bottom: 10px; font-size: 13px; color: #64748b">
         อ่านแล้ว <b style="color: #16a34a">{{ recipsReadCount }}</b> / {{ recipsRows.length }} คน
+        <!-- ผู้ใช้สั่ง 11 พ.ย. 2569: แสดงสถานศึกษาละ 1 คน (เจ้าหน้าที่สารบัญ) -->
+        <div v-if="recipsHidden > 0" style="margin-top: 4px; color: #b45309">
+          แสดงเฉพาะเจ้าหน้าที่สารบัญสถานศึกษา โรงเรียนละ 1 คน ·
+          บุคลากรในโรงเรียนอีก {{ recipsHidden }} คนได้รับหนังสือแต่ไม่แสดงในรายการนี้
+        </div>
       </div>
       <table class="tbl">
         <thead>
@@ -1189,15 +1198,23 @@ function showAllYears() {
         <tbody>
           <tr v-for="(rp, i) in recipsRows" :key="i">
             <td style="text-align: center">{{ i + 1 }}</td>
-            <td>{{ (rp.title || '') + ' ' + (rp.full_name || '-') }}</td>
+            <td>
+              {{ (rp.title || '') + ' ' + (rp.full_name || '-') }}
+              <div v-if="rp.clerk_fallback" style="color: #b45309; font-size: 11px">
+                (ยังไม่กำหนดเจ้าหน้าที่สารบัญสถานศึกษา)
+              </div>
+            </td>
             <td>{{ rp.position || '-' }}</td>
             <!-- รับในฐานะสารบัญสถานศึกษา → แสดงโรงเรียนที่รับ ไม่ใช่ workplace ของ user -->
             <td>{{ rp.as_school_label || rp.workplace || '-' }}</td>
             <td style="text-align: center">
-              <span v-if="rp.is_read" style="color: #16a34a; font-weight: 600">● อ่านแล้ว</span>
-              <span v-else style="color: #ea580c; font-weight: 600">● ยังไม่อ่าน</span>
-              <br v-if="rp.read_at" />
-              <span v-if="rp.read_at" style="color: #94a3b8; font-size: 11px">{{ rp.read_at }}</span>
+              <span v-if="rp.no_user" style="color: #94a3b8">— ไม่มีบัญชีผู้ใช้</span>
+              <template v-else>
+                <span v-if="rp.is_read" style="color: #16a34a; font-weight: 600">● อ่านแล้ว</span>
+                <span v-else style="color: #ea580c; font-weight: 600">● ยังไม่อ่าน</span>
+                <br v-if="rp.read_at" />
+                <span v-if="rp.read_at" style="color: #94a3b8; font-size: 11px">{{ rp.read_at }}</span>
+              </template>
             </td>
           </tr>
         </tbody>

@@ -224,6 +224,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบคอลัมน์ผู้รับของหนังสือส่ง สพป. — แสดงสถานศึกษาละ 1 คน (เจ้าหน้าที่สารบัญ)]');
+  results.push(run('test-doc-recipients-clerk', [path.join(__dirname, 'test-doc-recipients-clerk.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
