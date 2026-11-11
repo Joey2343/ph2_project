@@ -1518,6 +1518,38 @@ const VUE_PAGES = {
           return true;
         })()`,
       },
+      {
+        /*
+         * ผู้ใช้สั่ง 11 พ.ย. 2569: "อยู่แท็บไหน กดรีเฟรชแล้วต้องอยู่แท็บนั้น"
+         * ตรวจว่าเปลี่ยนแท็บแล้ว URL มี ?tab=... (รีเฟรชแล้วกลับมาแท็บเดิมได้)
+         */
+        name: 'เปลี่ยนแท็บแล้ว URL มี ?tab=... (กดรีเฟรชแล้วอยู่แท็บเดิม)',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const b = __clickText('.segment-row .seg-btn', 'หนังสือส่ง');
+          await sleep(1600);
+          if (!b) throw new Error('ไม่พบแท็บ "หนังสือส่ง"');
+          const active = document.querySelector('.segment-row .seg-btn.active');
+          if (!active || !active.innerText.includes('หนังสือส่ง')) throw new Error('ไม่ได้อยู่แท็บหนังสือส่ง');
+          if (!location.hash.includes('tab=outgoing')) throw new Error('URL ไม่มี ?tab=outgoing: ' + location.hash);
+          return true;
+        })()`,
+      },
+      {
+        name: 'เปิดหน้าใหม่ที่ ?tab=outgoing_reg → เปิดที่แท็บทะเบียนหนังสือส่ง',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          location.hash = '#/home';
+          await sleep(900);
+          location.hash = '#/documents?tab=outgoing_reg';
+          await sleep(1900);
+          const active = document.querySelector('.segment-row .seg-btn.active');
+          if (!active) throw new Error('ไม่พบแท็บที่กำลังใช้งาน');
+          const t = (active.innerText || '').trim();
+          if (!t.includes('ทะเบียนหนังสือส่ง')) throw new Error('ได้แท็บ: ' + t);
+          return true;
+        })()`,
+      },
     ],
   },
 

@@ -25,6 +25,7 @@
  *   DocumentsView.openPostalForm() ส่งไปรษณีย์ภายในเขต
  */
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
@@ -74,13 +75,36 @@ const tabs = computed(() => {
 /* ---------- แท็บปัจจุบัน ----------
  * ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้า หนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ
  *   → ไม่จำแท็บที่เคยเปิด (`localStorage.doc_tab`) อีก
+ *
+ * ผู้ใช้สั่ง 11 พ.ย. 2569: **อยู่แท็บไหน กดรีเฟรชแล้วต้องอยู่แท็บนั้น**
+ *   → เก็บแท็บปัจจุบันไว้ใน URL (`#/documents?tab=outgoing`)
+ *     · กด F5 / เปิดลิงก์เดิม → ได้แท็บเดิม
+ *     · เปิดจากเมนู (`#/documents` ไม่มี ?tab=) → ยังเริ่มที่ "หนังสือรับ" เหมือนเดิม
+ *     · เปลี่ยนแท็บแล้วใช้ router.replace (ไม่เพิ่มประวัติการกด back)
  */
-const currentType = ref('incoming');
+const route = useRoute();
+const router = useRouter();
 
-function setTab(v) {
+/** แท็บที่ ?tab= ชี้ไว้ — คืน '' ถ้าไม่ใช่แท็บที่มีจริง (กัน deep-link ผิด) */
+function tabFromRoute() {
+  const t = String(route.query.tab || '').trim();
+  return TYPES.some((x) => x.value === t) ? t : '';
+}
+
+const currentType = ref(tabFromRoute() || 'incoming');
+
+/** เขียนแท็บปัจจุบันลง URL เพื่อให้รีเฟรชแล้วอยู่แท็บเดิม */
+function syncTabUrl(v) {
+  if (String(route.query.tab || '') === v) return;
+  const query = { ...route.query, tab: v };
+  router.replace({ path: route.path, query }).catch(() => {});
+}
+
+function setTab(v, syncUrl = true) {
   currentType.value = v;
   // เปิดแท็บใหม่ = เริ่มที่หน้าที่เคยค้างไว้ของแท็บนั้น (ไม่มี = หน้า 1)
   currentPage.value = parseInt(localStorage.getItem('doc_page_' + v), 10) || 1;
+  if (syncUrl) syncTabUrl(v);
 }
 
 const meta = computed(() => docTypeMeta(currentType.value));
@@ -239,6 +263,23 @@ watch([year, workgroup], load);
  * แต่แถวข้อมูลยังเป็นของแท็บเดิม → หนังสือที่ลงทะเบียนแล้วยังโผล่ในแท็บ "หนังสือส่ง"
  */
 watch(currentType, load);
+
+/**
+ * ?tab= เปลี่ยน (deep-link / กด back) → เปลี่ยนแท็บตาม
+ * ⚠️ router ไม่ remount component เดิม (path เดิม เปลี่ยนแค่ query)
+ *    ถ้าไม่ watch การลิงก์ #/documents?tab=... จากที่อื่นจะไม่มีผล
+ */
+watch(
+  () => route.query.tab,
+  (val) => {
+    const t = String(val || '').trim();
+    const next = TYPES.some((x) => x.value === t) ? t : 'incoming';
+    if (next === currentType.value) return;
+    // แท็บที่บัญชีนี้เข้าไม่ได้ → อยู่แท็บเดิม
+    if (!tabs.value.some((x) => x.value === next)) return;
+    setTab(next, false);
+  },
+);
 
 onMounted(async () => {
   // สิทธิ์เจ้าหน้าที่สารบัญ — ต้องได้ก่อนสร้างแท็บ

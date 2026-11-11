@@ -103,13 +103,24 @@ console.log('③ หน้าอื่นต้องเริ่มที่ค
     'RoomsPage.vue: เริ่มที่มุมมองตารางเสมอ (calView = false)');
 }
 
-/* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าหนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ */
+/*
+ * ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าหนังสือราชการ → อยู่แท็บ "หนังสือรับ" เสมอ
+ * ผู้ใช้สั่ง 11 พ.ย. 2569: อยู่แท็บไหน กดรีเฟรชแล้วต้องอยู่แท็บนั้น
+ *   → เก็บแท็บไว้ใน URL (?tab=) ไม่ใช่ localStorage
+ */
 {
   const code = stripComments(read('src/pages/DocumentsPage.vue'));
   check(!/localStorage\.(get|set)Item\('doc_tab'/.test(code),
     'DocumentsPage.vue: ไม่จำแท็บ (doc_tab) แล้ว');
-  check(/const currentType = ref\('incoming'\);/.test(code),
-    'DocumentsPage.vue: เปิดมาที่แท็บ "หนังสือรับ" เสมอ');
+  check(/function tabFromRoute\(\)[\s\S]{0,400}?TYPES\.some/.test(code),
+    'DocumentsPage.vue: อ่านแท็บจาก ?tab= (เฉพาะแท็บที่มีจริง)');
+  check(/const currentType = ref\(tabFromRoute\(\) \|\| 'incoming'\);/.test(code),
+    'DocumentsPage.vue: ไม่มี ?tab= → เริ่มที่แท็บ "หนังสือรับ" เสมอ');
+  check(/function syncTabUrl\(v\)[\s\S]{0,300}?router\.replace/.test(code),
+    'DocumentsPage.vue: เปลี่ยนแท็บแล้วเขียน ?tab= ลง URL',
+    'ผู้ใช้สั่ง 11 พ.ย. 2569: กดรีเฟรชแล้วต้องอยู่แท็บเดิม');
+  check(/watch\(\s*\(\) => route\.query\.tab/.test(code),
+    'DocumentsPage.vue: เฝ้า route.query.tab (deep-link จากที่อื่นมีผล)');
 }
 
 console.log('');
