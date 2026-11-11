@@ -24,7 +24,7 @@
  *   LeaveStats.vue        — แท็บสถิติ 3 แบบ
  */
 import { ref, computed, watch, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
@@ -98,6 +98,8 @@ const current = ref('general');
 
 /** route ปัจจุบัน ใช้ดู ?tab= ตอนผู้ใช้คลิกการ์ดบนหน้าแรก (deep-link) */
 const route = useRoute();
+/** เขียนแท็บลง URL (กดรีเฟรชแล้วอยู่แท็บเดิม) */
+const router = useRouter();
 
 /** รอบพิจารณาความชอบ: ปีงบประมาศเริ่มที่ ต.ค. */
 function currentFY() {
@@ -128,6 +130,10 @@ const roundOptions = computed(() => {
  *   → เลิกอ่านค่าที่จำไว้ใน localStorage (`leave_tab`)
  *   → ยังเคารพ `?tab=` ที่มาจากการ์ดแจ้งเตือนหน้าแรก (deep-link)
  *   → ถ้าแท็บนั้นเข้าไม่ได้ (เช่น บัญชีสถานศึกษา) ใช้แท็บลาแรกที่เข้าได้แทน
+ *
+ * ผู้ใช้สั่ง 11 พ.ย. 2569: **อยู่แท็บไหน กดรีเฟรชแล้วต้องอยู่แท็บนั้น**
+ *   → เก็บแท็บปัจจุบันใน URL (`#/leave?tab=balance`) ด้วย `syncTabUrl()`
+ *     · เปิดจากเมนู (`#/leave` ไม่มี ?tab=) → ยังเริ่มที่ "ลาพักผ่อน" เหมือนเดิม
  */
 function pickInitialTab() {
   const q = route.query.tab || '';
@@ -137,6 +143,8 @@ function pickInitialTab() {
   }
   current.value = t;
   applyListScope(t);
+  // ลิงก์ ?tab= ที่ไม่มีจริง/เข้าไม่ได้ → ให้ URL ตรงกับแท็บที่แสดงจริง
+  if (q && q !== t) syncTabUrl(t);
 }
 
 /**
@@ -148,9 +156,16 @@ function applyListScope(tabKey) {
   myOnly.value = !canSeeAll.value;
 }
 
-function setTab(k) {
+/** เขียนแท็บปัจจุบันลง URL เพื่อให้รีเฟรชแล้วอยู่แท็บเดิม (ไม่เพิ่มประวัติการกด back) */
+function syncTabUrl(v) {
+  if (String(route.query.tab || '') === v) return;
+  router.replace({ path: route.path, query: { ...route.query, tab: v } }).catch(() => {});
+}
+
+function setTab(k, syncUrl = true) {
   current.value = k;
   applyListScope(k);
+  if (syncUrl) syncTabUrl(k);
 }
 
 const hideSubmitRow = computed(() => HIDE_FILTERS.includes(current.value) || STATS_TABS.includes(current.value));

@@ -62,10 +62,22 @@ check(!/LEAVE_GROUPS\.some/.test(pickBody),
   + '      → ตรวจกับ LEAVE_GROUPS = ตีออกทุกครั้งที่เปิดหน้า');
 check(/applyListScope\(t\)/.test(pickBody),
   'เปิดหน้าแล้วตั้งตัวกรองรายการให้อยู่ที่ "ขออนุญาตลาทั้งหมด"');
-check(/function setTab\(k\)[\s\S]{0,220}?applyListScope\(k\)/.test(leaveCode),
+check(/function setTab\(k[,)]/, 'มี setTab()');
+check(/function setTab\(k[\s\S]{0,240}?applyListScope\(k\)/.test(leaveCode),
   'สลับแท็บรายการลาแล้วกลับไปที่ "ขออนุญาตลาทั้งหมด" ด้วย');
 check(/function applyListScope\(tabKey\)[\s\S]{0,260}?myOnly\.value = !canSeeAll\.value;/.test(leaveCode),
   'applyListScope ตั้ง myOnly = !canSeeAll (ทั้งหมด เมื่อมีสิทธิ์เห็นทั้งหมด)');
+
+console.log('');
+console.log('①.๑ อยู่แท็บไหน กดรีเฟรชแล้วอยู่แท็บนั้น (ผู้ใช้สั่ง 11 พ.ย. 2569)');
+check(/const router = useRouter\(\);/.test(leaveCode), 'มี useRouter() สำหรับเขียน ?tab= ลง URL');
+check(/function syncTabUrl\(v\)[\s\S]{0,300}?router\.replace/.test(leaveCode),
+  'syncTabUrl() เขียนแท็บลง URL ด้วย router.replace',
+  'ถ้าไม่เขียน URL กดรีเฟรชแล้วจะกลับไปแท็บลาพักผ่อนเสมอ');
+check(/function setTab\(k[\s\S]{0,300}?syncTabUrl\(k\)/.test(leaveCode),
+  'สลับแท็บแล้วเรียก syncTabUrl()');
+check(/if \(q && q !== t\) syncTabUrl\(t\)/.test(leaveCode),
+  'ลิงก์ ?tab= ที่ใช้ไม่ได้ → URL ถูกแก้ให้ตรงกับแท็บจริง');
 
 console.log('');
 console.log('② deep-link ?tab= ต้องทำงานแม้ยังอยู่ในหน้าเดิม');

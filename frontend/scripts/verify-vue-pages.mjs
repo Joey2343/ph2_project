@@ -911,6 +911,35 @@ const VUE_PAGES = {
         })()`,
       },
       {
+        /* ผู้ใช้สั่ง 11 พ.ย. 2569: อยู่แท็บไหน กดรีเฟรชแล้วอยู่แท็บนั้น */
+        name: 'เปลี่ยนแท็บแล้ว URL มี ?tab=... (กดรีเฟรชแล้วอยู่แท็บเดิม)',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const tab = [...document.querySelectorAll('.seg-btn')]
+            .find((b) => (b.innerText || '').includes('ลาป่วย ลากิจ ลาคลอด') && !(b.innerText || '').includes('(สถานศึกษา)'));
+          if (!tab) throw new Error('ไม่พบแท็บลาป่วย ลากิจ ลาคลอด');
+          tab.click();
+          await sleep(1500);
+          const active = [...document.querySelectorAll('.seg-btn')].filter((b) => (b.className || '').includes('active')).map((b) => (b.innerText || '').trim());
+          if (!active.some((t) => t.includes('ลาป่วย ลากิจ ลาคลอด'))) throw new Error('ไม่ได้อยู่แท็บลาป่วย ลากิจ ลาคลอด: ' + active.join(' | '));
+          if (!location.hash.includes('tab=general')) throw new Error('URL ไม่มี ?tab=general: ' + location.hash);
+          return true;
+        })()`,
+      },
+      {
+        name: 'เปิดหน้าใหม่ที่ ?tab=leave-stats → เปิดที่แท็บสถิติลาป่วย ลากิจ ลาคลอด',
+        check: `(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          location.hash = '#/home';
+          await sleep(900);
+          location.hash = '#/leave?tab=leave-stats';
+          await sleep(1900);
+          const active = [...document.querySelectorAll('.seg-btn')].filter((b) => (b.className || '').includes('active')).map((b) => (b.innerText || '').trim());
+          if (!active.some((t) => t.includes('สถิติลาป่วย ลากิจ ลาคลอด'))) throw new Error('ได้แท็บ: ' + active.join(' | '));
+          return true;
+        })()`,
+      },
+      {
         /* ผู้ใช้สั่ง 5 พ.ย. 2569: เปิดหน้าใหม่ทุกครั้ง → แท็บ "ลาพักผ่อน" + "ขออนุญาตลาทั้งหมด" */
         name: 'ออกจากหน้าแล้วกลับเข้ามา → กลับไปแท็บ "ลาพักผ่อน" และ "ทั้งหมด" เสมอ',
         check: `(async () => {
