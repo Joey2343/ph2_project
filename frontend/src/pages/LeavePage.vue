@@ -62,6 +62,11 @@ const isSchool = computed(() => Auth.user && Auth.user.user_group === 'school');
 const approversData = ref(null);
 const perPerson = ref(null);
 const isLeaveStaff = ref(false);
+/**
+ * สิทธิ์แท็บ "วันลาพักผ่อนสะสม" (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ *   canView = เห็นตาราง · canEdit = มีปุ่ม ✎ · isAdmin = เห็นปุ่มกำหนดเจ้าหน้าที่
+ */
+const balancePerm = ref({ canView: false, canEdit: false, isAdmin: false });
 
 const canSeeAll = computed(() => isAdmin.value || isLeaveStaff.value);
 
@@ -71,8 +76,8 @@ const groups = computed(() => {
   const out = isAdmin.value
     ? LEAVE_GROUPS.slice()
     : LEAVE_GROUPS.filter((g) => g.ugroup === myUgroup);
-  // วันลาพักผ่อนสะสม: admin + ผู้ตรวจสอบ
-  if (isAdmin.value || isLeaveStaff.value) out.push(ADMIN_GROUPS[0]);
+  // วันลาพักผ่อนสะสม: admin + ผู้ตรวจสอบ + เจ้าหน้าที่วันลาพักผ่อนสะสม
+  if (isAdmin.value || isLeaveStaff.value || balancePerm.value.canView) out.push(ADMIN_GROUPS[0]);
   // สถิติลาป่วย/กิจ/คลอด + สถิติลาพักผ่อน: เจ้าหน้าที่ สพป. เห็นทุกคน
   if (isAdmin.value || !isSchool.value) out.push(ADMIN_GROUPS[3], ADMIN_GROUPS[4]);
   // สถิติของฉัน: ทุกคนเห็น
@@ -162,6 +167,19 @@ const submitBtn = computed(() => {
 const formMode = computed(() => (current.value === 'vacation' ? 'vacation' : 'general'));
 
 /* ---------- โหลดสิทธิ์เจ้าหน้าที่การลา ---------- */
+async function loadBalancePerm() {
+  try {
+    const d = await api.get('/leave-balance-staff');
+    balancePerm.value = {
+      canView: !!d.canView,
+      canEdit: !!d.canEdit,
+      isAdmin: !!d.isAdmin,
+    };
+  } catch {
+    balancePerm.value = { canView: false, canEdit: false, isAdmin: false };
+  }
+}
+
 onMounted(async () => {
   try {
     const la = await api.get('/leave-approvers-public');
@@ -175,6 +193,7 @@ onMounted(async () => {
   } catch {
     /* โหลดไม่ได้ = ไม่มีสิทธิ์พิจารณา */
   }
+  await loadBalancePerm();
   pickInitialTab();
   await loadLatest();
 });
@@ -710,8 +729,10 @@ function statusPill(r) {
     <!-- ---------- วันลาพักผ่อนสะสม ---------- -->
     <LeaveBalance
       v-else-if="current === 'balance'"
-      :can-edit="canSeeAll"
+      :can-edit="balancePerm.canEdit"
+      :can-manage-staff="balancePerm.isAdmin"
       @changed="afterChange"
+      @staff-updated="loadBalancePerm"
     />
 
     <!-- ---------- ตั้งค่าเจ้าหน้าที่การลา ---------- -->

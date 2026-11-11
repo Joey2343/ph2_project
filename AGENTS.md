@@ -867,6 +867,22 @@ ph2_project/
   - หน้าเว็บ `LeaveForm.vue` ช่อง "มีกำหนด" รับ `min=0.5 step=0.5` + datalist 0.5/1/1.5/…
   - ใช้ `Number()` ไม่ใช่ `parseInt()` (parseInt ทำให้ 0.5 → 0 แล้วตกไปเป็น 1)
   - ยอดคงเหลือคิดจาก `SUM(days)` ของรายการที่อนุมัติแล้ว → 0.5 หักถูกอัตโนมัติ
+- **แท็บ "วันลาพักผ่อนสะสม" มี "เจ้าหน้าที่วันลาพักผ่อนสะสม"** (ผู้ใช้สั่ง 11 พ.ย. 2569)
+  - ปุ่ม **👤 เจ้าหน้าที่วันลาพักผ่อนสะสม** อยู่บนหัวแท็บ (เห็นเฉพาะ admin)
+    เปิดหน้าต่าง `LeaveBalanceStaff.vue` → มีตัวเลือกเจ้าหน้าที่ + ปุ่ม "＋ เพิ่ม"
+    กดเพิ่มได้หลายคน · ลบออกได้ทีละคน (บันทึกทันที)
+  - รายชื่อเก็บใน `settings` key **`leave_balance_staff`** (JSON array ของ user id)
+    endpoint: `GET /leave-balance-staff` (ทุกคนเรียกได้ — คืน `canView/canEdit/isAdmin`
+    + รายชื่อ/ผู้สมัครเฉพาะ admin) · `PUT /leave-balance-staff` (admin เท่านั้น)
+  - **สิทธิ์แก้ไข (ปุ่ม ✎)** = admin หรือ "เจ้าหน้าที่วันลาพักผ่อนสะสม" เท่านั้น
+    `canEditLeaveBalance()` — **ไม่ใช้ `can_approve`/ผู้ตรวจสอบแล้ว** (ตามคำสั่งผู้ใช้)
+  - **สิทธิ์ดูตาราง** ยังเหมือนเดิม = admin · can_approve · ผู้ตรวจสอบขั้นที่ 1 (ทั้ง 2 กลุ่ม)
+    · เจ้าหน้าที่วันลาพักผ่อนสะสม → `canViewLeaveBalance()`
+  - ⚠️ GET ใช้ `canViewLeaveBalance` · PUT ใช้ `canEditLeaveBalance` — แยกกันชัดเจน
+    (เคยเจอบั๊ก: เห็นปุ่มแต่กดบันทึกแล้ว 403 เพราะสองฝั่งใช้เงื่อนไขไม่ตรงกัน)
+  - แท็บนี้แสดงเมื่อ `isAdmin || isLeaveStaff || canView` (เจ้าหน้าที่วันลาพักผ่อนสะสมเห็นแท็บได้)
+  - เทสต์กันไว้ที่ `backend/scripts/test-leave-balance-perm.js` (ตรวจซอร์ส)
+    และ `backend/scripts/test-leave-balance-staff.js` (ยิง API จริง · 17 ข้อ) — อยู่ใน `npm run verify`
 - **ฟอร์มยื่นคำลาของสถานศึกษาแยกจาก สพป.**
   - `LeavePage` ส่ง `:scope="current === 'general-school' ? 'school' : 'office'"` ให้ `LeaveForm`
   - หน้าต่างของสถานศึกษา: **"🤒 ยื่นคำลาป่วย ลากิจ ลาคลอด (สถานศึกษา)"**
@@ -1224,10 +1240,10 @@ npm run verify
 | `check-registry` | ผ่าน 6 · ไม่ผ่าน 0 (`vue 14 · legacy 0`) |
 | `npm run build` | ผ่าน |
 | `verify-build --server` | ผ่าน 53/53 |
-| `verify-vue-pages --all` | ผ่าน **231** · ไม่ผ่าน 0 |
+| `verify-vue-pages --all` | ผ่าน **235** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 53/53 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 54/54 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

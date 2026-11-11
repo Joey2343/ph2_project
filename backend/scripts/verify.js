@@ -234,6 +234,10 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบเจ้าหน้าที่วันลาพักผ่อนสะสม — กำหนดได้หลายคน · เฉพาะคนที่กำหนดจึงแก้ไขได้]');
+  results.push(run('test-leave-balance-staff', [path.join(__dirname, 'test-leave-balance-staff.js')], {
+    env: { TEST_BASE_URL },
+  }));
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

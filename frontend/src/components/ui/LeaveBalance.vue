@@ -4,19 +4,25 @@
  *
  * ย้ายจาก loadBalance() + editBalance() ใน LeaveView.js
  *
- * เห็นได้เฉพาะ admin และผู้ตรวจสอบ (ขั้นที่ 1) เท่านั้น
+ * สิทธิ์ (ผู้ใช้สั่ง 11 พ.ย. 2569):
+ *   · ดูได้ = admin · ผู้อนุมัติ · ผู้ตรวจสอบ · เจ้าหน้าที่วันลาพักผ่อนสะสม (canView)
+ *   · แก้ไข (ปุ่ม ✎) = admin · เจ้าหน้าที่วันลาพักผ่อนสะสม เท่านั้น (canEdit)
+ *   · ปุ่ม "เจ้าหน้าที่วันลาพักผ่อนสะสม" = admin เท่านั้น (canManageStaff)
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import api from '../../api/client.js';
 import { UI } from '../../ui/ui.js';
 import AppModal from './AppModal.vue';
+import LeaveBalanceStaff from './LeaveBalanceStaff.vue';
 
 const props = defineProps({
-  /** true = ผู้ใช้มีสิทธิ์แก้ไข (admin หรือผู้ตรวจสอบ) */
+  /** true = ผู้ใช้มีสิทธิ์แก้ไข (admin หรือเจ้าหน้าที่วันลาพักผ่อนสะสม) */
   canEdit: { type: Boolean, default: false },
+  /** true = admin (เห็นปุ่มกำหนดเจ้าหน้าที่วันลาพักผ่อนสะสม) */
+  canManageStaff: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['changed']);
+const emit = defineEmits(['changed', 'staff-updated']);
 
 const loading = ref(true);
 const error = ref('');
@@ -77,11 +83,31 @@ function remainColor(v) {
   if (v <= 3) return '#f59e0b';
   return '#059669';
 }
+
+/* ---------- กำหนดเจ้าหน้าที่วันลาพักผ่อนสะสม (admin) ---------- */
+const staffOpen = ref(false);
+
+async function onStaffUpdated() {
+  // สิทธิ์แก้ไขของฉันอาจเปลี่ยน (เพิ่ม/ลบตัวเอง) → ให้หน้าหลักถามใหม่
+  emit('staff-updated');
+  await load();
+}
 </script>
 
 <template>
   <div>
-    <div class="card-title">◷ วันลาพักผ่อนสะสม ปี {{ year }} ({{ balances.length }} คน)</div>
+    <div class="card-title" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+      <span>◷ วันลาพักผ่อนสะสม ปี {{ year }} ({{ balances.length }} คน)</span>
+      <button
+        v-if="canManageStaff"
+        id="btn-leave-balance-staff"
+        class="btn btn-primary"
+        style="margin-left: auto"
+        @click="staffOpen = true"
+      >
+        👤 เจ้าหน้าที่วันลาพักผ่อนสะสม
+      </button>
+    </div>
 
     <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>
     <div v-else-if="error" class="empty-state"><span class="em">⚠️</span>{{ error }}</div>
@@ -173,6 +199,13 @@ function remainColor(v) {
         </button>
       </template>
     </AppModal>
+
+    <!-- ---------- กำหนดเจ้าหน้าที่วันลาพักผ่อนสะสม (admin) ---------- -->
+    <LeaveBalanceStaff
+      v-if="staffOpen"
+      @close="staffOpen = false"
+      @updated="onStaffUpdated"
+    />
   </div>
 </template>
 

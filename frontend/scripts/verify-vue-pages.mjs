@@ -867,6 +867,34 @@ const VUE_PAGES = {
         })()`,
       },
       {
+        /* ผู้ใช้สั่ง 11 พ.ย. 2569: ปุ่มกำหนดเจ้าหน้าที่วันลาพักผ่อนสะสม (admin) */
+        name: 'แท็บวันลาพักผ่อนสะสมมีปุ่ม "เจ้าหน้าที่วันลาพักผ่อนสะสม"',
+        check: `(() => {
+          const b = document.getElementById('btn-leave-balance-staff');
+          if (!b) throw new Error('ไม่พบปุ่มเจ้าหน้าที่วันลาพักผ่อนสะสม');
+          if (!b.innerText.includes('เจ้าหน้าที่วันลาพักผ่อนสะสม')) throw new Error('ข้อความปุ่มไม่ถูกต้อง: ' + b.innerText);
+          return true;
+        })()`,
+      },
+      {
+        name: 'เปิดหน้าต่างกำหนดเจ้าหน้าที่วันลาพักผ่อนสะสมได้ (มีตัวเลือก + ปุ่มเพิ่ม)',
+        check: `(async () => {
+          const b = document.getElementById('btn-leave-balance-staff');
+          if (!b) throw new Error('ไม่พบปุ่ม');
+          b.click();
+          await new Promise((r) => setTimeout(r, 1300));
+          const ok = !!document.getElementById('lbs-pick') && !!document.getElementById('lbs-add');
+          const boxes = document.querySelectorAll('[data-app-modal]');
+          const modal = boxes[boxes.length - 1];
+          const close = modal && [...modal.querySelectorAll('.modal-foot .btn')].find((x) => x.innerText.trim() === 'ปิด');
+          if (close) close.click();
+          await new Promise((r) => setTimeout(r, 800));
+          if (!ok) throw new Error('ไม่พบช่องเลือกเจ้าหน้าที่หรือปุ่มเพิ่ม');
+          if (document.querySelector('[data-app-modal]')) throw new Error('ปิดหน้าต่างไม่สำเร็จ');
+          return true;
+        })()`,
+      },
+      {
         name: 'แท็บสถิติลาพักผ่อนแสดงตารางสิทธิ์',
         check: `(async () => {
           const b = __clickText('.seg-btn', 'สถิติลาพักผ่อน');

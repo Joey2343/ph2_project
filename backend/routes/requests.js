@@ -1336,27 +1336,104 @@ router.get('/my-leave-balance', auth.requireAuth, async (req, res) => {
 // ---------- เมนู วันลาพักผ่อนสะสม ----------
 
 /**
- * สิทธิ์เข้าหน้า "วันลาพักผ่อนสะสม" — ใช้ร่วมกันทั้งการดู (GET) และการบันทึก (PUT)
- *
- * ⚠️ เคยเป็นบั๊ก: GET ให้สิทธิ์แก่ admin · can_approve · ผู้ตรวจสอบ (ขั้นที่ 1)
- *    แต่ PUT ตรวจแค่ admin · ผู้ตรวจสอบ (ขั้นที่ 1) — ไม่เอา can_approve
- *    ผลคือผู้ที่มี can_approve เห็นตารางและกดปุ่ม ✎ ได้ แต่กดบันทึกแล้วได้ 403
- *    (หน้าเว็บยังโชว์ปุ่ม ✎ เพราะเงื่อนไขฝั่งหน้าเช็ค leave_approvers ทุกขั้น)
- *
- * ต้องใช้ฟังก์ชันนี้ทั้งสองทางเสมอ ไม่งั้นสิทธิ์จะ drift อีก
+ * "เจ้าหน้าที่วันลาพักผ่อนสะสม" — รายชื่อที่ admin กำหนด (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ * เก็บเป็น JSON array ของ user id ใน settings key `leave_balance_staff`
  */
-async function canEditLeaveBalance(user) {
+const LEAVE_BALANCE_STAFF_KEY = 'leave_balance_staff';
+
+async function leaveBalanceStaffIds() {
+  const row = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(LEAVE_BALANCE_STAFF_KEY);
+  try {
+    const parsed = JSON.parse(row ? row.value : '[]');
+    return Array.isArray(parsed) ? parsed.map(Number).filter((n) => n > 0) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function isLeaveBalanceStaff(user) {
+  if (!user) return false;
+  return (await leaveBalanceStaffIds()).includes(Number(user.id));
+}
+
+/**
+ * สิทธิ์ "ดู" ตารางวันลาพักผ่อนสะสม — คงของเดิมไว้
+ *   admin · ผู้อนุมัติ (can_approve) · ผู้ตรวจสอบ (ขั้นที่ 1) · เจ้าหน้าที่วันลาพักผ่อนสะสม
+ */
+async function canViewLeaveBalance(user) {
   if (user.role === 'admin') return true;
   if (user.can_approve) return true;
+  if (await isLeaveBalanceStaff(user)) return true;
   const laRow = await db.prepare("SELECT value FROM settings WHERE `key` = 'leave_approvers'").get();
   let la = {};
   try { la = JSON.parse(laRow ? laRow.value : '{}'); } catch (e) { /* ignore */ }
   const inspectorIds = Array.isArray(la['1']) ? la['1'].map(Number) : [];
-  return inspectorIds.includes(Number(user.id));
+  if (inspectorIds.includes(Number(user.id))) return true;
+  // ผู้ตรวจสอบของฝั่งสถานศึกษา (key แยกกัน)
+  const lsRow = await db.prepare("SELECT value FROM settings WHERE `key` = 'leave_approvers_school'").get();
+  let ls = {};
+  try { ls = JSON.parse(lsRow ? lsRow.value : '{}'); } catch (e) { /* ignore */ }
+  const schoolInspectors = Array.isArray(ls['1']) ? ls['1'].map(Number) : [];
+  return schoolInspectors.includes(Number(user.id));
 }
 
+/**
+ * สิทธิ์ "แก้ไข" วันลาพักผ่อนสะสมของทุกคน
+ *
+ * ผู้ใช้สั่ง 11 พ.ย. 2569: "คนที่ไม่ใช่เจ้าหน้าที่วันลาพักผ่อนสะสมจะไม่มีปุ่มแก้ไข"
+ *   → admin หรือคนที่ถูกกำหนดใน "เจ้าหน้าที่วันลาพักผ่อนสะสม" เท่านั้น
+ *   (เดิมให้ can_approve/ผู้ตรวจสอบแก้ได้ด้วย — ยกเลิกตามคำสั่ง)
+ *
+ * ⚠️ GET (ดู) ใช้ canViewLeaveBalance · PUT (แก้) ใช้ canEditLeaveBalance
+ *    ต้องแยกกันให้ชัด ไม่งั้นสิทธิ์จะ drift (เคยเจอ: เห็นปุ่มแต่กดบันทึกแล้ว 403)
+ */
+async function canEditLeaveBalance(user) {
+  if (user.role === 'admin') return true;
+  return isLeaveBalanceStaff(user);
+}
+
+/** GET /leave-balance-staff — สิทธิ์ของฉัน + (admin) รายชื่อเจ้าหน้าที่ที่กำหนดไว้ */
+router.get('/leave-balance-staff', auth.requireAuth, async (req, res) => {
+  const isAdmin = req.user.role === 'admin';
+  const canEdit = await canEditLeaveBalance(req.user);
+  const canView = await canViewLeaveBalance(req.user);
+  const staffIds = await leaveBalanceStaffIds();
+  let staffUsers = [];
+  let candidates = [];
+  if (isAdmin) {
+    const all = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position,
+             workplace, user_group, status FROM users WHERE status = 'active' ORDER BY full_name`).all();
+    const byId = new Map(all.map((u) => [Number(u.id), u]));
+    staffUsers = staffIds.map((id) => byId.get(Number(id))).filter(Boolean);
+    candidates = all.filter((u) => !staffIds.includes(Number(u.id)));
+  }
+  res.json({ canEdit, canView, isAdmin, staffIds, staffUsers, candidates });
+});
+
+/** PUT /leave-balance-staff — กำหนดรายชื่อ (แทนที่ทั้งชุด · admin เท่านั้น) */
+router.put('/leave-balance-staff', auth.requireAuth, auth.requireAdmin, async (req, res) => {
+  const raw = Array.isArray(req.body && req.body.userIds) ? req.body.userIds : [];
+  const ids = [...new Set(raw.map(Number).filter((n) => n > 0))];
+  let valid = [];
+  if (ids.length) {
+    const rows = await db
+      .prepare(`SELECT id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`)
+      .all(...ids);
+    const found = new Set(rows.map((r) => Number(r.id)));
+    valid = ids.filter((id) => found.has(id));
+  }
+  await db
+    .prepare('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)')
+    .run(LEAVE_BALANCE_STAFF_KEY, JSON.stringify(valid));
+  res.json({
+    ok: true,
+    message: 'บันทึกเจ้าหน้าที่วันลาพักผ่อนสะสมเรียบร้อย (' + valid.length + ' คน)',
+    staffIds: valid,
+  });
+});
+
 router.get('/leave-balances', auth.requireAuth, async (req, res) => {
-  if (!await canEditLeaveBalance(req.user)) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ ผู้อนุมัติ หรือผู้ตรวจสอบเท่านั้น' });
+  if (!await canViewLeaveBalance(req.user)) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ ผู้อนุมัติ ผู้ตรวจสอบ หรือเจ้าหน้าที่วันลาพักผ่อนสะสมเท่านั้น' });
   // ค่าเริ่มต้น = ปีงบประมาณปัจจุบัน (พอถึง 1 ต.ค. เปลี่ยนเป็นปีงบใหม่ทันที) — ข้อมูลปีเก่าเก็บครบตามคอลัมน์ year เรียกดูย้อนหลังได้
   const year = Number(req.query.year) || getFiscalYearBE(); // พ.ศ. (ปีงบประมาณ)
   // ดึงรายชื่อบุคลากรทั้งหมดที่ active
@@ -1396,8 +1473,10 @@ router.get('/leave-balances', auth.requireAuth, async (req, res) => {
 
 router.put('/leave-balances/:userId', auth.requireAuth, async (req, res) => {
   const userId = Number(req.params.userId);
-  // สิทธิ์เดียวกับการดู (ใช้ helper ตัวเดียวกัน — เคย drift ทำให้เห็นตารางแต่บันทึกไม่ได้)
-  if (!await canEditLeaveBalance(req.user)) return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบ ผู้อนุมัติ หรือผู้ตรวจสอบเท่านั้น' });
+  // สิทธิ์แก้ไข: admin หรือ "เจ้าหน้าที่วันลาพักผ่อนสะสม" เท่านั้น (ผู้ใช้สั่ง 11 พ.ย. 2569)
+  if (!await canEditLeaveBalance(req.user)) {
+    return res.status(403).json({ error: 'เฉพาะผู้ดูแลระบบหรือเจ้าหน้าที่วันลาพักผ่อนสะสมเท่านั้น' });
+  }
   const u = await db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
   if (!u) return res.status(404).json({ error: 'ไม่พบเจ้าหน้าที่' });
   const b = req.body || {};
