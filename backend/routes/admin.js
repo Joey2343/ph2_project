@@ -1788,6 +1788,23 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
   // แยกตามสถานศึกษาที่กำลังใช้งาน — อ่านที่โรงเรียนไหน อ่านเฉพาะแถวของโรงเรียนนั้น (ของใครของมัน)
   const activeCode = String(req.user.current_school || '').trim().split(' ')[0];
   const isSchool = req.user.user_group === 'school';
+  /*
+   * ผู้ใช้สั่ง 11 พ.ย. 2569: "เจ้าหน้าที่ในสถานศึกษาทุกคนเห็นหนังสือรับ แต่การเปิดดู
+   *   จะเปลี่ยนสถานะเป็นอ่านแล้วเฉพาะผู้ที่ถูกกำหนดเป็นเจ้าหน้าที่สารบัญสถานศึกษา"
+   * → บัญชีอื่นของโรงเรียนเปิดดูได้ แต่ไม่แตะสถานะ และไม่สร้างแถวผู้รับให้
+   */
+  if (isSchool && /^\d{7,8}$/.test(activeCode) && req.user.role !== 'admin') {
+    const isClerk = await db
+      .prepare("SELECT id FROM document_staff WHERE staff_type = 'school' AND school_code = ? AND user_id = ?")
+      .get(activeCode, userId);
+    if (!isClerk) {
+      const cur = await db
+        .prepare('SELECT is_read FROM document_recipients WHERE document_id = ? AND user_id = ? ORDER BY id LIMIT 1')
+        .get(docId, userId);
+      // คืนสถานะจริง (ไม่เปลี่ยน) — หน้าเว็บจะไม่แสดงว่าอ่านแล้ว
+      return res.json({ ok: true, row: { id: docId, is_read: cur ? Number(cur.is_read) : 0 } });
+    }
+  }
   let changes = 0;
   if (isSchool && /^\d{7,8}$/.test(activeCode)) {
     const r = await db.prepare(`

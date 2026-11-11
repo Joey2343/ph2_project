@@ -76,7 +76,12 @@ watch(
     // ⚠️ ต้องบอกหน้าหลักด้วย มิฉะนั้นแถวจะยังโชว์ "🆕 ใหม่" จนกว่าจะรีเฟรช
     if (d.is_read !== undefined && !d.is_read) {
       api.put('/document-recipients/' + d.id + '/read')
-        .then(() => emit('read', d.id))
+        .then((res) => {
+          // เปลี่ยนสถานะเฉพาะเมื่อเซิร์ฟเวอร์ยืนยันว่าอ่านแล้ว
+          // (บัญชีสถานศึกษาที่ไม่ใช่เจ้าหน้าที่สารบัญ → เซิร์ฟเวอร์ไม่เปลี่ยนสถานะ)
+          const v = res && res.row ? Number(res.row.is_read) : 0;
+          if (v === 1) emit('read', d.id);
+        })
         .catch(() => {});
     }
   },
