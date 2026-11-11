@@ -877,6 +877,13 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   // เตือนหลังบันทึก: กรณีที่ตรวจล่วงหน้าไม่ได้ (ทุกคน/กลุ่ม: ไม่มีสมาชิก) — หนังสือถูกบันทึกแต่ไม่มีผู้รับ
   try {
     const recipCount = (await db.prepare('SELECT COUNT(*) AS c FROM document_recipients WHERE document_id = ?').get(docId)).c;
+    /*
+     * แจ้งเตือน Telegram: "มีหนังสือส่งมาจาก....เรื่อง....ให้ตรวจสอบในเมนูหนังสือรับ"
+     * (ผู้ใช้สั่ง 11 พ.ย. 2569) — ส่งถึงผู้รับทุกคนที่ตั้งค่า Telegram ไว้
+     * ⚠️ ไม่ await: การส่งหลายคน (เช่นทุกโรงเรียน) ต้องไม่ทำให้ผู้ใช้รอหน้าบันทึกค้าง
+     *    ตัวฟังก์ชันจับ error เองแล้ว (ไม่ทำให้ request ล้ม)
+     */
+    if (recipCount > 0) telegram.notifyIncomingDocument(docId).catch(() => {});
     if (!recipCount && (senderType === 'office' && toOrg)) {
       return res.json({ ok: true, id: docId, files: parseFileList(file), file_names: (b.file_names || '').trim(), message: 'บันทึกหนังสือแล้ว ⚠ แต่ไม่พบผู้รับจากช่อง "ถึง": "' + toOrg + '" — หนังสืออาจไม่ถึงปลายทาง กรุณาแก้ไขชื่อผู้รับให้ตรงกับบุคลากรในระบบแล้วส่งใหม่' });
     }

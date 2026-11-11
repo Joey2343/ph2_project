@@ -396,8 +396,69 @@ async function fetchDocumentRow(id) {
   return alt ? Object.assign({}, row, alt) : row;
 }
 
-/** ข้อความแจ้งโรงเรียนว่าหนังสือถูกส่งกลับเพื่อแก้ไข */
-function documentReturnedText(b, deciderName, note) {
+/**
+ * ข้อความแจ้ง "มีหนังสือเข้ามาใหม่ในเมนูหนังสือรับ" (ผู้ใช้สั่ง 11 พ.ย. 2569)
+ *   "เมื่อมีหนังสือเข้ามาในรายการหนังสือรับ จะมีข้อความแจ้งเตือน Telegram ว่า
+ *    มีหนังสือส่งมาจาก....เรื่อง....ให้ตรวจสอบในเมนูหนังสือรับ"
+ */
+function incomingDocumentText(b) {
+  // หนังสือลับ: ห้ามส่งชื่อเรื่อง/เลขที่ออกไป — ให้บอกแค่ว่ามีหนังสือลับ
+  if (Number(b.is_secret)) {
+    return [
+      '📣 P2-SMART สพป.แพร่ 2',
+      '',
+      '🔒 มีหนังสือลับส่งเข้ามาใหม่',
+      '',
+      '• เรื่อง: หนังสือลับ (ต้องเปิดด้วยรหัส)',
+      `• จาก: ${b.from_org || '-'}`,
+      `• วันที่: ${thaiDate(b.date)}`,
+      '',
+      'กรุณาตรวจสอบในเมนู "หนังสือรับ"',
+    ].join('\n');
+  }
+  const lines = [
+    '📣 P2-SMART สพป.แพร่ 2',
+    '',
+    `📥 มีหนังสือส่งมาจาก ${b.from_org || '-'}`,
+    `เรื่อง: ${b.title || '-'}`,
+  ];
+  const docNo = String(b.reg_no || b.doc_no || '').trim();
+  if (docNo) lines.push(`เลขที่หนังสือ: ${docNo}`);
+  lines.push(`วันที่: ${thaiDate(b.date)}`);
+  lines.push('');
+  lines.push('กรุณาตรวจสอบในเมนู "หนังสือรับ"');
+  return lines.join('\n');
+}
+
+/**
+ * แจ้งผู้รับหนังสือ (ทุกคนที่มีแถวใน document_recipients และตั้งค่า Telegram ไว้)
+ *   ข้ามผู้สร้างเอง (ไม่ต้องแจ้งเตือนตัวเอง) และข้ามผู้ที่ยังไม่ได้ตั้งค่า Telegram
+ */
+async function notifyIncomingDocument(id) {
+  try {
+    const doc = await db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(id));
+    if (!doc) return;
+    const rows = await db.prepare(`
+      SELECT user_id FROM document_recipients WHERE document_id = ?
+    `).all(Number(id));
+    const ids = [...new Set(rows.map((r) => Number(r.user_id)).filter((n) => n > 0))]
+      .filter((uid) => uid !== Number(doc.created_by));
+    if (!ids.length) return;
+    const users = await db
+      .prepare(`SELECT id, telegram_token, telegram_chat_id FROM users WHERE id IN (${ids.map(() => '?').join(',')})`)
+      .all(...ids);
+    const text = incomingDocumentText(doc);
+    for (const u of users) {
+      if (u.telegram_token && u.telegram_chat_id) {
+        await sendTelegram({ token: u.telegram_token, chatId: u.telegram_chat_id, text });
+      }
+    }
+  } catch (e) {
+    console.error('[telegram] notifyIncomingDocument error:', e.message);
+  }
+}
+
+/** ข้อความแจ้งโรงเรียนว่าหนังสือถูกส่งกลับเพื่อแก้ไข */function documentReturnedText(b, deciderName, note) {
   return [
     '📣 P2-SMART สพป.แพร่ 2',
     '',
@@ -1127,6 +1188,7 @@ module.exports = {
   memoSubmittedText, memoNextLevelText, memoForwardedText, memoResubmittedText,
   notifyMemoSubmitted, notifyMemoNextLevel, notifyMemoForwarded, notifyMemoResubmitted, notifyMemoReturned,
   notifyDocumentReturned,
+  incomingDocumentText, notifyIncomingDocument,
   fetchLeaveRow, leaveSubmittedText, leaveDelegateText, leaveNextLevelText,
   notifyLeaveSubmitted, notifyLeaveNextLevel,
   notifyLeaveCancelRequested, notifyLeaveCancelled,

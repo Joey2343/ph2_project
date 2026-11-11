@@ -254,6 +254,9 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบแจ้งเตือน Telegram เมื่อมีหนังสือเข้าเมนูหนังสือรับ]');
+  results.push(run('test-doc-incoming-telegram', [path.join(__dirname, 'test-doc-incoming-telegram.js')]));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
