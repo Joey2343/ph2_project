@@ -165,6 +165,19 @@ console.log('③.๓ เจ้าหน้าที่การลาของ�
 }
 
 console.log('');
+console.log('③.๔ ป้ายแจ้งเตือนบนแท็บของหน้า #/leave');
+/* ผู้ใช้สั่ง 11 พ.ย. 2569 — ป้ายวงกลมแดงแบบเดียวกับบนการ์ดเมนูหน้าแรก หลังชื่อแท็บ */
+{
+  const code = stripComments(read('src/pages/LeavePage.vue'));
+  check(/class="tab-badge"/.test(code), 'มีป้าย .tab-badge ในแท็บ');
+  check(/v-if="tabBadge\(g\.key\)"/.test(code), 'แสดงป้ายเมื่อแท็บนั้นมีรายการรออนุมัติ');
+  check(/api\.get\('\/my-pending'\)[\s\S]{0,200}?leave_tabs/.test(code),
+    'อ่านตัวเลขจาก /my-pending → approve.leave_tabs (ชุดเดียวกับหน้าแรก)');
+  check(/function tabBadgeText\(n\)[\s\S]{0,120}?'99\+'/.test(code), 'เกิน 99 แสดง 99+');
+  check(/loadTabBadges\(\);[\s\S]{0,80}?pickInitialTab\(\)/.test(code), 'โหลดตัวเลขตอนเปิดหน้า');
+}
+
+console.log('');
 console.log('④ ลิงก์ ?tab= ที่เหลืออยู่ต้องตรงกับ key ของแท็บจริง');
 /*
  * เคยมีการ์ดบนหน้าแรกที่ลิงก์ #/leave?tab=vacation / ?tab=general

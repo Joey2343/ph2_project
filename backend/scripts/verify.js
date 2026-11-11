@@ -262,6 +262,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบตัวเลขแจ้งเตือนบนแท็บหน้า #/leave — แยกตามแท็บจริง]');
+  results.push(run('test-leave-tab-badges', [path.join(__dirname, 'test-leave-tab-badges.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

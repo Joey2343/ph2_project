@@ -932,6 +932,20 @@ ph2_project/
   - ยังจำ **เลขหน้า** ของแต่ละแท็บ (`doc_page_<tab>`) ตามเดิม
   - บัญชีสถานศึกษาเห็นแท็บชุดย่อย แต่แท็บแรกก็ยังเป็น "หนังสือรับ"
   - เทสต์กันไว้ที่ `check-tab-persist.mjs` และ `verify-vue-pages` (`#/documents`)
+- **ป้ายแจ้งเตือนบนแท็บของหน้า #/leave** (ผู้ใช้สั่ง 11 พ.ย. 2569)
+  - ป้ายวงกลมแดง + ตัวเลข (แบบเดียวกับ `.menu-count` บนการ์ดเมนูหน้าแรก)
+    แสดง **ต่อจากชื่อแท็บ** เฉพาะแท็บที่มีรายการรออนุมัติ (0 = ไม่แสดง) · เกิน 99 = `99+`
+  - ตัวเลขมาจาก `GET /my-pending` → `approve.leave_tabs`
+    = `{ general, vacation, 'general-school' }` (คำนวณใน `leavePending` ของ `routes/ops.js`)
+    · `general` = ลาป่วย/กิจ/คลอด ของเจ้าหน้าที่ สพป. ที่รอฉันอนุมัติ
+    · `vacation` = ลาพักผ่อน ของเจ้าหน้าที่ สพป.
+    · `general-school` = ลาของสถานศึกษา (ไม่ใช่พักผ่อน)
+    · ใช้กติกาเดียวกับตัวกรองของแท็บ (ugroup + group) → ตัวเลขตรงกับรายการในแท็บ
+  - **ผลรวมทุกแท็บ = ผลรวม `approve.leave`** (ผลรวมขั้นอนุมัติ) → ตรงกับป้ายบนการ์ดเมนูหน้าแรก
+  - อนุมัติ/ตรวจสอบแล้ว (`afterChange`) → เรียก `loadTabBadges()` ให้ตัวเลขลดทันที
+  - CSS: `.tab-badge` (scoped) ลอกหน้าตา `.menu-count` แต่เป็น inline ไม่ลอยทับ
+  - เทสต์: `backend/scripts/test-leave-tab-badges.js` (ยิง API · เทียบผลต่าง)
+    และ `check-tab-persist.mjs` หัวข้อ ③.๔
 - **เจ้าหน้าที่การลาของสถานศึกษา (3 ลำดับ) เห็นแท็บลาของสถานศึกษา** (ผู้ใช้สั่ง 11 พ.ย. 2569)
   - บัญชีฝั่ง สพป. ที่ถูกกำหนดใน `settings.leave_approvers_school` (ขั้นใดขั้นหนึ่ง)
     → เห็นแท็บ **"ลาป่วย ลากิจ ลาคลอด (สถานศึกษา)"** ในหน้า `#/leave`
@@ -1313,7 +1327,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **237** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 59/59 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 60/60 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

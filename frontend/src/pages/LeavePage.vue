@@ -233,6 +233,7 @@ onMounted(async () => {
     /* โหลดไม่ได้ = ไม่มีสิทธิ์พิจารณา */
   }
   await loadBalancePerm();
+  loadTabBadges();
   pickInitialTab();
   await loadLatest();
 });
@@ -396,8 +397,38 @@ function openEdit(r) { editTarget.value = r; formOpen.value = true; }
 async function afterChange(payload) {
   const id = payload && payload.id;
   const row = payload && payload.row;
-  if (id && row && applyRow(rows.value, id, { row }, null)) return;
+  if (id && row && applyRow(rows.value, id, { row }, null)) {
+    // อนุมัติ/ตรวจสอบแล้ว → ตัวเลขบนแท็บต้องลดลงทันที
+    loadTabBadges();
+    return;
+  }
   await load();
+  loadTabBadges();
+}
+
+/* ---------- ตัวเลขแจ้งเตือนบนแท็บ (ผู้ใช้สั่ง 11 พ.ย. 2569) ----------
+ * ใช้ตัวเลขชุดเดียวกับป้ายวงกลมสีแดงบนการ์ดเมนูหน้าแรก (approve.leave_tabs)
+ *   → ผู้ใช้เห็นจำนวนรายการที่รออนุมัติได้ทันทีตอนอยู่ในหน้า โดยไม่ต้องกลับหน้าแรก
+ */
+const tabBadges = ref({});
+
+async function loadTabBadges() {
+  try {
+    const d = await api.get('/my-pending');
+    tabBadges.value = (d && d.approve && d.approve.leave_tabs) || {};
+  } catch {
+    tabBadges.value = {};
+  }
+}
+
+/** จำนวนของแท็บนั้น (0 = ไม่แสดงป้าย) */
+function tabBadge(key) {
+  return Number(tabBadges.value[key]) || 0;
+}
+
+/** เกิน 99 แสดง 99+ (เหมือนป้ายบนการ์ดเมนูหน้าแรก) */
+function tabBadgeText(n) {
+  return n > 99 ? '99+' : String(n);
 }
 
 /* ---------- ตัดสิน ---------- */
@@ -545,6 +576,12 @@ function statusPill(r) {
         @click="setTab(g.key)"
       >
         {{ g.label }}
+        <!-- ป้ายแจ้งเตือนแบบเดียวกับบนการ์ดเมนูหน้าแรก (ผู้ใช้สั่ง 11 พ.ย. 2569) -->
+        <span
+          v-if="tabBadge(g.key)"
+          class="tab-badge"
+          :title="'มี ' + tabBadge(g.key) + ' รายการที่รอคุณอนุมัติ/ตรวจสอบ'"
+        >{{ tabBadgeText(tabBadge(g.key)) }}</span>
       </button>
     </div>
   </div>
@@ -834,4 +871,24 @@ function statusPill(r) {
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของเดิมทั้งหมด */
+
+/*
+ * ป้ายแจ้งเตือนบนแท็บ — ลอกหน้าตาจาก .menu-count ของการ์ดเมนูหน้าแรก
+ * (แดง · ตัวอักษรขาว · ทรงแคปซูล) แต่เป็น inline ต่อจากชื่อแท็บ ไม่ลอยทับ
+ */
+.tab-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
 </style>

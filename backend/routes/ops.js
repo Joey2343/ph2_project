@@ -785,7 +785,7 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
    * ใช้สูตรเดียวกับหน้า #/leave (myLevels + nextLevelOf) → ตัวเลขตรงกันแน่นอน
    */
   const leavePending = (async () => {
-    const out = { byLevel: {}, split: {}, general: 0, vacation: 0, group: '' };
+    const out = { byLevel: {}, split: {}, general: 0, vacation: 0, group: '', tabs: {} };
     const rows = await db.prepare(`SELECT l.user_id, l.approval_level, l.leave_type, u.user_group
       FROM leave_requests l JOIN users u ON u.id = l.user_id
       WHERE l.status = 'pending'`).all();
@@ -813,6 +813,17 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
       out.split[sys] = out.split[sys] || {};
       out.split[sys][next] = (out.split[sys][next] || 0) + 1;
       if (isVac) out.vacation++; else out.general++;
+      /*
+       * ตัวเลขบนป้ายของแต่ละแท็บในหน้า #/leave (ผู้ใช้สั่ง 11 พ.ย. 2569)
+       *   ใช้กติกาเดียวกับตัวกรองของแท็บ (ugroup + group):
+       *     · ผู้ขอฝั่งสถานศึกษา → แท็บ "general-school" (เฉพาะลาที่ไม่ใช่พักผ่อน)
+       *     · ผู้ขอฝั่ง สพป. → "vacation" (ลาพักผ่อน) หรือ "general" (ที่เหลือ)
+       */
+      const grp = String(r.user_group || '').trim() === 'school' ? 'school' : 'office';
+      const tabKey = grp === 'school'
+        ? (isVac ? '' : 'general-school')
+        : (isVac ? 'vacation' : 'general');
+      if (tabKey) out.tabs[tabKey] = (out.tabs[tabKey] || 0) + 1;
     }
     return out;
   })();
@@ -826,6 +837,7 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
     travel_school: await travelSchool,
     leave: leavePendingData.byLevel,
     leave_split: leavePendingData.split,
+    leave_tabs: leavePendingData.tabs,
     memo: memoApprove,
   };
 
