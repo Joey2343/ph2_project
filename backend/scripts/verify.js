@@ -238,6 +238,12 @@ async function main() {
   results.push(run('test-leave-balance-staff', [path.join(__dirname, 'test-leave-balance-staff.js')], {
     env: { TEST_BASE_URL },
   }));
+
+  console.log('\n[ทดสอบสิทธิ์ลบหนังสือของโรงเรียน — เจ้าหน้าที่สารบัญสถานศึกษาลบหนังสือของโรงเรียนได้]');
+  results.push(run('test-school-clerk-delete', [path.join(__dirname, 'test-school-clerk-delete.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

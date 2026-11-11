@@ -324,7 +324,16 @@ onMounted(async () => {
 });
 
 /* ---------- ปุ่มด้านบน ---------- */
-const canEditRows = (r) => !r.locked && (isAdmin.value || isOfficeDocStaff.value || r.created_by === Auth.user?.id);
+/**
+ * สิทธิ์แก้ไข/ลบ "ต่อแถว" — ใช้ค่าที่เซิร์ฟเวอร์คำนวณมาให้ก่อน (row.can_edit)
+ * เพราะโรงเรียนมี "เจ้าหน้าที่สารบัญสถานศึกษา" ที่แก้/ลบหนังสือของโรงเรียนได้
+ * แม้ผู้สร้างจะเป็นบัญชีอื่น (fallback เงื่อนไขเดิมเมื่อค่าไม่มา)
+ */
+const canEditRows = (r) => !r.locked && (
+  r.can_edit !== undefined
+    ? !!r.can_edit
+    : (isAdmin.value || isOfficeDocStaff.value || r.created_by === Auth.user?.id)
+);
 const canCert = (r) => isAdmin.value || isCertStaff.value;
 /**
  * ส่งกลับหนังสือให้โรงเรียนแก้ไข ได้เฉพาะ admin หรือเจ้าหน้าที่สารบัญเขต

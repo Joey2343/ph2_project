@@ -10,7 +10,7 @@ const { uploadDocuments, uploadStaff, createDynamicUpload, getUploadSubdir, uplo
 const cleanup = require('../lib/cleanup');
 const staffSort = require('../lib/staff-sort');
 const telegram = require('../lib/telegram');
-const { schoolCodeOf } = require('../lib/school-code');
+const { schoolCodeOf, eightDigits } = require('../lib/school-code');
 const uploadDocDynamic = createDynamicUpload('documents');
 
 const router = express.Router();
@@ -398,6 +398,31 @@ function sangkadFilter(value) {
   };
 }
 
+/**
+ * รหัสโรงเรียน "ของหนังสือ" 1 แถว
+ *   ใช้ตัดสินสิทธิ์ของเจ้าหน้าที่สารบัญสถานศึกษา (แก้ไข/ลบเฉพาะหนังสือของโรงเรียนตัวเอง)
+ *   ลำดับ: documents.school_code → ถ้าผู้สร้างเป็นฝั่งสถานศึกษา ใช้รหัสจาก workplace ของผู้สร้าง
+ *   (รายการเก่าก่อนมีคอลัมน์ school_code จะดูจากผู้สร้าง)
+ */
+function docSchoolCode(row) {
+  const code = String((row && row.school_code) || '').trim();
+  if (code) return code;
+  if (String((row && row.creator_group) || '') === 'school') {
+    const viaCreator = eightDigits(row.creator_workplace);
+    if (viaCreator) return viaCreator;
+  }
+  /*
+   * รายการเก่ามากที่ไม่มี school_code และผู้สร้างถูกลบออกจากระบบแล้ว
+   *   → ใช้รหัสโรงเรียนนำหน้า "จาก" ของหนังสือของโรงเรียน (จาก = "54020001 ชื่อโรงเรียน")
+   *   เฉพาะหนังสือที่มาจากฝั่งสถานศึกษาเท่านั้น (หนังสือของสำนักงานไม่มีรหัสนำหน้า)
+   */
+  const sender = String((row && row.sender_type) || '');
+  if (sender === 'school' || sender === 'school_to_school' || sender === 'registered' || Number(row && row.is_registered)) {
+    return eightDigits(row && row.from_org);
+  }
+  return '';
+}
+
 async function prepareDocRows(rows, req) {
   const list = Array.isArray(rows) ? rows : (rows ? [rows] : []);
   const secretIds = list.filter((r) => r && Number(r.is_secret)).map((r) => Number(r.id));
@@ -411,6 +436,17 @@ async function prepareDocRows(rows, req) {
   }
   const isAdmin = !!(req.user && req.user.role === 'admin');
   const uid = req.user ? Number(req.user.id) : 0;
+  /*
+   * สิทธิ์แก้ไข/ลบ "ต่อแถว" — คำนวณที่เซิร์ฟเวอร์
+   *
+   * ผู้ใช้สั่ง 11 พ.ย. 2569: เจ้าหน้าที่สารบัญสถานศึกษาเห็นหนังสือของโรงเรียนย้อนหลังทั้งหมด
+   *   (แม้ผู้สร้างจะเป็นคนอื่น/บัญชีเก่าที่ถูกลบ) แต่ฝั่งหน้าเว็บเช็คแค่ created_by
+   *   → ไม่มีปุ่มลบให้หนังสือที่ลงทะเบียนโดยเจ้าหน้าที่คนก่อน
+   *   (ผู้ใช้แจ้ง: หนังสือส่ง 54020001 เลขที่ ศธ 04110.0001/2 · 54020002 เลขที่ 04110.0002/2 ลบไม่ได้)
+   */
+  const officeClerk = req.user ? await isOfficeDocStaff(req.user) : false;
+  const mySchoolCode = req.user ? schoolCodeOf(req.user) : '';
+  const schoolClerk = req.user && mySchoolCode ? await isSchoolDocClerk(req.user, mySchoolCode) : false;
   const out = list.map((r) => {
     if (!r) return r;
     const row = Object.assign({}, r);
@@ -419,18 +455,22 @@ async function prepareDocRows(rows, req) {
     row.sangkad = docSangkad(row);
     if (!Number(row.is_secret)) {
       row.locked = false;
-      return row;
+    } else {
+      // ผู้ส่ง (เจ้าของหนังสือ) และ admin เปิดได้เลย — คนอื่นต้องปลดล็อกด้วยรหัสในเซสชันนี้
+      row.locked = !(isAdmin || Number(row.created_by) === uid || unlocked.has(Number(row.id)));
+      if (row.locked) {
+        row.title = SECRET_TITLE;
+        row.body_text = '';
+        row.note = '';
+        row.file = null;
+        row.file_names = '';
+        row.honor_saved_file = '';
+      }
     }
-    // ผู้ส่ง (เจ้าของหนังสือ) และ admin เปิดได้เลย — คนอื่นต้องปลดล็อกด้วยรหัสในเซสชันนี้
-    row.locked = !(isAdmin || Number(row.created_by) === uid || unlocked.has(Number(row.id)));
-    if (row.locked) {
-      row.title = SECRET_TITLE;
-      row.body_text = '';
-      row.note = '';
-      row.file = null;
-      row.file_names = '';
-      row.honor_saved_file = '';
-    }
+    row.can_edit = !row.locked && (
+      isAdmin || officeClerk || Number(row.created_by) === uid
+      || (schoolClerk && mySchoolCode && docSchoolCode(row) === mySchoolCode)
+    );
     return row;
   });
   return Array.isArray(rows) ? out : out[0];
@@ -851,8 +891,24 @@ router.put('/documents/:id', auth.requireAuth, uploadDocDynamic.array('files', 7
   if (!row) return res.status(404).json({ error: 'ไม่พบหนังสือ' });
   if (row.doc_type === 'certificate' && req.user.role !== 'admin' && !await isCertStaffUser(req.user.id)) return res.status(403).json({ error: 'เฉพาะเจ้าหน้าที่หนังสือรับรองเท่านั้นที่แก้ไขได้' });
   // สารบัญเขตสามารถลงทะเบียน/แก้ไขหนังสือที่สถานศึกษาหรือบุคคลอื่นส่งมาได้
+  // สารบัญสถานศึกษาแก้ไขหนังสือของโรงเรียนตัวเองได้ (แม้ผู้สร้างเป็นบัญชีอื่น — ผู้ใช้สั่ง 11 พ.ย. 2569)
   const isOfficeClerk = !!await db.prepare("SELECT id FROM document_staff WHERE staff_type = 'office' AND user_id = ?").get(req.user.id);
-  if (req.user.role !== 'admin' && row.created_by !== req.user.id && !isOfficeClerk) return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขหนังสือนี้' });
+  let isSchoolClerkHere = false;
+  if (req.user.role !== 'admin' && row.created_by !== req.user.id && !isOfficeClerk) {
+    const creator = await db
+      .prepare('SELECT user_group, school_code, workplace, current_school FROM users WHERE id = ?')
+      .get(row.created_by);
+    const rowSchool = docSchoolCode({
+      school_code: row.school_code,
+      sender_type: row.sender_type,
+      is_registered: row.is_registered,
+      from_org: row.from_org,
+      creator_group: creator ? creator.user_group : '',
+      creator_workplace: creator ? creator.workplace : '',
+    });
+    isSchoolClerkHere = rowSchool ? await isSchoolDocClerk(req.user, rowSchool) : false;
+    if (!isSchoolClerkHere) return res.status(403).json({ error: 'ไม่มีสิทธิ์แก้ไขหนังสือนี้' });
+  }
   const b = req.body || {};
   let file = row.file;
   /*
@@ -960,14 +1016,32 @@ router.delete('/documents/:id', auth.requireAuth, async (req, res) => {
   if (row.doc_type === 'certificate' && req.user.role !== 'admin' && !await isCertStaffUser(req.user.id)) return res.status(403).json({ error: 'เฉพาะเจ้าหน้าที่หนังสือรับรองเท่านั้นที่ลบได้' });
   /*
    * สิทธิ์ลบ = admin · เจ้าหน้าที่สารบัญเขต · เจ้าของรายการ
+   *          · เจ้าหน้าที่สารบัญสถานศึกษา "ของโรงเรียนที่เป็นเจ้าของหนังสือ"
    *
    * ⚠️ เดิมอนุญาตแค่ admin กับเจ้าของ (created_by) แต่หน้าเว็บโชว์ปุ่ม ✕ ให้
    *    "เจ้าหน้าที่สารบัญเขต" ด้วย (canEditRows ใน DocumentsPage.vue)
    *    → สารบัญเขตกดลบหนังสือที่โรงเรียนส่งมาแล้วได้ 403 "ไม่มีสิทธิ์ลบหนังสือนี้"
    *      รายการค้างในแท็บหนังสือรับลบไม่ได้เลย (เจอจริง: โรงเรียน 54020001, 54020002)
-   *    ใช้ isOfficeDocStaff() ตัวเดียวกับ PUT /documents/:id เพื่อให้แก้ไข/ลบตรงกัน
+   *
+   * 11 พ.ย. 2569: เจ้าหน้าที่สารบัญสถานศึกษาเห็นหนังสือของโรงเรียนย้อนหลังทั้งหมด
+   *   แต่ลบไม่ได้เพราะผู้สร้างเป็นบัญชีอื่น (เจ้าหน้าที่คนก่อน/ผอ./บัญชีที่ถูกลบ)
+   *   → ให้สารบัญสถานศึกษาลบหนังสือของโรงเรียนตัวเองได้ (เหมือนฝั่งสำนักงานเขต)
    */
-  if (!await isOfficeDocStaff(req.user) && row.created_by !== req.user.id) return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบหนังสือนี้' });
+  const creator = await db
+    .prepare('SELECT user_group, school_code, workplace, current_school FROM users WHERE id = ?')
+    .get(row.created_by);
+  const rowSchool = docSchoolCode({
+    school_code: row.school_code,
+    sender_type: row.sender_type,
+    is_registered: row.is_registered,
+    from_org: row.from_org,
+    creator_group: creator ? creator.user_group : '',
+    creator_workplace: creator ? creator.workplace : '',
+  });
+  const isSchoolClerkOfDoc = rowSchool ? await isSchoolDocClerk(req.user, rowSchool) : false;
+  if (!await isOfficeDocStaff(req.user) && row.created_by !== req.user.id && !isSchoolClerkOfDoc) {
+    return res.status(403).json({ error: 'ไม่มีสิทธิ์ลบหนังสือนี้' });
+  }
   if (row.file) deleteUploadedFile(row.file);
   if (row.honor_saved_file) deleteUploadedFile(row.honor_saved_file); // ลบไฟล์เกียรติบัตรที่บันทึกไว้ด้วย
   await cleanup.purgeDocumentChildren(row.id); // ลบผู้รับ + สถานะการอ่านที่ผูกกับหนังสือนี้ (ไม่ทิ้งค่าค้างใน DB)
