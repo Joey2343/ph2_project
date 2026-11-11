@@ -56,6 +56,10 @@ check(!/localStorage\.setItem\('leave_tab'/.test(leaveCode),
   'ไม่เขียน leave_tab แล้ว (ทั้ง pickInitialTab และ setTab)');
 check(/if \(!groups\.value\.some\(\(g\) => g\.key === t\)\)[\s\S]{0,200}?'vacation'/.test(pickBody),
   'แท็บที่เข้าไม่ได้ → ตกกลับแท็บลาพักผ่อน (หรือแท็บลาแรกที่เข้าได้)');
+/* ผู้ใช้แจ้ง 11 พ.ย. 2569 (user 3411200862016): บัญชีสถานศึกษาเปิดหน้าแล้วไม่เห็นรายการ */
+check(/groups\.value\[0\] \? groups\.value\[0\]\.key : 'general'/.test(pickBody),
+  'แท็บที่ขอใช้ไม่ได้ → ใช้แท็บแรกที่บัญชีนี้เข้าได้ (สถานศึกษาได้ "general-school")',
+  'เดิมตกกลับ general ตายตัว → บัญชีสถานศึกษาเปิดมาไม่เห็นรายการ ต้องกดแท็บเอง');
 check(!/LEAVE_GROUPS\.some/.test(pickBody),
   'ไม่ตรวจกับ LEAVE_GROUPS อีกแล้ว',
   'LEAVE_GROUPS มีแค่ 3 แท็บ ส่วนแท็บสถิติ/ยอดคงเหลือ/ตั้งค่าอยู่ใน ADMIN_GROUPS\n'

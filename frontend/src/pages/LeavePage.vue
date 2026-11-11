@@ -152,7 +152,17 @@ function pickInitialTab() {
   const q = route.query.tab || '';
   let t = q || 'vacation';
   if (!groups.value.some((g) => g.key === t)) {
-    t = groups.value.some((g) => g.key === 'vacation') ? 'vacation' : 'general';
+    /*
+     * แท็บที่ขอใช้ไม่ได้ → ใช้แท็บลาแรกที่บัญชีนี้เข้าได้จริง
+     *
+     * ⚠️ เดิมตกกลับเป็น 'general' ตายตัว → บัญชีสถานศึกษา (มีแต่แท็บ 'general-school')
+     *   ได้ current = 'general' ที่ไม่มีปุ่มให้กด → เปิดหน้ามาไม่เห็นรายการเลย
+     *   ต้องไปกดแท็บ "(สถานศึกษา)" เองถึงจะแสดง (ผู้ใช้แจ้ง 11 พ.ย. 2569
+     *   · user 3411200862016)
+     */
+    t = groups.value.some((g) => g.key === 'vacation')
+      ? 'vacation'
+      : (groups.value[0] ? groups.value[0].key : 'general');
   }
   current.value = t;
   applyListScope(t);
