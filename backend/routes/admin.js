@@ -1725,15 +1725,46 @@ router.get('/document-recipients/:docId', auth.requireAuth, async (req, res) => 
 // GET /my-incoming - get incoming documents for current user
 router.get('/my-incoming', auth.requireAuth, async (req, res) => {
   const q = req.query.q || '';
-  let sql = 'SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, \'office\') AS creator_group, dr.is_read, dr.read_at, dr.as_school FROM document_recipients dr JOIN documents d ON d.id = dr.document_id LEFT JOIN users u ON u.id = d.created_by WHERE dr.user_id = ?';
-  const params = [req.user.id];
-  // ผู้ใช้กลุ่มสถานศึกษา: แยกตามสถานศึกษาที่กำลังใช้งาน (as_school) — ของใครของมัน
-  // "to_org ขึ้นต้นด้วยเลข" ต้องใช้ REGEXP ไม่ใช่ GLOB
-  // GLOB เป็นไวยากรณ์ของ SQLite — MariaDB ไม่รู้จัก คำสั่งจะ error ทันที
-  // (เคยทำให้หน้า "หนังสือรับ" ฝั่งสถานศึกษาพังทันทีที่เลือกสถานศึกษาไว้)
-  if (req.user.user_group === 'school' && (req.user.current_school || '').trim()) {
-    const activeCode = String(req.user.current_school).trim().split(' ')[0];
-    if (/^\d{7,8}$/.test(activeCode)) {
+  /*
+   * ผู้ใช้ฝั่งสถานศึกษา: "หนังสือรับ" เป็นของ "โรงเรียน" ไม่ใช่ของบัญชีผู้ใช้
+   *   เห็นได้เมื่อ ① เป็นผู้รับใน document_recipients หรือ
+   *              ② หนังสือถูกส่งถึงโรงเรียนนี้ (document_school_targets)
+   *
+   * ⚠️ เดิมเห็นเฉพาะแถวผู้รับของตัวเอง → โรงเรียนที่ยังไม่ได้ตั้ง "เจ้าหน้าที่สารบัญ"
+   *    หรือเปลี่ยนตัวเจ้าหน้าที่แล้ว บัญชีอื่นของโรงเรียนเปิดมาไม่เห็นหนังสือ
+   *    (ผู้ใช้แจ้ง 11 พ.ย. 2569: สพป. ส่งหนังสือถึง 54020001 แต่หน้า หนังสือรับ ของ
+   *     โรงเรียนไม่แสดง — ผู้รับถูกบันทึกให้บัญชีอื่นของโรงเรียนเท่านั้น)
+   */
+  const isSchool = req.user.user_group === 'school';
+  const activeCode = String(req.user.current_school || '').trim().split(' ')[0];
+  let sql;
+  let params;
+  if (isSchool && /^\d{7,8}$/.test(activeCode)) {
+    sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace,
+                  COALESCE(u.user_group, 'office') AS creator_group,
+                  (SELECT r.is_read FROM document_recipients r
+                    WHERE r.document_id = d.id AND r.user_id = ?
+                    ORDER BY r.id LIMIT 1) AS is_read,
+                  (SELECT r.read_at FROM document_recipients r
+                    WHERE r.document_id = d.id AND r.user_id = ?
+                    ORDER BY r.id LIMIT 1) AS read_at,
+                  (SELECT r.as_school FROM document_recipients r
+                    WHERE r.document_id = d.id AND r.user_id = ?
+                    ORDER BY r.id LIMIT 1) AS as_school
+           FROM documents d
+           LEFT JOIN users u ON u.id = d.created_by
+           WHERE (
+             EXISTS (SELECT 1 FROM document_recipients r2
+                      WHERE r2.document_id = d.id AND r2.user_id = ?)
+             OR EXISTS (SELECT 1 FROM document_school_targets t
+                         WHERE t.document_id = d.id AND t.school_code = ?)
+           )`;
+    params = [req.user.id, req.user.id, req.user.id, req.user.id, activeCode];
+  } else {
+    sql = 'SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, \'office\') AS creator_group, dr.is_read, dr.read_at, dr.as_school FROM document_recipients dr JOIN documents d ON d.id = dr.document_id LEFT JOIN users u ON u.id = d.created_by WHERE dr.user_id = ?';
+    params = [req.user.id];
+    // ผู้ใช้กลุ่มสถานศึกษาที่ยังไม่รู้รหัสโรงเรียนที่ใช้งาน → เดิมกรองตาม as_school
+    if (isSchool && activeCode) {
       sql += " AND (dr.as_school = ? OR (dr.as_school IS NULL AND NOT (d.to_org REGEXP '^[0-9]' AND d.to_org NOT LIKE ?)))";
       params.push(activeCode, activeCode + '%');
     }
@@ -1756,11 +1787,28 @@ router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res
   const userId = req.user.id;
   // แยกตามสถานศึกษาที่กำลังใช้งาน — อ่านที่โรงเรียนไหน อ่านเฉพาะแถวของโรงเรียนนั้น (ของใครของมัน)
   const activeCode = String(req.user.current_school || '').trim().split(' ')[0];
-  if (req.user.user_group === 'school' && /^\d{7,8}$/.test(activeCode)) {
-    await db.prepare(`
+  const isSchool = req.user.user_group === 'school';
+  let changes = 0;
+  if (isSchool && /^\d{7,8}$/.test(activeCode)) {
+    const r = await db.prepare(`
       UPDATE document_recipients SET is_read = 1, read_at = NOW()
       WHERE document_id = ? AND user_id = ? AND (as_school = ? OR as_school IS NULL OR as_school = '')
     `).run(docId, userId, activeCode);
+    changes = Number(r && (r.changes || r.affectedRows)) || 0;
+    /*
+     * ยังไม่มีแถวผู้รับของบัญชีนี้ แต่เห็นหนังสือได้เพราะ "ส่งถึงโรงเรียน"
+     *   (document_school_targets) → สร้างแถวผู้รับให้แล้วทำเครื่องหมายว่าอ่านแล้ว
+     *   ไม่งั้นกดอ่านแล้วสถานะยังเป็น "ใหม่" ตลอด
+     */
+    if (!changes) {
+      const targeted = await db
+        .prepare('SELECT 1 AS ok FROM document_school_targets WHERE document_id = ? AND school_code = ? LIMIT 1')
+        .get(docId, activeCode);
+      if (targeted) {
+        await db.prepare('INSERT INTO document_recipients (document_id, user_id, as_school, is_read, read_at) VALUES (?,?,?,1,NOW())')
+          .run(docId, userId, activeCode);
+      }
+    }
   } else {
     await db.prepare(`
       UPDATE document_recipients SET is_read = 1, read_at = NOW()
