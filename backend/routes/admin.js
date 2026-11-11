@@ -41,6 +41,31 @@ function getSchoolPrefix(req) {
  *
  * @returns {{clause: string, params: any[]}} ต่อท้ายด้วย " AND (clause) "
  */
+/**
+ * ผู้ใช้คนนี้เป็น "เจ้าหน้าที่สารบัญสถานศึกษา" ของโรงเรียนที่ระบุไหม
+ *   admin นับด้วย (ผ่านทุกอย่าง)
+ *   ผู้ใช้สั่ง 11 พ.ย. 2569: คนเดียวเป็นสารบัญได้หลายโรงเรียน (ตรวจทีละรหัส)
+ */
+async function isSchoolDocClerk(user, code) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (!code) return false;
+  const row = await db
+    .prepare("SELECT id FROM document_staff WHERE staff_type = 'school' AND school_code = ? AND user_id = ?")
+    .get(String(code), user.id);
+  return !!row;
+}
+
+/**
+ * บัญชีสถานศึกษาที่ "ไม่ใช่เจ้าหน้าที่สารบัญ" เห็นเฉพาะเอกสารตั้งแต่ตัวเองเข้ามาในระบบ
+ *   (ผู้ใช้สั่ง 11 พ.ย. 2569 ข้อ 2: ผู้ใช้ใหม่ต้องไม่เห็นรายการก่อนหน้านั้นของสถานศึกษา)
+ *   เจ้าหน้าที่สารบัญเห็นทั้งหมดของโรงเรียน (ข้อ 1)
+ */
+function joinedAtOf(user) {
+  const s = String((user && user.created_at) || '').trim();
+  return s ? s.slice(0, 19) : '0000-00-00 00:00:00';
+}
+
 async function schoolDocScope(user) {
   const code = schoolCodeOf(user);
   if (!code) return { clause: 'd.created_by = ?', params: [user.id] };
@@ -430,6 +455,11 @@ router.get('/documents', auth.requireAuth, async (req, res) => {
         const scope = await schoolDocScope(req.user);
         sql += ' AND (' + scope.clause + ')';
         args.push(...scope.params);
+        // ไม่ใช่เจ้าหน้าที่สารบัญ → เห็นเฉพาะหนังสือตั้งแต่ตัวเองเข้ามาในระบบ
+        if (!await isSchoolDocClerk(req.user, schoolCodeOf(req.user))) {
+          sql += ' AND d.created_at >= ?';
+          args.push(joinedAtOf(req.user));
+        }
       } else if (await isOfficeDocStaff(req.user)) {
         /*
          * สำนักงานเขต: "หนังสือส่ง" ของสารบัญเขต = ของสำนักงาน ไม่ใช่ของบัญชี
@@ -1769,6 +1799,11 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
       params.push(activeCode, activeCode + '%');
     }
   }
+  // บัญชีสถานศึกษาที่ไม่ใช่เจ้าหน้าที่สารบัญ → เห็นเฉพาะเอกสารตั้งแต่ตัวเองเข้ามาในระบบ
+  if (isSchool && /^\d{7,8}$/.test(activeCode) && !await isSchoolDocClerk(req.user, activeCode)) {
+    sql += ' AND d.created_at >= ?';
+    params.push(joinedAtOf(req.user));
+  }
   const yc1 = docYearClause(req.query.year); if (yc1) { sql += yc1.clause; params.push(yc1.arg); }
   const wgi = (req.query.workgroup || '').trim(); if (wgi) { const sf = sangkadFilter(wgi); sql += sf.clause; params.push(...sf.args); }
   if (q) {
@@ -1863,6 +1898,11 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
       sql += ' AND EXISTS (SELECT 1 FROM document_recipients r WHERE r.document_id = d.id AND r.user_id = ?)';
       params.push(userId);
     }
+    // ไม่ใช่เจ้าหน้าที่สารบัญสถานศึกษา → เห็นเฉพาะรายการตั้งแต่ตัวเองเข้ามาในระบบ
+    if (!await isSchoolDocClerk(req.user, schoolCode)) {
+      sql += ' AND d.created_at >= ?';
+      params.push(joinedAtOf(req.user));
+    }
   }
   else {
     // เฉพาะสารบัญเขต (หรือ admin) จะเห็นหนังสือที่สถานศึกษาส่งมา (sender_type = 'school')
@@ -1905,6 +1945,11 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
     const scope = await schoolDocScope(req.user);
     sql += ' AND (' + scope.clause + ')';
     params.push(...scope.params);
+    // ไม่ใช่เจ้าหน้าที่สารบัญสถานศึกษา → เห็นเฉพาะรายการตั้งแต่ตัวเองเข้ามาในระบบ
+    if (!await isSchoolDocClerk(req.user, schoolCodeOf(req.user))) {
+      sql += ' AND d.created_at >= ?';
+      params.push(joinedAtOf(req.user));
+    }
   }
   // ฝั่งสำนักงานเขต: เฉพาะรายการที่ไม่มีรหัสโรงเรียน (ของโรงเรียนเป็นของโรงเรียน)
   // (เดิมคัดด้วย d.school_code = '54020000' ซึ่งไม่มีผล เพราะรหัสนี้ถูกถอดจาก schools แล้ว

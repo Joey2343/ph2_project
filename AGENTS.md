@@ -1029,6 +1029,17 @@ ph2_project/
   - ⚠️ `document_recipients` **ไม่มี `UNIQUE(document_id, user_id)`**
     → `INSERT IGNORE` กันแถวซ้ำไม่ได้ ต้องเช็ค `NOT EXISTS` เอง
     ไม่งั้นกดบันทึกเจ้าหน้าที่ซ้ำ = หนังสือโผล่ซ้ำในรายการรับ (เจอจริง 25 ต.ค. 2569)
+- **สิทธิ์เห็นหนังสือของสถานศึกษา — แยก "เจ้าหน้าที่สารบัญ" กับผู้ใช้ทั่วไป** (ผู้ใช้สั่ง 11 พ.ย. 2569)
+  - **เจ้าหน้าที่สารบัญสถานศึกษา** (`document_staff` staff_type='school' + รหัสโรงเรียน)
+    เห็นรายการทั้งหมดที่ผ่านมาของโรงเรียน (หนังสือรับ · หนังสือส่ง · ทะเบียนหนังสือส่ง/รับ)
+    แม้บัญชีคนก่อนจะถูกลบออกจากระบบแล้ว — หนังสือยังอยู่ในฐานและผูกกับโรงเรียน
+  - **ผู้ใช้ใหม่ของโรงเรียนที่ไม่ใช่เจ้าหน้าที่สารบัญ** เห็นเฉพาะเอกสารที่
+    `documents.created_at >= users.created_at` ของตัวเอง (ไม่เห็นรายการก่อนหน้า)
+  - ใช้ `isSchoolDocClerk(user, code)` + `joinedAtOf(user)` ใน
+    `/documents?doc_type=outgoing` · `/my-incoming` · `/my-incoming-registered` · `/my-outgoing-registered`
+  - **คนเดียวเป็นเจ้าหน้าที่สารบัญได้หลายโรงเรียน** — `POST /document-staff/school` เก็บเป็นรายแถว
+    (school_code + user_id) และลบ/แก้เฉพาะโรงเรียนที่กำลังบันทึก ไม่กระทบโรงเรียนอื่น
+  - เทสต์กันไว้ที่ `backend/scripts/test-school-clerk-scope.js` (อยู่ใน `npm run verify`)
 - **"หนังสือรับ" ของสถานศึกษาเป็นของโรงเรียน ไม่ใช่ของบัญชีผู้ใช้** (ผู้ใช้แจ้ง 11 พ.ย. 2569)
   - `/my-incoming` ของบัญชี `user_group='school'` เห็นหนังสือเมื่อ
     ① มีแถวใน `document_recipients` ของตัวเอง **หรือ**
@@ -1174,7 +1185,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **231** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 50/50 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 51/51 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

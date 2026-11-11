@@ -219,6 +219,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบสิทธิ์เห็นหนังสือของสถานศึกษา — สารบัญเห็นทั้งหมด · ผู้ใช้ใหม่เห็นเฉพาะตั้งแต่ตัวเองเข้ามา]');
+  results.push(run('test-school-clerk-scope', [path.join(__dirname, 'test-school-clerk-scope.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
