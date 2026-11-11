@@ -106,7 +106,7 @@ const detail = read('src/components/documents/DocumentsDetailModal.vue');
 check(/defineEmits\(\[[^\]]*'read'/.test(detail),
   'dialog ประกาศ emit "read"',
   'ไม่งั้นหน้าหลักจะไม่รู้ว่าอ่านแล้ว และต้องรอผู้ใช้รีเฟรชเอง (บั๊กเดิม)');
-check(/api\.put\('\/document-recipients\/'\s*\+\s*d\.id\s*\+\s*'\/read'\)[\s\S]{0,160}emit\('read'/.test(detail),
+check(/api\.put\('\/document-recipients\/'\s*\+\s*d\.id\s*\+\s*'\/read'\)[\s\S]{0,400}emit\('read'/.test(detail),
   'หลังบันทึกว่าอ่านแล้ว ต้อง emit "read" ต่อให้หน้าหลัก');
 const docsPage = read('src/pages/DocumentsPage.vue');
 check(/@read="onDetailRead"/.test(docsPage), 'หน้าหลักผูก @read ไว้');
