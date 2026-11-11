@@ -1129,7 +1129,30 @@ router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
   const ins = db.prepare('INSERT INTO document_staff (staff_type, user_id, school_code) VALUES (?, ?, ?)');
   for (const uid of ids) { await ins.run('school', uid, school_code) };
 
+  /*
+   * 0) แถวผู้รับเก่าที่ยังไม่มี as_school (ก่อนมีคอลัมน์นี้) → รับมาเป็นของโรงเรียนนี้
+   *    ทำก่อน insert เพื่อไม่ให้เกิดแถวซ้ำ และเพื่อให้ "อ่านแล้ว" แยกกันได้จริง
+   */
+  const adoptLegacy = db.prepare(`
+    UPDATE document_recipients dr
+    JOIN documents d ON d.id = dr.document_id
+    SET dr.as_school = ?
+    WHERE dr.user_id = ?
+      AND (dr.as_school IS NULL OR dr.as_school = '')
+      AND (
+        EXISTS (SELECT 1 FROM document_school_targets t
+                 WHERE t.document_id = d.id AND t.school_code = ?)
+        OR d.to_org LIKE ?
+      )
+  `);
+
   // 1) หนังสือที่ "ส่งถึงโรงเรียนนี้" ตามตารางถาวร — ครอบทั้ง สพป.→โรงเรียน และ โรงเรียน→โรงเรียน
+  /*
+   * ⚠️ ต้องเทียบ as_school ด้วย (เดิมเทียบแค่ document_id + user_id)
+   *   ผู้ใช้สั่ง 11 พ.ย. 2569: สารบัญคนเดียวดูแลหลายโรงเรียน (54020001 + 54020002)
+   *   เดิมกำหนดโรงเรียนที่ 2 แล้วระบบเห็นว่ามีแถวผู้รับอยู่แล้ว (ของโรงเรียนแรก)
+   *   → ไม่สร้างแถวของโรงเรียนที่ 2 → สถานะ "อ่านแล้ว" ของ 2 โรงเรียนปนกัน
+   */
   const syncFromTargets = db.prepare(`
     INSERT INTO document_recipients (document_id, user_id, as_school)
     SELECT t.document_id, ?, t.school_code
@@ -1137,7 +1160,7 @@ router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
     WHERE t.school_code = ?
       AND NOT EXISTS (
         SELECT 1 FROM document_recipients dr
-        WHERE dr.document_id = t.document_id AND dr.user_id = ?
+        WHERE dr.document_id = t.document_id AND dr.user_id = ? AND dr.as_school = ?
       )
   `);
   // 2) หนังสือเก่าก่อนมีตารางถาวร — ใช้ to_org หรือผู้รับที่ยังเหลือเป็นหลักฐาน
@@ -1153,12 +1176,13 @@ router.post('/document-staff/school', auth.requireAdmin, async (req, res) => {
       ))
       AND NOT EXISTS (
         SELECT 1 FROM document_recipients dr2
-        WHERE dr2.document_id = d.id AND dr2.user_id = ?
+        WHERE dr2.document_id = d.id AND dr2.user_id = ? AND dr2.as_school = ?
       )
   `);
   for (const uid of ids) {
-    await syncFromTargets.run(uid, school_code, uid);
-    await syncLegacy.run(uid, school_code, school_code + '%', school_code, school_code + '%', uid);
+    await adoptLegacy.run(school_code, uid, school_code, school_code + '%');
+    await syncFromTargets.run(uid, school_code, uid, school_code);
+    await syncLegacy.run(uid, school_code, school_code + '%', school_code, school_code + '%', uid, school_code);
   }
 
   // 3) ผู้ที่ถูกปลดออกจากสารบัญของโรงเรียนนี้ → ถอดสิทธิ์รับ "เฉพาะหนังสือของโรงเรียนนี้"
@@ -1879,26 +1903,44 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
   let sql;
   let params;
   if (isSchool && /^\d{7,8}$/.test(activeCode)) {
+    /*
+     * ⚠️ ผู้ใช้สั่ง 11 พ.ย. 2569: เจ้าหน้าที่สารบัญคนเดียวดูแลหลายโรงเรียน
+     *   (เช่น 54020001 + 54020002) → สถานะ "อ่านแล้ว" ต้องแยกตามโรงเรียนที่กำลังใช้งาน
+     *
+     *   เดิม subquery เอาแถวแรกของผู้ใช้ (`ORDER BY r.id LIMIT 1`) โดยไม่ดูโรงเรียน
+     *   → อ่านที่ 54020001 แล้วเข้า 54020002 กลับเห็น "อ่านแล้ว" ด้วย
+     *     (สถานะจริงของ 54020002 ยังไม่อ่าน แต่หน้าเว็บอ่านผิดแถว)
+     *   → ทุก subquery ต้องกรอง as_school = โรงเรียนที่กำลังใช้งาน (หรือแถวเก่าที่ไม่มี as_school)
+     */
+    const mine = "(r.as_school = ? OR r.as_school IS NULL OR r.as_school = '')";
+    const prefer = 'ORDER BY (CASE WHEN r.as_school = ? THEN 0 ELSE 1 END), r.id LIMIT 1';
     sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace,
                   COALESCE(u.user_group, 'office') AS creator_group,
                   (SELECT r.is_read FROM document_recipients r
-                    WHERE r.document_id = d.id AND r.user_id = ?
-                    ORDER BY r.id LIMIT 1) AS is_read,
+                    WHERE r.document_id = d.id AND r.user_id = ? AND ${mine}
+                    ${prefer}) AS is_read,
                   (SELECT r.read_at FROM document_recipients r
-                    WHERE r.document_id = d.id AND r.user_id = ?
-                    ORDER BY r.id LIMIT 1) AS read_at,
+                    WHERE r.document_id = d.id AND r.user_id = ? AND ${mine}
+                    ${prefer}) AS read_at,
                   (SELECT r.as_school FROM document_recipients r
-                    WHERE r.document_id = d.id AND r.user_id = ?
-                    ORDER BY r.id LIMIT 1) AS as_school
+                    WHERE r.document_id = d.id AND r.user_id = ? AND ${mine}
+                    ${prefer}) AS as_school
            FROM documents d
            LEFT JOIN users u ON u.id = d.created_by
            WHERE (
              EXISTS (SELECT 1 FROM document_recipients r2
-                      WHERE r2.document_id = d.id AND r2.user_id = ?)
+                      WHERE r2.document_id = d.id AND r2.user_id = ?
+                        AND (r2.as_school = ? OR r2.as_school IS NULL OR r2.as_school = ''))
              OR EXISTS (SELECT 1 FROM document_school_targets t
                          WHERE t.document_id = d.id AND t.school_code = ?)
            )`;
-    params = [req.user.id, req.user.id, req.user.id, req.user.id, activeCode];
+    params = [
+      req.user.id, activeCode, activeCode,
+      req.user.id, activeCode, activeCode,
+      req.user.id, activeCode, activeCode,
+      req.user.id, activeCode,
+      activeCode,
+    ];
   } else {
     sql = 'SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, \'office\') AS creator_group, dr.is_read, dr.read_at, dr.as_school FROM document_recipients dr JOIN documents d ON d.id = dr.document_id LEFT JOIN users u ON u.id = d.created_by WHERE dr.user_id = ?';
     params = [req.user.id];
@@ -1929,35 +1971,74 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
 router.put('/document-recipients/:docId/read', auth.requireAuth, async (req, res) => {
   const docId = Number(req.params.docId);
   const userId = req.user.id;
-  // แยกตามสถานศึกษาที่กำลังใช้งาน — อ่านที่โรงเรียนไหน อ่านเฉพาะแถวของโรงเรียนนั้น (ของใครของมัน)
-  const activeCode = String(req.user.current_school || '').trim().split(' ')[0];
   const isSchool = req.user.user_group === 'school';
+  /*
+   * โรงเรียน "ที่กำลังใช้งาน" — ต้องแยกสถานะเป็นรายโรงเรียน
+   *
+   * ผู้ใช้สั่ง 11 พ.ย. 2569: เจ้าหน้าที่สารบัญคนเดียวดูแล 2 โรงเรียน
+   * (54020001 + 54020002) → เปิดดูที่ 54020001 ต้องเปลี่ยนสถานะเฉพาะ 54020001
+   * ห้ามไปเปลี่ยนของ 54020002 จนกว่าจะเข้าไปเปิดดูในโรงเรียนนั้นเอง
+   */
+  let activeCode = String(req.user.current_school || '').trim().split(' ')[0];
+  // ไม่ได้เลือกโรงเรียนไว้ → ใช้รหัสโรงเรียนของบัญชี (school_code → workplace → current_school)
+  if (isSchool && !/^\d{7,8}$/.test(activeCode)) activeCode = schoolCodeOf(req.user);
+
+  /** สถานะอ่านของ "โรงเรียนที่กำลังใช้งาน" (ใช้ตอบกลับเมื่อไม่ได้เปลี่ยนอะไร) */
+  const readStateOf = async (code) => {
+    const row = code
+      ? await db.prepare(`
+          SELECT is_read FROM document_recipients
+          WHERE document_id = ? AND user_id = ?
+            AND (as_school = ? OR as_school IS NULL OR as_school = '')
+          ORDER BY (CASE WHEN as_school = ? THEN 0 ELSE 1 END), id LIMIT 1
+        `).get(docId, userId, code, code)
+      : await db.prepare('SELECT is_read FROM document_recipients WHERE document_id = ? AND user_id = ? ORDER BY id LIMIT 1')
+        .get(docId, userId);
+    return row && Number(row.is_read) === 1 ? 1 : 0;
+  };
+
   /*
    * ผู้ใช้สั่ง 11 พ.ย. 2569: "เจ้าหน้าที่ในสถานศึกษาทุกคนเห็นหนังสือรับ แต่การเปิดดู
    *   จะเปลี่ยนสถานะเป็นอ่านแล้วเฉพาะผู้ที่ถูกกำหนดเป็นเจ้าหน้าที่สารบัญสถานศึกษา"
    * → บัญชีอื่นของโรงเรียนเปิดดูได้ แต่ไม่แตะสถานะ และไม่สร้างแถวผู้รับให้
    */
-  if (isSchool && /^\d{7,8}$/.test(activeCode) && req.user.role !== 'admin') {
-    const isClerk = await db
-      .prepare("SELECT id FROM document_staff WHERE staff_type = 'school' AND school_code = ? AND user_id = ?")
-      .get(activeCode, userId);
+  if (isSchool && req.user.role !== 'admin') {
+    const isClerk = activeCode
+      ? await db
+        .prepare("SELECT id FROM document_staff WHERE staff_type = 'school' AND school_code = ? AND user_id = ?")
+        .get(activeCode, userId)
+      : null;
     if (!isClerk) {
-      const cur = await db
-        .prepare('SELECT is_read FROM document_recipients WHERE document_id = ? AND user_id = ? ORDER BY id LIMIT 1')
-        .get(docId, userId);
       // คืนสถานะจริง (ไม่เปลี่ยน) — หน้าเว็บจะไม่แสดงว่าอ่านแล้ว
-      return res.json({ ok: true, row: { id: docId, is_read: cur ? Number(cur.is_read) : 0 } });
+      return res.json({ ok: true, row: { id: docId, is_read: await readStateOf(activeCode) } });
     }
   }
-  let changes = 0;
+
   if (isSchool && /^\d{7,8}$/.test(activeCode)) {
-    const r = await db.prepare(`
-      UPDATE document_recipients SET is_read = 1, read_at = NOW()
-      WHERE document_id = ? AND user_id = ? AND (as_school = ? OR as_school IS NULL OR as_school = '')
-    `).run(docId, userId, activeCode);
-    changes = Number(r && (r.changes || r.affectedRows)) || 0;
     /*
-     * ยังไม่มีแถวผู้รับของบัญชีนี้ แต่เห็นหนังสือได้เพราะ "ส่งถึงโรงเรียน"
+     * ① แถวของโรงเรียนที่กำลังใช้งานเท่านั้น (as_school = รหัสโรงเรียน)
+     *    ⚠️ ห้ามใช้เงื่อนไขกว้าง (as_school IS NULL ด้วย) เพราะจะไปโดนแถวของโรงเรียนอื่น
+     */
+    const exact = await db.prepare(`
+      UPDATE document_recipients SET is_read = 1, read_at = NOW()
+      WHERE document_id = ? AND user_id = ? AND as_school = ?
+    `).run(docId, userId, activeCode);
+    let changes = Number(exact && (exact.changes || exact.affectedRows)) || 0;
+
+    /*
+     * ② แถวเก่าก่อนมีคอลัมน์ as_school → รับแถวนั้นมาเป็นของโรงเรียนนี้
+     *    (ตั้ง as_school ไปด้วย ครั้งต่อไปจะแยกกันชัดเจน ไม่ปนกันอีก)
+     */
+    if (!changes) {
+      const legacy = await db.prepare(`
+        UPDATE document_recipients SET is_read = 1, read_at = NOW(), as_school = ?
+        WHERE document_id = ? AND user_id = ? AND (as_school IS NULL OR as_school = '')
+      `).run(activeCode, docId, userId);
+      changes = Number(legacy && (legacy.changes || legacy.affectedRows)) || 0;
+    }
+
+    /*
+     * ③ ยังไม่มีแถวผู้รับของบัญชีนี้ แต่เห็นหนังสือได้เพราะ "ส่งถึงโรงเรียน"
      *   (document_school_targets) → สร้างแถวผู้รับให้แล้วทำเครื่องหมายว่าอ่านแล้ว
      *   ไม่งั้นกดอ่านแล้วสถานะยังเป็น "ใหม่" ตลอด
      */

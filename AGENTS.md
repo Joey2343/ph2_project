@@ -1047,6 +1047,25 @@ ph2_project/
   - **คนเดียวเป็นเจ้าหน้าที่สารบัญได้หลายโรงเรียน** — `POST /document-staff/school` เก็บเป็นรายแถว
     (school_code + user_id) และลบ/แก้เฉพาะโรงเรียนที่กำลังบันทึก ไม่กระทบโรงเรียนอื่น
   - เทสต์กันไว้ที่ `backend/scripts/test-school-clerk-scope.js` (อยู่ใน `npm run verify`)
+- **สถานะ "อ่านแล้ว" แยกตามโรงเรียน — สารบัญคนเดียวหลายโรงเรียน** (ผู้ใช้สั่ง 11 พ.ย. 2569)
+  - เช่น user 3540300144598 เป็นสารบัญของ 54020001 + 54020002
+    → อ่านที่ 54020001 ต้องเปลี่ยนเฉพาะ 54020001 · 54020002 ต้องยัง "ยังไม่อ่าน"
+    จนกว่าจะเข้าไปเปิดดูใน 54020002
+  - `/my-incoming` — subquery `is_read`/`read_at`/`as_school` ต้องกรอง
+    `as_school = โรงเรียนที่กำลังใช้งาน` (หรือแถวเก่าที่ไม่มี as_school)
+    และ prefer แถวของโรงเรียนนั้น (`CASE WHEN r.as_school = ? THEN 0 ELSE 1 END`)
+    ⚠️ เดิม `ORDER BY r.id LIMIT 1` ไม่ดูโรงเรียน → อ่าน 54020001 แล้ว 54020002 ขึ้นอ่านแล้วด้วย
+  - `EXISTS` ที่ใช้ตัดสิน "เห็นหนังสือ" ก็กรอง `as_school` เช่นกัน
+    → หนังสือที่ส่งถึงอีกโรงเรียนไม่โผล่ในรายการของโรงเรียนนี้
+  - `PUT /document-recipients/:docId/read`
+    · อัปเดตเฉพาะแถว `as_school = activeCode` (ห้ามใช้เงื่อนไขกว้าง)
+    · ไม่มีแถวนั้น แต่มีแถวเก่า `as_school IS NULL` → รับแถวนั้นมาเป็นของโรงเรียนนี้
+      (ตั้ง `as_school` ไปด้วย ครั้งต่อไปจะแยกกันชัดเจน)
+    · ไม่มีแถวเลยแต่ `document_school_targets` มีโรงเรียนนี้ → สร้างแถวใหม่ (อ่านแล้ว)
+  - `POST /document-staff/school` sync ต้องเทียบ `as_school` ด้วย (เดิมเทียบแค่ document_id + user_id)
+    → กำหนดสารบัญคนเดียว 2 โรงเรียน ได้แถวผู้รับแยกกัน โรงเรียนละ 1 แถว
+    (ถ้าไม่แก้ โรงเรียนที่ 2 จะไม่ได้แถวของตัวเอง → สถานะปนกัน)
+  - เทสต์กันไว้ที่ `backend/scripts/test-school-multi-school-read.js` (อยู่ใน `npm run verify`)
 - **"หนังสือรับ" ของสถานศึกษาเป็นของโรงเรียน ไม่ใช่ของบัญชีผู้ใช้** (ผู้ใช้แจ้ง 11 พ.ย. 2569)
   - `/my-incoming` ของบัญชี `user_group='school'` เห็นหนังสือเมื่อ
     ① มีแถวใน `document_recipients` ของตัวเอง **หรือ**
@@ -1208,7 +1227,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **231** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 52/52 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 53/53 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
