@@ -1041,6 +1041,12 @@ ph2_project/
   - ⚠️ query ของ `/documents` · `/my-incoming` · `/my-incoming-registered` ·
     `/my-outgoing-registered` ต้อง SELECT `u.workplace AS creator_workplace` และ
     `COALESCE(u.user_group,'office') AS creator_group` มาด้วย ไม่งั้นข้อมูลเก่าจะว่าง
+  - **ตัวกรอง "สังกัด/กลุ่มงาน" ใช้ได้ทั้ง 4 แท็บ** (หนังสือรับ · หนังสือส่ง · ทะเบียนรับ · ทะเบียนส่ง)
+    — ผู้ใช้แจ้ง 11 พ.ย. 2569 ว่ากรองแล้วไม่เจอ เพราะเดิมเทียบแค่ `d.workgroup`
+    - ใช้ `sangkadFilter(value)` → `(TRIM(d.workgroup) = ? OR sangkadSql() = ?)`
+      (`sangkadSql()` ให้ผลตรงกับ `docSangkad()` ฝั่ง JS)
+    - ตัวเลือกใน dropdown เติมจาก **`d.sangkad`** (ค่าที่แสดงจริง) ไม่ใช่แค่ `d.workgroup`
+    - คอลัมน์ "กลุ่มปฏิบัติ" ของแท็บทะเบียนแสดง `workgroup || sangkad` เพื่อให้ตรงกับตัวเลือก
 - **สิทธิ์แก้ไขรายการ** — admin · สารบัญเขต · เจ้าของรายการเท่านั้น
   (หนังสือรับรอง: เจ้าหน้าที่หนังสือรับรองเท่านั้นที่แก้ได้)
   - **ใช้กับ "ลบ" ด้วย** (`DELETE /documents/:id`) — เดิมอนุญาตแค่ admin กับเจ้าของ

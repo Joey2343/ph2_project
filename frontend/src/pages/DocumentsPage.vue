@@ -125,10 +125,13 @@ async function loadWorkgroups() {
 function addWorkgroupsFromData(docs) {
   const have = new Set(workgroupOptions.value);
   for (const d of docs) {
-    const w = (d.workgroup || '').trim();
-    if (w && !have.has(w)) {
-      have.add(w);
-      workgroupOptions.value.push(w);
+    // ใช้ค่าที่แสดงจริงในคอลัมน์ (สังกัด/กลุ่มงาน · กลุ่มปฏิบัติ) เพื่อให้เลือกแล้วเจอแถวเสมอ
+    for (const w of [d.sangkad, d.workgroup]) {
+      const v = String(w || '').trim();
+      if (v && !have.has(v)) {
+        have.add(v);
+        workgroupOptions.value.push(v);
+      }
     }
   }
 }
@@ -800,7 +803,8 @@ const columns = computed(() => {
   }
 
   if (t === 'incoming_reg' || t === 'outgoing_reg') {
-    cols.push({ key: 'workgroup', label: 'กลุ่มปฏิบัติ' });
+    // กลุ่มปฏิบัติ: ถ้าไม่ได้บันทึกไว้ ใช้ค่าที่คำนวณได้ (สังกัด/กลุ่มงาน) เพื่อไม่ให้ช่องว่าง
+    cols.push({ key: 'workgroup', label: 'กลุ่มปฏิบัติ', cell: (r) => ({ text: r.workgroup || r.sangkad || '-' }) });
   }
 
   if (!['incoming', 'incoming_reg', 'outgoing', 'outgoing_reg', 'honor', 'order', 'certificate'].includes(t)) {

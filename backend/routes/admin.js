@@ -345,8 +345,37 @@ function docSangkad(row) {
   return String((row && row.creator_workplace) || '').trim();
 }
 
+/**
+ * นิพจน์ SQL ของ "สังกัด/กลุ่มงาน" — ต้องให้ผลตรงกับ docSangkad() ฝั่ง JS
+ *   ใช้ในตัวกรอง "สังกัด/กลุ่มงาน" ของรายการหนังสือ (หนังสือรับ/ส่ง · ทะเบียนรับ/ส่ง)
+ *   ลำดับเดียวกับ JS: workgroup ที่บันทึกไว้ → ชื่อโรงเรียน (ตัดรหัสนำหน้า) → workplace ผู้สร้าง
+ */
+function sangkadSql(docAlias = 'd', userAlias = 'u') {
+  return `COALESCE(NULLIF(TRIM(${docAlias}.workgroup), ''),`
+    + ` CASE WHEN COALESCE(${userAlias}.user_group, 'office') = 'school'`
+    + ` OR ${docAlias}.sender_type IN ('school', 'school_to_school')`
+    + ` OR COALESCE(${docAlias}.school_code, '') <> ''`
+    + ` THEN REGEXP_REPLACE(TRIM(COALESCE(${docAlias}.from_org, '')), '^[0-9]{7,8}[[:space:]]*', '')`
+    + ` ELSE TRIM(COALESCE(${userAlias}.workplace, '')) END)`;
+}
+
+/**
+ * เงื่อนไขกรอง "สังกัด/กลุ่มงาน"
+ *   เทียบทั้ง workgroup ที่บันทึกไว้ และค่าที่คำนวณได้ (คอลัมน์ที่แสดง)
+ *   → เลือกจากตัวเลือกที่เห็นในตารางแล้วต้องเจอแถวเสมอ
+ * @returns {{clause: string, args: string[]}}
+ */
+function sangkadFilter(value) {
+  const v = String(value || '').trim();
+  return {
+    clause: ` AND (TRIM(COALESCE(d.workgroup, '')) = ? OR ${sangkadSql()} = ?)`,
+    args: [v, v],
+  };
+}
+
 async function prepareDocRows(rows, req) {
-  const list = Array.isArray(rows) ? rows : (rows ? [rows] : []);  const secretIds = list.filter((r) => r && Number(r.is_secret)).map((r) => Number(r.id));
+  const list = Array.isArray(rows) ? rows : (rows ? [rows] : []);
+  const secretIds = list.filter((r) => r && Number(r.is_secret)).map((r) => Number(r.id));
   let unlocked = new Set();
   if (secretIds.length && req.sessionToken) {
     const ph = secretIds.map(() => '?').join(',');
@@ -421,7 +450,7 @@ router.get('/documents', auth.requireAuth, async (req, res) => {
     }
   }
   if (q) { sql += ' AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)'; const p = `%${q}%`; args.push(p, p, p, p); }
-  const wg0 = (req.query.workgroup || '').trim(); if (wg0) { sql += ' AND d.workgroup = ?'; args.push(wg0); }
+  const wg0 = (req.query.workgroup || '').trim(); if (wg0) { const sf = sangkadFilter(wg0); sql += sf.clause; args.push(...sf.args); }
   const yc0 = docYearClause(year); if (yc0) { sql += yc0.clause; args.push(yc0.arg); }
   sql += ' ORDER BY d.id DESC';
   res.json({ documents: await prepareDocRows(await db.prepare(sql).all(...args), req) });
@@ -1710,7 +1739,7 @@ router.get('/my-incoming', auth.requireAuth, async (req, res) => {
     }
   }
   const yc1 = docYearClause(req.query.year); if (yc1) { sql += yc1.clause; params.push(yc1.arg); }
-  const wgi = (req.query.workgroup || '').trim(); if (wgi) { sql += ' AND d.workgroup = ?'; params.push(wgi); }
+  const wgi = (req.query.workgroup || '').trim(); if (wgi) { const sf = sangkadFilter(wgi); sql += sf.clause; params.push(...sf.args); }
   if (q) {
     sql += ' AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)';
     const like = '%' + q + '%';
@@ -1783,7 +1812,7 @@ router.get('/my-incoming-registered', auth.requireAuth, async (req, res) => {
   const yc2 = docYearClause(req.query.year); if (yc2) { sql += yc2.clause; params.push(yc2.arg); }
   // ตัวกรองกลุ่มปฏิบัติ (เช่น กลุ่มส่งเสริมการศึกษาทางไกล เทคโนโลยีสารสนเทศฯ)
   const wg1 = (req.query.workgroup || '').trim();
-  if (wg1) { sql += ' AND d.workgroup = ?'; params.push(wg1); }
+  if (wg1) { const sf = sangkadFilter(wg1); sql += sf.clause; params.push(...sf.args); }
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
@@ -1820,7 +1849,7 @@ router.get('/my-outgoing-registered', auth.requireAuth, async (req, res) => {
   const yc3 = docYearClause(req.query.year); if (yc3) { sql += yc3.clause; params.push(yc3.arg); }
   // ตัวกรองกลุ่มปฏิบัติ
   const wg2 = (req.query.workgroup || '').trim();
-  if (wg2) { sql += ' AND d.workgroup = ?'; params.push(wg2); }
+  if (wg2) { const sf = sangkadFilter(wg2); sql += sf.clause; params.push(...sf.args); }
   if (q) { sql += ' AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)'; const like = '%' + q + '%'; params.push(like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
@@ -1832,7 +1861,7 @@ router.get('/my-orders', auth.requireAuth, async (req, res) => {
   let sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'order'`;
   const params = [];
   const yc4 = docYearClause(req.query.year); if (yc4) { sql += yc4.clause; params.push(yc4.arg); }
-  const wg4 = (req.query.workgroup || '').trim(); if (wg4) { sql += ' AND d.workgroup = ?'; params.push(wg4); }
+  const wg4 = (req.query.workgroup || '').trim(); if (wg4) { const sf = sangkadFilter(wg4); sql += sf.clause; params.push(...sf.args); }
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ? OR d.owner_group LIKE ? OR d.order_registrar LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
@@ -1844,7 +1873,7 @@ router.get('/my-certificates', auth.requireAuth, async (req, res) => {
   let sql = `SELECT d.*, u.full_name AS creator_name, u.workplace AS creator_workplace, COALESCE(u.user_group, 'office') AS creator_group FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'certificate'`;
   const params = [];
   const yc5 = docYearClause(req.query.year); if (yc5) { sql += yc5.clause; params.push(yc5.arg); }
-  const wg5 = (req.query.workgroup || '').trim(); if (wg5) { sql += ' AND d.workgroup = ?'; params.push(wg5); }
+  const wg5 = (req.query.workgroup || '').trim(); if (wg5) { const sf = sangkadFilter(wg5); sql += sf.clause; params.push(...sf.args); }
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.from_org LIKE ? OR d.to_org LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
@@ -1858,7 +1887,7 @@ router.get('/my-honors', auth.requireAuth, async (req, res) => {
     FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.doc_type = 'honor'`;
   const params = [];
   const yc6 = docYearClause(req.query.year); if (yc6) { sql += yc6.clause; params.push(yc6.arg); }
-  const wg6 = (req.query.workgroup || '').trim(); if (wg6) { sql += ' AND d.workgroup = ?'; params.push(wg6); }
+  const wg6 = (req.query.workgroup || '').trim(); if (wg6) { const sf = sangkadFilter(wg6); sql += sf.clause; params.push(...sf.args); }
   if (q) { sql += ` AND (d.title LIKE ? OR d.doc_no LIKE ? OR d.person_name LIKE ?)`; const like = '%' + q + '%'; params.push(like, like, like); }
   sql += ' ORDER BY d.id DESC';
   const docs = await db.prepare(sql).all(...params);
