@@ -327,7 +327,14 @@ async function onDecide(out) {
       res = await api.put(`/travel/${r.id}/approve`, {});
     } else {
       const note = JSON.stringify({ choices: out.choices || [], reasonMap: out.reasonMap || {} });
-      const body = decideMode.value === 'final' ? { note, position: out.position } : { note };
+      /*
+       * ส่งตำแหน่งที่เลือกไปด้วยเมื่อมี
+       *   · ขั้นสุดท้าย (ทุกสาย)
+       *   · ขั้น "อนุมัติขั้นต้น" ของสายสถานศึกษา (ผู้ใช้สั่ง 12 พ.ย. 2569)
+       * เซิร์ฟเวอร์บันทึกลง approval_data[].position → เอกสารแสดงตำแหน่งที่เลือก
+       */
+      const body = { note };
+      if (out && out.position) body.position = out.position;
       res = await api.put(`/travel/${r.id}/approve`, body);
     }
     UI.toast(res.message);

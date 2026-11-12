@@ -156,6 +156,57 @@ const viewSrc = readFileSync(join(ROOT, 'src', 'views', 'DocumentsView.js'), 'ut
 check(/prefilledFiles\.slice\(0,\s*7\)\.forEach\(function\s*\(f\)\s*\{\s*addPostalFileRow\(f\)/.test(viewSrc),
   'DocumentsView.openPostalForm: เติมไฟล์ที่ส่งมาให้อัตโนมัติ');
 
+/* ── ⑦ ตำแหน่งที่เลือกตอน "อนุมัติขั้นต้น" ของสายสถานศึกษา ───────────────
+ *
+ * ผู้ใช้สั่ง 12 พ.ย. 2569
+ *   · ไปราชการ (สถานศึกษา) → ตัวเลือกตำแหน่งต่อจาก "กรุณาเลือกการพิจารณา"
+ *   · ลา (แท็บสถานศึกษา) → ตัวเลือกตำแหน่ง "ก่อน" ความเห็นผู้บังคับบัญชา
+ */
+console.log('\n⑦ ตัวเลือกตำแหน่งในหน้าอนุมัติขั้นต้น (สายสถานศึกษา)');
+
+const travelDecide = readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelDecide.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/const showPosition = computed\([\s\S]{0,160}?mode === 'final' \|\| \(props\.mode === 'level1' && isSchool\.value\)/.test(travelDecide),
+  'TravelDecide: แสดงตัวเลือกตำแหน่งในขั้นอนุมัติขั้นต้นของสถานศึกษา');
+check(/<template v-if="showPosition">/.test(travelDecide),
+  'TravelDecide: ตำแหน่งแสดงหลังส่วนเลือกการพิจารณา (v-if="showPosition")');
+check(/position: showPosition\.value \? position\.value : ''/.test(travelDecide),
+  'TravelDecide: ส่งตำแหน่งที่เลือกกลับไปกับผลยืนยัน');
+
+const travelPage = readFileSync(join(ROOT, 'src', 'pages', 'TravelPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/if \(out && out\.position\) body\.position = out\.position/.test(travelPage),
+  'TravelPage: ส่ง position ไปกับ PUT /travel/:id/approve เมื่อมี');
+
+const leaveNote = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveApproveNote.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/scope: \{ type: String, default: 'office' \}/.test(leaveNote),
+  'LeaveApproveNote: รับ prop scope (office | school)');
+check(/scope === 'school'/.test(leaveNote),
+  'LeaveApproveNote: แสดงตัวเลือกตำแหน่งเฉพาะสายสถานศึกษา');
+{
+  const posAt = leaveNote.indexOf('lv-level1-position');
+  const noteAt = leaveNote.indexOf('ความเห็นผู้บังคับบัญชา');
+  check(posAt > -1 && noteAt > -1 && posAt < noteAt,
+    'LeaveApproveNote: ตัวเลือกตำแหน่งอยู่ "ก่อน" ความเห็นผู้บังคับบัญชา',
+    'ผู้ใช้สั่ง: เพิ่มส่วนตัวเลือกตำแหน่งไว้ก่อนส่วนความเห็นผู้บังคับบัญชา');
+}
+check(/emit\('confirm', \{\s*\n\s*note: note\.value,/.test(leaveNote),
+  'LeaveApproveNote: ส่ง note + position กลับไป');
+
+const leavePageSrc = readFileSync(join(ROOT, 'src', 'pages', 'LeavePage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/:scope="current === 'general-school' \? 'school' : 'office'"/.test(leavePageSrc),
+  'LeavePage: ส่ง scope ให้หน้าต่างอนุมัติขั้นต้นตามแท็บ');
+check(/if \(position\) body\.position = position/.test(leavePageSrc),
+  'LeavePage: ส่ง position ไปกับ PUT /leaves/:id/approve เมื่อมี');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

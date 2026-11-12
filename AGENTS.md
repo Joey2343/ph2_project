@@ -709,6 +709,12 @@ ph2_project/
     - **เมื่ออนุมัติแล้ว Telegram แจ้งคณะผู้ร่วมเดินทางด้วย**
       (`notifyTravelCompanions` · อ่าน `companion_ids` / `companion_names` · ข้ามคนที่ไม่ได้ตั้ง Telegram)
     - **ปุ่มพิจารณาตามขั้น (สาย สพป.)** — `TravelDecide.vue`
+      - **สายสถานศึกษา ขั้น "อนุมัติขั้นต้น": มีตัวเลือกตำแหน่ง "ต่อจาก" ส่วนเลือกการพิจารณา**
+        (ผู้ใช้สั่ง 12 พ.ย. 2569)
+        · `showPosition` = `mode==='final'` หรือ (`mode==='level1'` และ `scope==='school'`)
+        · เลือกแล้วส่ง `position` → `TravelPage.onDecide()` ส่งไปกับ `PUT /travel/:id/approve`
+          → บันทึกใน `approval_data[].position` → เอกสาร (`TravelDoc`) แสดงตำแหน่งที่เลือก
+        · สาย สพป. ขั้นต้น ยังไม่มีตัวเลือกนี้ (คงเดิม) · ขั้นสุดท้ายมีอยู่แล้ว
       - ขั้น **ผู้บังคับบัญชาขั้นต้น** (`mode='level1'`): ปุ่ม "● ควรอนุญาต"
         → **ติ๊กได้หลายข้อ** (checkbox) 4 ตัวเลือก:
         **ควรอนุญาต · ไม่ควรอนุญาต · ควรอนุมัติ · ไม่ควรอนุมัติ**
@@ -808,7 +814,15 @@ ph2_project/
         (ผู้ใช้สั่ง 10 พ.ย. 2569 — เดิมล้นแบบฟอร์มใบลา)
     - ไม่ส่งมา = ใช้ตำแหน่งจริงของผู้ใช้ (เหมือนเดิม)
     - ปุ่ม "ไม่อนุมัติ" ไม่มี select นี้ · ปุ่ม "อนุมัติขั้นต้น" ยังใช้หน้าความเห็นเดิม
+    - **แท็บลาของสถานศึกษา: ปุ่ม "อนุมัติขั้นต้น" มีตัวเลือกตำแหน่ง "ก่อน" ความเห็น**
+      (ผู้ใช้สั่ง 12 พ.ย. 2569 · `LeaveApproveNote.vue`)
+      · prop `scope` = `'school'` (ส่งจาก `LeavePage` ตามแท็บที่เปิด) → แสดง select
+        `#lv-level1-position` เหนือช่อง "ความเห็นผู้บังคับบัญชา"
+      · ตัวเลือก = ตำแหน่งจริงของผู้ลงนาม (สายสถานศึกษา) · สาย สพป. ไม่มี select นี้ (คงเดิม)
+      · `sendApproveNote()` ส่ง `{ note, position }` ไปกับ `PUT /leaves/:id/approve`
     - เทสต์กันไว้ที่ `backend/scripts/test-leave-approve-position.js` (อยู่ใน `npm run verify`)
+      และ `backend/scripts/test-school-approve-position.js` (ลา + ไปราชการ สายสถานศึกษา)
+      + `frontend/scripts/check-form-wiring.mjs` หัวข้อ ⑦
   - **ผู้ที่ "ลา" (อนุมัติแล้ว) ของวันนั้น**
     - ลงเวลาเข้า/ออกไม่ได้ → `/time/check` ตอบ 403 `คุณลา (<ประเภท>) ในวันนี้`
     - `/time/all?date=...` เพิ่มแถวโดย `work_site` = **ประเภทการลา** (ลาป่วย/ลากิจ/ลาคลอดบุตร/ลาพักผ่อน)
@@ -1336,7 +1350,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **237** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 60/60 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 61/61 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (110 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

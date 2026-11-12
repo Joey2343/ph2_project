@@ -159,6 +159,17 @@ function pick(key) {
 
 const isRejectPicked = computed(() => picked.value.some((k) => k.startsWith('ไม่')));
 
+/**
+ * แสดงตัวเลือกตำแหน่งหรือไม่
+ *
+ * ผู้ใช้สั่ง 12 พ.ย. 2569: สายสถานศึกษา ขั้น "อนุมัติขั้นต้น" (mode = level1)
+ *   ต้องมีตัวเลือกตำแหน่งต่อจากส่วน "กรุณาเลือกการพิจารณา"
+ *   (ขั้นสุดท้ายมีอยู่แล้ว — สาย สพป. ขั้นต้นยังไม่ต้องมี)
+ */
+const showPosition = computed(
+  () => props.mode === 'final' || (props.mode === 'level1' && isSchool.value),
+);
+
 function confirm() {
   if (props.mode === 'forward') {
     emit('confirm', { forward: forward.value });
@@ -172,7 +183,7 @@ function confirm() {
     choices: [...picked.value],
     reasonMap,
     isReject: isRejectPicked.value,
-    position: props.mode === 'final' ? position.value : '',
+    position: showPosition.value ? position.value : '',
   });
 }
 </script>
@@ -222,8 +233,8 @@ function confirm() {
           </div>
         </div>
 
-        <!-- ---------- ตำแหน่งที่จะลงนาม (เฉพาะขั้นสุดท้าย) ---------- -->
-        <template v-if="mode === 'final'">
+        <!-- ---------- ตำแหน่งที่จะลงนาม (ขั้นสุดท้าย + ขั้นอนุมัติขั้นต้นของสถานศึกษา) ---------- -->
+        <template v-if="showPosition">
           <div style="margin-top: 10px; font-weight: 700">กรุณาเลือกตำแหน่งที่จะอนุมัติ/อนุญาต</div>
           <select
             v-model="position"

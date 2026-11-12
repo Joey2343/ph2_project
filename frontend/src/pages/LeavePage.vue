@@ -508,12 +508,18 @@ async function decide(r, action, customLabel) {
   }
 }
 
-async function sendApproveNote(note) {
+async function sendApproveNote(payload) {
   const r = noteFor.value;
   noteFor.value = null;
   if (!r) return;
+  // รองรับทั้งแบบเดิม (string) และแบบใหม่ { note, position }
+  const note = typeof payload === 'string' ? payload : (payload && payload.note) || '';
+  const position = payload && typeof payload === 'object' ? (payload.position || '') : '';
   try {
-    const res = await api.put(`/leaves/${r.id}/approve`, { note });
+    const body = { note };
+    // สายสถานศึกษา: บันทึกตำแหน่งที่เลือกไว้ใน approval_data (ผู้ใช้สั่ง 12 พ.ย. 2569)
+    if (position) body.position = position;
+    const res = await api.put(`/leaves/${r.id}/approve`, body);
     UI.toast(res.message);
     applyRow(rows.value, r.id, res, load);
   } catch (e) {
@@ -880,6 +886,7 @@ function statusPill(r) {
   <LeaveApproveNote
     v-if="noteFor"
     :record="noteFor"
+    :scope="current === 'general-school' ? 'school' : 'office'"
     @close="noteFor = null"
     @confirm="sendApproveNote"
   />
