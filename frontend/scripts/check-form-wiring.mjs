@@ -230,6 +230,39 @@ check(/if \(position\) body\.position = position/.test(leavePageSrc),
     JSON.stringify(other));
 }
 
+/* ── ⑧ ลงนามในร่างเอกสาร: คลิกแล้วต้องถามก่อนวางลายเซ็น (ผู้ใช้สั่ง 12 พ.ย. 2569) ──
+ *
+ * เดิมคลิกที่หน้าเอกสาร = วางลายเซ็นทันที (เผลอคลิกก็ได้ลายเซ็นเกิน)
+ * ตอนนี้ต้องขึ้นเมนู 1) วางลายเซ็น 2) ยกเลิก ก่อน
+ * การลากจากแถบเครื่องมือ/ลากย้าย/ลบ/ย่อ-ขยาย ต้องยังทำงานเหมือนเดิม
+ */
+console.log('\n⑧ ลงนามในร่างเอกสาร: คลิกในเอกสารต้องเลือกก่อนวางลายเซ็น');
+
+const signEditor = readFileSync(join(ROOT, 'src', 'sign-editor', 'main.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/function openPlaceMenu\(pageIndex, clientX, clientY\)/.test(signEditor),
+  'sign-editor: มีเมนูยืนยันการวางลายเซ็น');
+check(/ok\.textContent = '1\. วางลายเซ็น'/.test(signEditor), 'เมนูมีตัวเลือก “1. วางลายเซ็น”');
+check(/cancel\.textContent = '2\. ยกเลิก'/.test(signEditor), 'เมนูมีตัวเลือก “2. ยกเลิก”');
+check(/openPlaceMenu\(pageWraps\.indexOf\(wrap\), e\.clientX, e\.clientY\)/.test(signEditor),
+  'คลิกในหน้าเอกสาร → เปิดเมนู (ไม่วางลายเซ็นทันที)',
+  'ถ้าเรียก placeStamp ตรง ๆ ผู้ใช้เผลอคลิกแล้วจะได้ลายเซ็นเกิน');
+check(!/if \(e\.target !== canvas && e\.target !== wrap\) return;\s*\n\s*placeStamp\(/.test(signEditor),
+  'ไม่มีทางวางลายเซ็นทันทีจากการคลิกหน้าเอกสาร');
+check(/onMenuKeyDown[\s\S]{0,120}?Escape/.test(signEditor), 'กด Esc ปิดเมนูได้');
+check(/placeMenu\.contains\(e\.target\)\) closePlaceMenu\(\)/.test(signEditor),
+  'คลิกที่อื่นปิดเมนู (ไม่วางลายเซ็น)');
+// ของเดิมต้องยังอยู่
+check(/del\.title = 'ลบลายเซ็นนี้'/.test(signEditor), 'ยังลบลายเซ็นได้ (ปุ่ม ✕)');
+check(/rz\.title = 'ปรับขนาดลายเซ็น \(ลากมุมขวาล่าง\)'/.test(signEditor), 'ยังย่อ/ขยายลายเซ็นได้ (⤡)');
+check(/stamp\.addEventListener\('pointermove'/.test(signEditor), 'ยังลากย้ายลายเซ็นได้');
+check(/source\.addEventListener\('pointerup'[\s\S]{0,400}?placeStamp\(i, e\.clientX, e\.clientY\)/.test(signEditor),
+  'ลากลายเซ็นจากแถบเครื่องมือลงเอกสารยังวางทันทีเหมือนเดิม');
+
+const signHtml = readFileSync(join(ROOT, 'sign-editor.html'), 'utf8');
+check(/\.sig-place-menu \{/.test(signHtml), 'sign-editor.html: มีสไตล์เมนูวางลายเซ็น');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

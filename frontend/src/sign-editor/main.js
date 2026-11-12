@@ -74,8 +74,7 @@ import '../styles/theme.css';
     return true;
   }
 
-  function addStampDom(pageIndex, x, y, w) {
-    const wrap = pageWraps[pageIndex];
+  function addStampDom(pageIndex, x, y, w) {    const wrap = pageWraps[pageIndex];
     const stamp = document.createElement('div');
     stamp.className = 'sig-stamp';
     const img = document.createElement('img');
@@ -144,6 +143,69 @@ import '../styles/theme.css';
     stamps.push({ el: stamp, page: pageIndex + 1 });
   }
 
+  /*
+   * เมนู "วางลายเซ็น / ยกเลิก" ตอนคลิกในเอกสาร (ผู้ใช้สั่ง 12 พ.ย. 2569)
+   *
+   * เดิม: คลิกที่หน้าเอกสาร = วางลายเซ็นทันที (เผลอคลิกก็ได้ลายเซ็นเกิน)
+   * ตอนนี้: คลิกแล้วขึ้นเมนูเล็ก ๆ ตรงจุดที่คลิก ให้เลือกก่อน
+   *   · "วางลายเซ็น" → วางที่ตำแหน่งเดิมที่คลิก
+   *   · "ยกเลิก" (หรือคลิกที่อื่น / กด Esc) → ปิดเมนู ไม่วางอะไร
+   * การลากลายเซ็นจากแถบเครื่องมือลงเอกสารยังวางทันทีเหมือนเดิม
+   * (ลากย้าย · ✕ ลบ · ⤡ ย่อ/ขยาย ยังทำงานเหมือนเดิม)
+   */
+  let placeMenu = null;
+
+  function closePlaceMenu() {
+    if (placeMenu) {
+      placeMenu.remove();
+      placeMenu = null;
+    }
+    document.removeEventListener('pointerdown', onDocPointerDown, true);
+    document.removeEventListener('keydown', onMenuKeyDown, true);
+  }
+
+  function onDocPointerDown(e) {
+    if (placeMenu && !placeMenu.contains(e.target)) closePlaceMenu();
+  }
+
+  function onMenuKeyDown(e) {
+    if (e.key === 'Escape') closePlaceMenu();
+  }
+
+  function openPlaceMenu(pageIndex, clientX, clientY) {
+    closePlaceMenu();
+    const menu = document.createElement('div');
+    menu.className = 'sig-place-menu';
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.textContent = '1. วางลายเซ็น';
+    ok.onclick = () => {
+      closePlaceMenu();
+      if (placeStamp(pageIndex, clientX, clientY)) setStatus('', true);
+    };
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'danger';
+    cancel.textContent = '2. ยกเลิก';
+    cancel.onclick = () => closePlaceMenu();
+    menu.append(ok, cancel);
+    // กัน pointerdown บนเมนูไปโดนหน้าเอกสาร (จะเปิดเมนูซ้ำ)
+    menu.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.body.append(menu);
+    // วางให้อยู่ในจอ (ไม่ล้นขวา/ล่าง)
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    const left = Math.min(clientX + 4, window.innerWidth - mw - 8);
+    const top = Math.min(clientY + 4, window.innerHeight - mh - 8);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top = Math.max(8, top) + 'px';
+    placeMenu = menu;
+    setTimeout(() => {
+      document.addEventListener('pointerdown', onDocPointerDown, true);
+      document.addEventListener('keydown', onMenuKeyDown, true);
+    }, 0);
+  }
+
   // ---- แสดงหน้าต่างๆ ของ PDF ด้วย pdf.js ----
   // workerSrc ตั้งไว้ใน src/lib/pdfjs.js แล้ว
   let pdf = null;
@@ -171,10 +233,11 @@ import '../styles/theme.css';
     pagesBox.append(wrap);
     pageWraps.push(wrap);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    // คลิกที่หน้าเอกสาร → วางลายเซ็นตรงจุดนั้น
+    // คลิกที่หน้าเอกสาร → ขึ้นเมนู "วางลายเซ็น / ยกเลิก" ก่อน (ไม่วางทันที)
     wrap.addEventListener('pointerdown', (e) => {
       if (e.target !== canvas && e.target !== wrap) return;
-      placeStamp(pageWraps.indexOf(wrap), e.clientX, e.clientY);
+      e.preventDefault();
+      openPlaceMenu(pageWraps.indexOf(wrap), e.clientX, e.clientY);
     });
   }
 

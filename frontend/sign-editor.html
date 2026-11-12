@@ -55,6 +55,23 @@
   .sig-ghost img { width: 100%; height: auto; }
   .sig-tip { font-size: 12px; color: #64748b; }
   .sig-btn { display: inline-flex; align-items: center; gap: 6px; }
+  /*
+   * เมนูยืนยันการวางลายเซ็น (ผู้ใช้สั่ง 12 พ.ย. 2569)
+   * คลิกในเอกสาร → ขึ้นเมนู 1) วางลายเซ็น 2) ยกเลิก (ไม่วางทันที)
+   */
+  .sig-place-menu {
+    position: fixed; z-index: 1000; min-width: 150px;
+    background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(15,23,42,.22); padding: 6px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .sig-place-menu button {
+    border: none; background: transparent; text-align: left; cursor: pointer;
+    padding: 8px 10px; border-radius: 6px; font-size: 14px; font-family: inherit; color: #0f172a;
+  }
+  .sig-place-menu button:hover { background: #eff6ff; }
+  .sig-place-menu button.danger { color: #dc2626; }
+  .sig-place-menu button.danger:hover { background: #fef2f2; }
 </style>
 </head>
 <body>
@@ -63,11 +80,11 @@
       <div class="tb-title">🖊️ ลงนามในร่างเอกสาร</div>
       <div class="tb-sub" id="tb-memo">กำลังโหลด...</div>
     </div>
-    <div class="tb-sig" id="sig-source" title="กดค้างแล้วลากไปวางบนเอกสาร หรือคลิกที่หน้าเอกสารเพื่อวางลายเซ็น">
+    <div class="tb-sig" id="sig-source" title="กดค้างแล้วลากไปวางบนเอกสาร หรือคลิกที่หน้าเอกสารแล้วเลือก 'วางลายเซ็น'">
       <img id="sig-thumb" alt="ลายเซ็นของฉัน">
       <span class="grab">⇱ ลากลงเอกสาร</span>
     </div>
-    <div class="sig-tip">ลายเซ็น: <b id="sig-user">...</b> — วางได้ทุกหน้า กด ✕ เพื่อลบ ลากเพื่อย้ายตำแหน่ง ลากมุม <b style="color:#2563eb">⤡</b> เพื่อปรับขนาด</div>
+    <div class="sig-tip">ลายเซ็น: <b id="sig-user">...</b> — วางได้ทุกหน้า (คลิกในเอกสารแล้วเลือก <b>1. วางลายเซ็น</b>) กด ✕ เพื่อลบ ลากเพื่อย้ายตำแหน่ง ลากมุม <b style="color:#2563eb">⤡</b> เพื่อปรับขนาด</div>
     <div style="margin-left:auto; display:flex; align-items:center; gap:10px">
       <span id="sign-status"></span>
       <button class="btn btn-outline btn-sm" id="btn-close">✕ ปิด</button>
