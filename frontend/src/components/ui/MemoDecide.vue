@@ -149,7 +149,10 @@ const fileGroups = computed(() => {
   ].filter((g) => g.files.length);
 });
 
-const radioStyle = { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 400, whiteSpace: 'nowrap' };
+/* ---------- ตัวเลือก ----------
+ * ใช้คลาส .choice-row / .choice-label (ดู <style scoped>) แทน inline style
+ * เพราะ inline whiteSpace: nowrap ทำให้ข้อความทับกันบนแท็บเล็ต (ผู้ใช้แจ้ง 12 พ.ย. 2569)
+ */
 
 /* ---------- ตำแหน่งที่จะลงนาม (เฉพาะ ปฏิบัติราชการ/รักษาราชการแทน) ----------
  * ผู้ใช้สั่ง 10 พ.ย. 2569: เมื่อเลือก "ปฏิบัติราชการ/รักษาราชการแทน" ต้องมีตัวเลือก
@@ -333,8 +336,8 @@ const APPROVAL_RECORD = computed(() => ({
     <template v-if="isApprove && isFirst">
       <div class="form-group full" style="margin-top: 12px">
         <label>อนุมัติขั้นต้น<span class="req"> *</span></label>
-        <div style="display: flex; gap: 18px; flex-wrap: nowrap; margin-top: 6px">
-          <label v-for="o in ['เพื่อโปรดพิจารณา', 'เพื่อโปรดทราบ']" :key="o" :style="radioStyle">
+        <div class="choice-row">
+          <label v-for="o in ['เพื่อโปรดพิจารณา', 'เพื่อโปรดทราบ']" :key="o" class="choice-label">
             <input v-model="decide" type="radio" name="memo-decide" :value="o" />{{ o }}
           </label>
         </div>
@@ -355,11 +358,11 @@ const APPROVAL_RECORD = computed(() => ({
     <template v-if="isApprove && isSecond">
       <div class="form-group full" style="margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 14px">
         <label>ขั้นตอนการพิจารณา<span class="req"> *</span></label>
-        <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-top: 6px">
-          <label v-if="level3Options.length" :style="radioStyle">
+        <div class="choice-row">
+          <label v-if="level3Options.length" class="choice-label">
             <input v-model="mode" type="radio" name="memo-mode2" value="pass" />ผ่านเรื่อง
           </label>
-          <label :style="radioStyle">
+          <label class="choice-label">
             <input v-model="mode" type="radio" name="memo-mode2" value="act" />ปฏิบัติราชการ/รักษาราชการแทน
           </label>
         </div>
@@ -369,8 +372,8 @@ const APPROVAL_RECORD = computed(() => ({
       <div v-if="mode === 'pass'" style="display: block">
         <div class="form-group full" style="margin-top: 12px">
           <label>ผ่านเรื่อง/เสนอต่อ<span class="req"> *</span></label>
-          <div style="display: flex; gap: 18px; flex-wrap: nowrap; margin-top: 6px">
-            <label v-for="o in ['เพื่อโปรดพิจารณา', 'เพื่อโปรดทราบ']" :key="o" :style="radioStyle">
+          <div class="choice-row">
+            <label v-for="o in ['เพื่อโปรดพิจารณา', 'เพื่อโปรดทราบ']" :key="o" class="choice-label">
               <input v-model="decide2" type="radio" name="memo-decide2" :value="o" />{{ o }}
             </label>
           </div>
@@ -396,8 +399,8 @@ const APPROVAL_RECORD = computed(() => ({
       <div v-else-if="mode === 'act'" style="display: block">
         <div class="form-group full" style="margin-top: 12px">
           <label>ปฏิบัติราชการ/รักษาราชการแทน<span class="req"> *</span></label>
-          <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px">
-            <label v-for="c in ACT_CHOICES" :key="c" :style="radioStyle">
+          <div class="choice-row">
+            <label v-for="c in ACT_CHOICES" :key="c" class="choice-label">
               <input type="checkbox" :checked="actSet.includes(c)" @change="toggle(actSet, c)" />{{ c }}
             </label>
           </div>
@@ -433,8 +436,8 @@ const APPROVAL_RECORD = computed(() => ({
     <template v-if="isApprove && isThird">
       <div class="form-group full" style="margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 14px">
         <label>บันทึกสั่งการ<span class="req"> *</span></label>
-        <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px">
-          <label v-for="c in ACT_CHOICES" :key="c" :style="radioStyle">
+        <div class="choice-row">
+          <label v-for="c in ACT_CHOICES" :key="c" class="choice-label">
             <input type="checkbox" :checked="orderSet.includes(c)" @change="toggle(orderSet, c)" />{{ c }}
           </label>
         </div>
@@ -490,4 +493,43 @@ const APPROVAL_RECORD = computed(() => ({
 
 <style scoped>
 /* ใช้คลาสจาก theme.css ของเดิมทั้งหมด */
+
+/*
+ * แถวตัวเลือก (radio/checkbox) ในหน้าอนุมัติบันทึกข้อความ
+ *
+ * ผู้ใช้แจ้ง 12 พ.ย. 2569: บนแท็บเล็ต ตัวหนังสือกับช่องติ๊กซ้อนกัน อ่านไม่ออก
+ *   สาเหตุ: ใช้ flex + whiteSpace: nowrap แล้ว label ถูกบีบให้แคบกว่าข้อความ
+ *   → ข้อความล้นออกมาทับช่อง/ตัวเลือกถัดไป
+ * แก้: ใช้ grid ที่ตัดบรรทัดอัตโนมัติ + ให้ข้อความตัดขึ้นบรรทัดใหม่ได้
+ *      (ช่องติ๊กไม่ถูกบีบ — flex: 0 0 auto) ใช้ได้ทั้งเดสก์ท็อปและแท็บเล็ต
+ */
+.choice-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 18px;
+  margin-top: 6px;
+}
+.choice-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.choice-label input[type='radio'],
+.choice-label input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+}
+@media (max-width: 700px) {
+  .choice-row {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

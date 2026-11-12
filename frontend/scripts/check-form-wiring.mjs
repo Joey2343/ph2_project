@@ -263,6 +263,37 @@ check(/source\.addEventListener\('pointerup'[\s\S]{0,400}?placeStamp\(i, e\.clie
 const signHtml = readFileSync(join(ROOT, 'sign-editor.html'), 'utf8');
 check(/\.sig-place-menu \{/.test(signHtml), 'sign-editor.html: มีสไตล์เมนูวางลายเซ็น');
 
+/* ── ⑨ หน้าต่างอนุมัติบันทึกข้อความ: ตัวเลือกต้องไม่ซ้อนกันบนแท็บเล็ต ──────
+ *
+ * ผู้ใช้แจ้ง 12 พ.ย. 2569: "ปฏิบัติราชการ/รักษาราชการแทน" บนแท็บเล็ต
+ * ตัวหนังสือกับช่องติ๊กซ้อนกัน อ่านไม่ออก
+ * สาเหตุ: flex + whiteSpace: nowrap → ข้อความล้นทับกัน
+ */
+console.log('\n⑨ MemoDecide: แถวตัวเลือกไม่ซ้อนกัน (เดสก์ท็อป + แท็บเล็ต)');
+
+const memoDecide = readFileSync(join(ROOT, 'src', 'components', 'ui', 'MemoDecide.vue'), 'utf8');
+const memoDecideCode = memoDecide
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(!/whiteSpace: 'nowrap'/.test(memoDecideCode),
+  'MemoDecide: ไม่มี whiteSpace nowrap ในแถวตัวเลือกแล้ว',
+  'nowrap ทำให้ข้อความล้นออกมาทับช่องติ๊ก/ตัวเลือกถัดไปบนจอแคบ');
+check(!/:style="radioStyle"/.test(memoDecideCode), 'MemoDecide: เลิกใช้ inline radioStyle แล้ว');
+check(/\.choice-row \{[\s\S]{0,200}?display: grid;[\s\S]{0,120}?repeat\(auto-fit, minmax\(190px, 1fr\)\)/.test(memoDecideCode),
+  'MemoDecide: แถวตัวเลือกใช้ grid ตัดบรรทัดอัตโนมัติ');
+check(/\.choice-label \{[\s\S]{0,220}?white-space: normal;/.test(memoDecideCode),
+  'MemoDecide: ข้อความตัวเลือกตัดขึ้นบรรทัดใหม่ได้');
+check(/\.choice-label input\[type='checkbox'\][\s\S]{0,160}?flex: 0 0 auto/.test(memoDecideCode),
+  'MemoDecide: ช่องติ๊กไม่ถูกบีบ (flex: 0 0 auto)');
+check(/@media \(max-width: 700px\)[\s\S]{0,80}?\.choice-row[\s\S]{0,60}?grid-template-columns: 1fr/.test(memoDecideCode),
+  'MemoDecide: จอแคบ (< 700px) แสดงตัวเลือกเป็นคอลัมน์เดียว');
+{
+  const rows = (memoDecideCode.match(/class="choice-row"/g) || []).length;
+  check(rows >= 4, `MemoDecide: ใช้ .choice-row ครบทุกส่วน (พบ ${rows} จุด)`,
+    'อนุมัติขั้นต้น · ขั้นตอนการพิจารณา · ผ่านเรื่อง/เสนอต่อ · ปฏิบัติราชการฯ · บันทึกสั่งการ');
+}
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)
