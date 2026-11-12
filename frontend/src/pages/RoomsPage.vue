@@ -517,8 +517,8 @@ function openExportDialog() {
                   <div class="hint">รองรับ {{ r.room_capacity }} คน</div>
                 </td>
                 <td>
+                  <!-- ผู้ใช้สั่ง 12 พ.ย. 2569: แสดงแค่ชื่อ-นามสกุล (ไม่ต้องมีชื่อผู้ใช้ @...) -->
                   <div>{{ UI.personName(r) }}</div>
-                  <div class="hint">{{ r.username }}</div>
                 </td>
                 <td>{{ r.topic }}</td>
                 <td class="num">{{ r.attendees }}</td>

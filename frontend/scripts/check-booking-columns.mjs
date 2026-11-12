@@ -125,6 +125,24 @@ console.log('⑤ ไม่มีตัวแสดงวัน+เวลา ค�
 check(!/dateTime/.test(uiSrc),
   'ui.js ไม่มีฟังก์ชันที่ไม่มีใครเรียกใช้แล้ว (dead code)');
 
+/*
+ * ⑥ คอลัมน์ "ผู้จอง" ของห้องประชุม — แสดงแค่ชื่อ-นามสกุล
+ * (ผู้ใช้สั่ง 12 พ.ย. 2569: เช่น "นางสาวกัญญาณี มั่งมี" ไม่ต้องมี @kanyanee.m)
+ */
+console.log('');
+console.log('⑥ คอลัมน์ "ผู้จอง" ไม่โชว์ชื่อผู้ใช้ (@username)');
+{
+  const rooms = readFileSync(path.join(ROOT, 'src', 'pages', 'RoomsPage.vue'), 'utf8');
+  const roomsTables = [...rooms.matchAll(/<table[^>]*>[\s\S]*?<\/table>/g)].map((m) => m[0]);
+  const roomsTable = roomsTables.find((t) => t.includes('วันเขียนจอง')) || '';
+  const roomsCells = (/<tbody>[\s\S]*?<\/tbody>/.exec(roomsTable) || [''])[0];
+  check(/UI\.personName\(r\)/.test(roomsCells),
+    'RoomsPage: คอลัมน์ผู้จองใช้ UI.personName() (คำนำหน้า + ชื่อ + นามสกุล)');
+  check(!/\{\{\s*r\.username\s*\}\}/.test(roomsCells),
+    'RoomsPage: ไม่แสดง r.username ในตารางรายการจอง',
+    'ผู้ใช้สั่ง: ให้แสดงแค่ชื่อ-นามสกุล เช่น นางสาวกัญญาณี มั่งมี');
+}
+
 console.log('');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);
