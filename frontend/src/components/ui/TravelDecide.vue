@@ -20,6 +20,7 @@
 import { ref, computed, watch } from 'vue';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
+import { approvePositionOptions } from '../../lib/approve-position.js';
 import AppModal from './AppModal.vue';
 
 const props = defineProps({
@@ -95,24 +96,12 @@ const position = ref('');
 /**
  * ตำแหน่งที่ให้เลือกตอนอนุมัติ
  *
- * กฎเดิมของระบบ: ถ้าตำแหน่งจริงมีคำว่า "ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2"
- * ให้เสนอทั้งตำแหน่งจริงและตำแหน่งที่ปฏิบัติหน้าที่แทน ให้ผู้อนุมัติเลือกเอง
+ * ใช้ตัวช่วยกลาง `approvePositionOptions()` (เหมือนหน้าอนุมัติลา)
+ *   · รอง ผอ.สพป. → 3 ตัวเลือก (ตำแหน่งจริง / รักษาราชการแทน / ปฏิบัติราชการแทน)
+ *   · ผอ.สพป.     → ตำแหน่งจริง + ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.
+ *   · อื่น ๆ       → ตำแหน่งจริง + 3 ตัวเลือกของรอง ผอ.สพป. (ผู้ใช้สั่ง 12 พ.ย. 2569)
  */
-const posOptions = computed(() => {
-  const p = (Auth.user?.position || '').trim();
-  const DIRECTOR = 'ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
-  if (p.includes(DIRECTOR) && !p.includes('รอง')) {
-    return [DIRECTOR, `${DIRECTOR} ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.`];
-  }
-  if (p.includes(`รอง${DIRECTOR}`)) {
-    return [
-      `รอง${DIRECTOR}`,
-      `รอง${DIRECTOR} รักษาราชการแทน ผอ.สพป.แพร่ เขต 2`,
-      `รอง${DIRECTOR} ปฏิบัติราชการแทน ผอ.สพป.แพร่ เขต 2`,
-    ];
-  }
-  return [p || 'ไม่ระบุตำแหน่ง'];
-});
+const posOptions = computed(() => approvePositionOptions(Auth.user?.position));
 
 const requesterName = computed(() => {
   const r = props.record;

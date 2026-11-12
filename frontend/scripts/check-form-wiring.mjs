@@ -207,6 +207,29 @@ check(/:scope="current === 'general-school' \? 'school' : 'office'"/.test(leaveP
 check(/if \(position\) body\.position = position/.test(leavePageSrc),
   'LeavePage: ส่ง position ไปกับ PUT /leaves/:id/approve เมื่อมี');
 
+/* ---------- ตัวเลือกตำแหน่ง: ต้องมี 3 ตัวเลือกของรอง ผอ.สพป. ---------- */
+{
+  const posHelper = readFileSync(join(ROOT, 'src', 'lib', 'approve-position.js'), 'utf8');
+  check(/DEPUTY_OPTIONS/.test(posHelper) && posHelper.includes('รักษาราชการแทน') && posHelper.includes('ปฏิบัติราชการแทน'),
+    'approve-position.js: มี 3 ตัวเลือกของรอง ผอ.สพป.');
+  check(/approvePositionOptions\(Auth\.user\?\.position\)/.test(travelDecide),
+    'TravelDecide: ใช้ตัวช่วยกลาง approvePositionOptions()');
+  check(/approvePositionOptions\(Auth\.user/.test(leaveNote),
+    'LeaveApproveNote: ใช้ตัวช่วยกลาง approvePositionOptions()');
+  check(/approvePositionOptions\(Auth\.user\?\.position\)/.test(leavePageSrc),
+    'LeavePage: ใช้ตัวช่วยกลาง approvePositionOptions()');
+
+  const { approvePositionOptions } = await import('../src/lib/approve-position.js');
+  const deputy = approvePositionOptions('รองผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2');
+  check(deputy.length === 3 && deputy[1].includes('รักษาราชการแทน') && deputy[2].includes('ปฏิบัติราชการแทน'),
+    'ตัวช่วยคืน 3 ตัวเลือกสำหรับรอง ผอ.สพป. (ตำแหน่งจริง/รักษาราชการแทน/ปฏิบัติราชการแทน)',
+    JSON.stringify(deputy));
+  const other = approvePositionOptions('เจ้าหน้าที่ธุรการ');
+  check(other.length === 4 && other[1].includes('รองผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2'),
+    'ตำแหน่งอื่น ๆ ยังมี 3 ตัวเลือกของรอง ผอ.สพป. ให้เลือก',
+    JSON.stringify(other));
+}
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

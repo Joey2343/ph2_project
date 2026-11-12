@@ -14,6 +14,7 @@
 import { ref, computed, watch } from 'vue';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
+import { approvePositionOptions } from '../../lib/approve-position.js';
 import AppModal from './AppModal.vue';
 
 const props = defineProps({
@@ -28,11 +29,8 @@ const DEFAULT_NOTE = 'เห็นควรอนุญาต';
 const note = ref(DEFAULT_NOTE);
 const position = ref('');
 
-/** ตัวเลือกตำแหน่ง — ใช้ตำแหน่งจริงของผู้ลงนาม (สายสถานศึกษา) */
-const posOptions = computed(() => {
-  const p = String((Auth.user && Auth.user.position) || '').trim();
-  return [p || 'ไม่ระบุตำแหน่ง'];
-});
+/** ตัวเลือกตำแหน่ง — ใช้ชุดเดียวกับหน้าอนุมัติไปราชการ (รอง ผอ.สพป. 3 ตัวเลือก) */
+const posOptions = computed(() => approvePositionOptions(Auth.user && Auth.user.position));
 
 // เปิดใหม่ทุกครั้งที่เปลี่ยน record — ไม่อีกข้อความ/ตำแหน่งเดิมค้างมาจากรายการก่อน
 watch(() => props.record, () => {

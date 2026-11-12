@@ -29,6 +29,7 @@ import api from '../api/client.js';
 import { UI } from '../ui/ui.js';
 import { Auth } from '../stores/auth.js';
 import { applyRow, removeRow } from '../lib/row-update.js';
+import { approvePositionOptions } from '../lib/approve-position.js';
 import StatusBadge from '../components/ui/StatusBadge.vue';
 import ApprovalSteps from '../components/ui/ApprovalSteps.vue';
 import LeaveForm from '../components/ui/LeaveForm.vue';
@@ -449,26 +450,12 @@ function tabBadgeText(n) {
 
 /* ---------- ตัดสิน ---------- */
 /**
- * ตำแหน่งที่จะลงนามตอนอนุมัติ (เหมือนหน้าตามอนุมัติไปราชการ)
+ * ตำแหน่งที่จะลงนามตอนอนุมัติ — ใช้ตัวช่วยกลาง `approvePositionOptions()`
  *   · ผอ.สพป. → ตำแหน่งจริง / ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.
- *   · รอง ผอ.สพป. → 3 ตัวเลือก
- *   · อื่น ๆ → ตำแหน่งของผู้ใช้ตามจริง
+ *   · รอง ผอ.สพป. → 3 ตัวเลือก (ตำแหน่งจริง / รักษาราชการแทน / ปฏิบัติราชการแทน)
+ *   · อื่น ๆ → ตำแหน่งจริง + 3 ตัวเลือกของรอง ผอ.สพป. (ผู้ใช้สั่ง 12 พ.ย. 2569)
  */
-const posOptions = computed(() => {
-  const p = (Auth.user?.position || '').trim();
-  const DIRECTOR = 'ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2';
-  if (p.includes(DIRECTOR) && !p.includes('รอง')) {
-    return [DIRECTOR, `${DIRECTOR} ปฏิบัติหน้าที่ราชการแทนเลขาธิการ กพฐ.`];
-  }
-  if (p.includes(`รอง${DIRECTOR}`)) {
-    return [
-      `รอง${DIRECTOR}`,
-      `รอง${DIRECTOR} รักษาราชการแทน ผอ.สพป.แพร่ เขต 2`,
-      `รอง${DIRECTOR} ปฏิบัติราชการแทน ผอ.สพป.แพร่ เขต 2`,
-    ];
-  }
-  return [p || 'ไม่ระบุตำแหน่ง'];
-});
+const posOptions = computed(() => approvePositionOptions(Auth.user?.position));
 
 async function decide(r, action, customLabel) {
   // ผู้อนุมัติขั้นต้น → เปิดหน้าความเห็นก่อน
