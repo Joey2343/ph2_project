@@ -145,7 +145,16 @@ onMounted(async () => {
       jobs.push(staffPublic(r.value.delegate_to).then((d) => (delegateName.value = d ? UI.personName(d) : '-')));
     }
     if (isVacation.value) {
-      jobs.push(api.get('/my-leave-balance').then((d) => (vacBalance.value = d)).catch(() => {}));
+      /*
+       * วันลาพักผ่อนสะสมของ "ผู้ขอลา" + ปีงบประมาณของใบลาฉบับนี้
+       *
+       * ผู้ใช้แจ้ง 16 พ.ย. 2569: ใบลาพักผ่อน 76/2570 แสดงสะสม 5 วัน (ยอดของผู้เปิดดู)
+       *   ทั้งที่ยอดจริงของครูผู้ขอลาคือ 20 วัน (ปีงบประมาณ 2570)
+       * → ต้องส่ง userId ของเจ้าของใบลา + year ตามวันที่ลาจริง (ไม่ใช่ปีปัจจุบันเสมอ)
+       */
+      const fy = fiscalYearBE(r.value.date_from);
+      const qs = '?userId=' + encodeURIComponent(r.value.user_id || '') + (fy ? '&year=' + fy : '');
+      jobs.push(api.get('/my-leave-balance' + qs).then((d) => (vacBalance.value = d)).catch(() => {}));
     }
 
     await Promise.all(jobs);
@@ -157,6 +166,19 @@ onMounted(async () => {
 });
 
 /* ---------- วันที่ไทยเต็ม ---------- */
+/**
+ * ปีงบประมาณ พ.ศ. ของวันที่ในใบลา (ต.ค. → ปีถัดไป)
+ *   ใช้เลือกยอดวันลาพักผ่อนสะสมให้ตรงกับปีของใบลา ไม่ใช่ปีปัจจุบันเสมอ
+ */
+function fiscalYearBE(iso) {
+  const s = String(iso || '').slice(0, 10);
+  const y = Number(s.slice(0, 4));
+  const m = Number(s.slice(5, 7));
+  if (!y || !m) return '';
+  const be = y + 543;
+  return m >= 10 ? be + 1 : be;
+}
+
 const MONTHS = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',

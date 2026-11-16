@@ -72,7 +72,8 @@ if (getBody && putBody) {
 
   console.log('');
   console.log('helper ฝั่ง "ดู" (canViewLeaveBalance):');
-  const hv = SRC.indexOf('async function canViewLeaveBalance');
+  // ⚠️ ต้องมี "(" ต่อท้าย ไม่งั้นจะไปเจอ canViewLeaveBalanceOfUser() ก่อน
+  const hv = SRC.indexOf('async function canViewLeaveBalance(');
   check(hv !== -1, 'มีฟังก์ชัน canViewLeaveBalance()');
   if (hv !== -1) {
     const helper = SRC.slice(hv, hv + 900);

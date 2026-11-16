@@ -294,6 +294,29 @@ check(/@media \(max-width: 700px\)[\s\S]{0,80}?\.choice-row[\s\S]{0,60}?grid-tem
     'อนุมัติขั้นต้น · ขั้นตอนการพิจารณา · ผ่านเรื่อง/เสนอต่อ · ปฏิบัติราชการฯ · บันทึกสั่งการ');
 }
 
+/* ── ⑩ ใบลา: วันลาพักผ่อนสะสมต้องเป็นยอดของผู้ขอลา + ปีของใบลา ────────────
+ *
+ * ผู้ใช้แจ้ง 16 พ.ย. 2569: ใบลา 76/2570 แสดงสะสม 5 วัน แต่ยอดจริง 20 วัน
+ * สาเหตุ: LeaveDoc เรียก /my-leave-balance โดยไม่ส่ง userId/year → ได้ยอดของผู้เปิดดู
+ */
+console.log('\n⑩ ใบลา: วันลาพักผ่อนสะสมของผู้ขอลา');
+
+const leaveDoc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveDoc.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/api\.get\('\/my-leave-balance' \+ qs\)/.test(leaveDoc), 'LeaveDoc: เรียก /my-leave-balance พร้อม query');
+check(/userId=' \+ encodeURIComponent\(r\.value\.user_id/.test(leaveDoc),
+  'LeaveDoc: ส่ง userId ของ "ผู้ขอลา" (ไม่ใช่ของผู้เปิดดู)');
+check(/&year=' \+ fy/.test(leaveDoc), 'LeaveDoc: ส่งปีงบประมาณของใบลาไปด้วย');
+check(/function fiscalYearBE\(iso\)/.test(leaveDoc), 'LeaveDoc: มีฟังก์ชันคำนวณปีงบประมาณจากวันที่ลา');
+check(/m >= 10 \? be \+ 1 : be/.test(leaveDoc), 'LeaveDoc: ต.ค. นับเป็นปีงบประมาณถัดไป');
+
+const reqSrc = readFileSync(join(ROOT, '..', 'backend', 'routes', 'requests.js'), 'utf8');
+check(/const targetId = Number\(req\.query\.userId\) \|\| req\.user\.id/.test(reqSrc),
+  'backend: /my-leave-balance รับ userId ได้');
+check(/canViewLeaveBalanceOfUser\(req\.user, targetId\)/.test(reqSrc),
+  'backend: ตรวจสิทธิ์ก่อนดูยอดของคนอื่น');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

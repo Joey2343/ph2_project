@@ -272,6 +272,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบวันลาพักผ่อนสะสมของใบลา — ยอดของผู้ขอลา + ปีของใบลา]');
+  results.push(run('test-leave-balance-user', [path.join(__dirname, 'test-leave-balance-user.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

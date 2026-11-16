@@ -1329,18 +1329,46 @@ router.put('/leaves/:id', auth.requireAuth, uploadLeavesDyn.single('attachment')
 });
 
 // ---------- วันลาพักผ่อนสะสมของฉัน (user ทั่วไปใช้ได้) ----------
+/**
+ * ผู้ใช้คนนี้ดูวันลาพักผ่อนสะสม "ของคนอื่น" ได้ไหม
+ *   ใช้กับใบลา: ผู้เปิดดูอาจเป็น admin/ผู้อนุมัติ (ไม่ใช่เจ้าของใบลา)
+ *   → ต้องแสดงยอดของ "ผู้ขอลา" ไม่ใช่ยอดของผู้เปิดดู (ผู้ใช้แจ้ง 16 พ.ย. 2569)
+ */
+async function canViewLeaveBalanceOfUser(user, targetUserId) {
+  if (!user) return false;
+  if (Number(user.id) === Number(targetUserId)) return true;
+  if (user.role === 'admin') return true;
+  if (user.can_approve) return true;
+  const chain = await approvals.leaveChainLevels(targetUserId);
+  for (const lv of chain) {
+    const ids = await approvals.leaveApproverIdsFor(targetUserId, lv);
+    // loop-exit: ตรงกับขั้นใดขั้นหนึ่งก็ถือว่าเป็นผู้อนุมัติของคนนี้
+    if (ids.includes(Number(user.id))) return true; // loop-exit
+  }
+  return false;
+}
+
 router.get('/my-leave-balance', auth.requireAuth, async (req, res) => {
   // ค่าเริ่มต้น = ปีงบประมาณปัจจุบัน (1 ต.ค. เริ่มปีงบใหม่ทันที เช่น 1 ต.ค. 2569 = ปีงบประมาณ 2570) — เรียกดูปีเก่าได้ด้วย ?year=
   const year = Number(req.query.year) || getFiscalYearBE();
-  const bal = await db.prepare('SELECT vacation_accumulated, vacation_annual FROM user_leave_balances WHERE user_id = ? AND year = ?').get(req.user.id, year);
+  /*
+   * ?userId= ระบุเจ้าของยอด (ใบลาของคนอื่น)
+   *   ⚠️ เดิมใช้ req.user.id เสมอ → ใบลาของครู 76/2570 แสดงยอดสะสมของผู้เปิดดู (เช่น 5 วัน)
+   *      ทั้งที่ยอดจริงของครูคือ 20 วัน (ผู้ใช้แจ้ง 16 พ.ย. 2569)
+   */
+  const targetId = Number(req.query.userId) || req.user.id;
+  if (!await canViewLeaveBalanceOfUser(req.user, targetId)) {
+    return res.status(403).json({ error: 'ไม่มีสิทธิ์ดูวันลาพักผ่อนสะสมของเจ้าหน้าที่คนนี้' });
+  }
+  const bal = await db.prepare('SELECT vacation_accumulated, vacation_annual FROM user_leave_balances WHERE user_id = ? AND year = ?').get(targetId, year);
   const accumulated = bal ? bal.vacation_accumulated : 0;
   const annual = bal ? bal.vacation_annual : 10;
   const total = accumulated + annual;
   // ดึงยอดลาพักผ่อนที่ใช้ไปแล้ว "ปีงบประมาณนี้" (1 ต.ค. ปีก่อน - 30 ก.ย. ปีที่เลือก) — เดิมนับตามปีปฏิทินซึ่งคลาดเคลื่อนช่วง ต.ค.-ธ.ค.
-  const usedRow = await db.prepare("SELECT COALESCE(SUM(days),0) as total FROM leave_requests WHERE user_id = ? AND leave_type = 'ลาพักผ่อน' AND status = 'approved' AND date_from >= ? AND date_from <= ?").get(req.user.id, (year - 544) + '-10-01', (year - 543) + '-09-30');
+  const usedRow = await db.prepare("SELECT COALESCE(SUM(days),0) as total FROM leave_requests WHERE user_id = ? AND leave_type = 'ลาพักผ่อน' AND status = 'approved' AND date_from >= ? AND date_from <= ?").get(targetId, (year - 544) + '-10-01', (year - 543) + '-09-30');
   const used = usedRow ? (usedRow.total || 0) : 0;
   const remaining = total - used;
-  res.json({ accumulated, annual, total, used, remaining, year });
+  res.json({ accumulated, annual, total, used, remaining, year, userId: targetId });
 });
 
 // ---------- เมนู วันลาพักผ่อนสะสม ----------
