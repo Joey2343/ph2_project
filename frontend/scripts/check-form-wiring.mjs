@@ -317,6 +317,23 @@ check(/const targetId = Number\(req\.query\.userId\) \|\| req\.user\.id/.test(re
 check(/canViewLeaveBalanceOfUser\(req\.user, targetId\)/.test(reqSrc),
   'backend: ตรวจสิทธิ์ก่อนดูยอดของคนอื่น');
 
+/* ── ⑪ เขียนบันทึกข้อความ: ช่อง "เรียน" ต้องพิมพ์แก้ได้ (ค่าเริ่มต้นคงเดิม) ──
+ *
+ * ผู้ใช้สั่ง 17 พ.ย. 2569
+ */
+console.log('\n⑪ เขียนบันทึกข้อความ: ช่อง "เรียน" พิมพ์ได้');
+
+const memoForm = readFileSync(join(ROOT, 'src', 'components', 'ui', 'MemoForm.vue'), 'utf8');
+const memoFormCode = memoForm
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/const toText = ref\(m\.value\.to_text \|\| 'ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2'\)/.test(memoFormCode),
+  'MemoForm: ค่าเริ่มต้นของ "เรียน" = ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2');
+check(/<input v-model="toText"[^>]*\/>/.test(memoFormCode) && !/<input v-model="toText"[^>]*readonly/.test(memoFormCode),
+  'MemoForm: ช่อง "เรียน" ไม่ readonly แล้ว (พิมพ์แก้ได้)',
+  'ผู้ใช้สั่ง 17 พ.ย. 2569 — ยังคงค่าเริ่มต้นเดิมไว้');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

@@ -394,7 +394,8 @@ function printNewForm() {
 
         <div class="form-group full">
           <label>เรียน</label>
-          <input v-model="toText" readonly />
+          <!-- ผู้ใช้สั่ง 17 พ.ย. 2569: พิมพ์แก้ได้ (ค่าเริ่มต้นยังเป็น ผอ.สพป.แพร่ เขต 2) -->
+          <input v-model="toText" placeholder="ผู้อำนวยการสำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2" />
         </div>
 
         <MemoFileGroup
