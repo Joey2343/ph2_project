@@ -164,6 +164,9 @@ console.log('⑦ ฟอร์มจองห้องประชุม: "ถึ
   check(/date_to: bk\.value\.date_to \|\| bk\.value\.date/.test(rooms),
     'ตอนบันทึกส่ง date_to (ไม่กรอก = วันที่เดียวกัน)');
   check(/function dateRangeText\(r\)/.test(rooms), 'มีตัวแสดงช่วงวันที่ในรายการ');
+  check(/UI\.confirm\(`ต้องการ\$\{label\}การจองห้อง "\$\{r\.room_name\}" วันที่ \$\{dateRangeText\(r\)\}/.test(rooms),
+    'หน้าต่างยืนยันอนุมัติ/ไม่อนุมัติ แสดงช่วงวันที่ (dateRangeText)',
+    'ผู้ใช้สั่ง 18 พ.ย. 2569: "19/11/2569 – 29/11/2569"');
 }
 
 console.log('');

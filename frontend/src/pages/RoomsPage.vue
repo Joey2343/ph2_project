@@ -260,7 +260,8 @@ async function confirmFinalApprove() {
 
 async function decide(r, action) {
   const label = action === 'approve' ? 'อนุมัติ' : 'ไม่อนุมัติ';
-  const yes = await UI.confirm(`ต้องการ${label}การจองห้อง "${r.room_name}" วันที่ ${UI.date(r.date)} ใช่หรือไม่?`, {
+  // ผู้ใช้สั่ง 18 พ.ย. 2569: จองหลายวันต้องแสดงช่วงวันที่ ("19/11/2569 – 29/11/2569")
+  const yes = await UI.confirm(`ต้องการ${label}การจองห้อง "${r.room_name}" วันที่ ${dateRangeText(r)} ใช่หรือไม่?`, {
     okText: label,
     danger: action !== 'approve',
   });
