@@ -114,7 +114,8 @@ for (const [file, label] of PAGES) {
     'ถ้าไม่ตรง แปลว่าย้าย <th> แล้วลืมย้าย <td> (หรือสลับ) → ข้อมูลจะผิดคอลัมน์');
   const timeAt = cells.indexOf('UI.time(r.start_time)');
   const bookingAt = cells.indexOf('UI.date(r.created_at)');
-  const dateAt = cells.search(/\{\{ (?:dateCell\(r\)|UI\.date\(r\.date\)) \}\}/);
+  // ผู้ใช้สั่ง 18 พ.ย. 2569: ห้องประชุมแสดงช่วงวันที่ด้วย dateRangeText(r) (จองหลายวันได้)
+  const dateAt = cells.search(/\{\{ (?:dateCell\(r\)|UI\.date\(r\.date\)|dateRangeText\(r\)) \}\}/);
   check(timeAt > -1 && bookingAt > -1 && dateAt > -1 && dateAt < timeAt && timeAt < bookingAt,
     `${label}: เซลล์เรียง วันที่ → เวลา → วันเขียนจอง ตรงกับหัวตาราง`,
     `ตำแหน่ง: วันที่=${dateAt} เวลา=${timeAt} วันเขียนจอง=${bookingAt}`);
@@ -164,4 +165,7 @@ console.log('⑦ ฟอร์มจองห้องประชุม: "ถึ
     'ตอนบันทึกส่ง date_to (ไม่กรอก = วันที่เดียวกัน)');
   check(/function dateRangeText\(r\)/.test(rooms), 'มีตัวแสดงช่วงวันที่ในรายการ');
 }
+
+console.log('');
+console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);
