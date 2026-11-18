@@ -1083,6 +1083,19 @@ ph2_project/
   - หน้าอนุมัติขั้นต้น (`openApproveLevel1`) เติม `l1Driver` จาก `r.driver_name`
     → ชื่อที่ผู้ขอเลือกไว้ขึ้นในช่อง "เลือกพนักงานขับรถ" อัตโนมัติ
   - เทสต์กันไว้ที่ `test-vehicle-owner-edit.js` ข้อ ⑥ + `verify-vue-pages` (`#/vehicles`)
+- **จองห้องประชุม: มีช่อง "ถึงวันที่" (จองได้หลายวัน)** (ผู้ใช้สั่ง 18 พ.ย. 2569)
+  - ฟอร์ม `RoomsPage.vue`: เรียง **วันที่ใช้ → ถึงวันที่ → เวลาเริ่ม → เวลาสิ้นสุด**
+    (`#rb-date-to` อยู่ก่อน `#rb-end`) · ค่าเริ่มต้น = วันที่ใช้ (จองวันเดียว)
+  - เปลี่ยน "วันที่ใช้" แล้วถ้า "ถึงวันที่" น้อยกว่า → ปรับให้เท่ากันอัตโนมัติ
+  - `POST /room-bookings` รับ `date_to` (ไม่ส่ง = วันเดียว) · `date_to < date` → **400**
+  - `room_bookings.date_to` เป็นคอลัมน์ใหม่ (เพิ่มใน `SCHEMA_SQL` + `COLUMN_MIGRATIONS`)
+  - **การชนกันเทียบทั้งช่วงวันที่และเวลา** — `roomRowsInDateRange()`:
+    `r.date <= dateTo AND COALESCE(NULLIF(r.date_to,''), r.date) >= date` แล้วจึงเทียบ `timeOverlap`
+    · ใช้ทั้ง `POST /room-bookings` และ `GET /room-bookings/conflicts` (รับ `date_to`)
+    · แถวเก่าที่ไม่มี `date_to` ถือว่าจองวันเดียว
+  - รายการ/ใบรายละเอียด/ไฟล์ Excel แสดงช่วงวันที่ (`dateRangeText()` → "18/11/2569 – 19/11/2569")
+  - เทสต์กันไว้ที่ `backend/scripts/test-room-date-to.js` (ยิง API 8 ข้อ)
+    และ `frontend/scripts/check-booking-columns.mjs` หัวข้อ ⑦
 - **คอลัมน์ "ผู้จอง" ในรายการจองห้องประชุม แสดงแค่ชื่อ-นามสกุล** (ผู้ใช้สั่ง 12 พ.ย. 2569)
   - ใช้ `UI.personName(r)` (คำนำหน้า + ชื่อ + นามสกุล เช่น "นางสาวกัญญาณี มั่งมี")
   - **ห้ามแสดง `r.username`** (`@kanyanee.m`) ใต้ชื่ออีก
@@ -1406,7 +1419,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **237** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 62/62 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 63/63 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (113 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

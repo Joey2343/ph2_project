@@ -143,6 +143,25 @@ console.log('⑥ คอลัมน์ "ผู้จอง" ไม่โชว�
     'ผู้ใช้สั่ง: ให้แสดงแค่ชื่อ-นามสกุล เช่น นางสาวกัญญาณี มั่งมี');
 }
 
+/*
+ * ⑦ การจองห้องประชุม: มี "ถึงวันที่" ไว้ก่อน "เวลาสิ้นสุด" (ผู้ใช้สั่ง 18 พ.ย. 2569)
+ */
 console.log('');
-console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
+console.log('⑦ ฟอร์มจองห้องประชุม: "ถึงวันที่" อยู่ก่อน "เวลาสิ้นสุด"');
+{
+  const rooms = readFileSync(path.join(ROOT, 'src', 'pages', 'RoomsPage.vue'), 'utf8');
+  const formStart = rooms.indexOf('id="rb-date"');
+  const formEnd = rooms.indexOf('id="rb-topic"');
+  const form = formStart > -1 && formEnd > formStart ? rooms.slice(formStart, formEnd) : '';
+  check(!!form, 'พบฟอร์มจองห้องประชุม (ช่วงวันที่/เวลา)');
+  const dTo = form.indexOf('id="rb-date-to"');
+  const tEnd = form.indexOf('id="rb-end"');
+  check(dTo > -1 && tEnd > -1 && dTo < tEnd,
+    '"ถึงวันที่" (rb-date-to) อยู่ก่อน "เวลาสิ้นสุด" (rb-end)',
+    'ผู้ใช้สั่ง: เพิ่มส่วนถึงวันที่ไว้ก่อนส่วนเวลาสิ้นสุด');
+  check(/v-model="bk\.date_to"/.test(form), '"ถึงวันที่" ผูกกับ bk.date_to');
+  check(/date_to: bk\.value\.date_to \|\| bk\.value\.date/.test(rooms),
+    'ตอนบันทึกส่ง date_to (ไม่กรอก = วันที่เดียวกัน)');
+  check(/function dateRangeText\(r\)/.test(rooms), 'มีตัวแสดงช่วงวันที่ในรายการ');
+}
 process.exit(fail ? 1 : 0);

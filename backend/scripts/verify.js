@@ -277,6 +277,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบ "ถึงวันที่" ของการจองห้องประชุม — จองหลายวัน + ตรวจช่วงเวลาชน]');
+  results.push(run('test-room-date-to', [path.join(__dirname, 'test-room-date-to.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

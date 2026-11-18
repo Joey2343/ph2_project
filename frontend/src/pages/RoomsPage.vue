@@ -140,7 +140,7 @@ function openDetail(r) {
 /* ---------- ฟอร์มจอง ---------- */
 const bookingOpen = ref(false);
 const bookingSaving = ref(false);
-const bk = ref({ room_id: '', date: '', start_time: '', end_time: '', topic: '', attendees: 10 });
+const bk = ref({ room_id: '', date: '', date_to: '', start_time: '', end_time: '', topic: '', attendees: 10 });
 const conflict = ref([]);
 const conflictBusy = ref(false);
 
@@ -152,14 +152,19 @@ const selectedRoom = computed(
 );
 
 function openBookingForm() {
-  bk.value = { room_id: '', date: UI.today(), start_time: '', end_time: '', topic: '', attendees: 10 };
+  bk.value = { room_id: '', date: UI.today(), date_to: UI.today(), start_time: '', end_time: '', topic: '', attendees: 10 };
   conflict.value = [];
   bookingOpen.value = true;
 }
 
-/** ตรวจว่าช่วงเวลาที่เลือกถูกจองไว้แล้วหรือยัง */
+/** "ถึงวันที่" ต้องไม่ก่อน "วันที่ใช้" — ปรับให้อัตโนมัติเมื่อเปลี่ยนวันที่เริ่ม */
+watch(() => bk.value.date, (d) => {
+  if (!bk.value.date_to || bk.value.date_to < d) bk.value.date_to = d;
+});
+
+/** ตรวจว่าช่วงเวลาที่เลือกถูกจองไว้แล้วหรือยัง (รองรับหลายวัน) */
 async function checkConflict() {
-  const { room_id, date, start_time, end_time } = bk.value;
+  const { room_id, date, date_to, start_time, end_time } = bk.value;
   if (!room_id || !date || !start_time || !end_time) {
     conflict.value = [];
     return;
@@ -169,6 +174,7 @@ async function checkConflict() {
     const data = await api.get(
       '/room-bookings/conflicts?room_id=' + encodeURIComponent(room_id) +
         '&date=' + encodeURIComponent(date) +
+        '&date_to=' + encodeURIComponent(date_to || date) +
         '&start_time=' + encodeURIComponent(start_time) +
         '&end_time=' + encodeURIComponent(end_time),
     );
@@ -180,17 +186,21 @@ async function checkConflict() {
   }
 }
 
-watch(() => [bk.value.room_id, bk.value.date, bk.value.start_time, bk.value.end_time], checkConflict);
+watch(() => [bk.value.room_id, bk.value.date, bk.value.date_to, bk.value.start_time, bk.value.end_time], checkConflict);
 
 async function submitBooking() {
   if (conflict.value.length) return UI.toast('ช่วงเวลานี้ถูกจองไว้แล้ว ไม่สามารถจองซ้ำได้', 'error');
   if (!bk.value.room_id || !bk.value.date) return UI.toast('กรุณาเลือกห้องประชุมและวันที่', 'error');
+  if (bk.value.date_to && bk.value.date_to < bk.value.date) {
+    return UI.toast('ถึงวันที่ต้องไม่ก่อนวันที่เริ่มใช้ห้อง', 'error');
+  }
   if (!bk.value.topic.trim()) return UI.toast('กรุณากรอกหัวข้อการประชุม', 'error');
   bookingSaving.value = true;
   try {
     const res = await api.post('/room-bookings', {
       room_id: bk.value.room_id,
       date: bk.value.date,
+      date_to: bk.value.date_to || bk.value.date,
       start_time: bk.value.start_time,
       end_time: bk.value.end_time,
       topic: bk.value.topic.trim(),
@@ -204,6 +214,15 @@ async function submitBooking() {
   } finally {
     bookingSaving.value = false;
   }
+}
+
+/** ช่วงวันที่ของการจอง — จองหลายวันแสดง "วันที่เริ่ม – ถึงวันที่" */
+function dateRangeText(r) {
+  if (!r) return '-';
+  const from = UI.date(r.date);
+  const to = r.date_to ? String(r.date_to).slice(0, 10) : '';
+  if (!to || to === String(r.date || '').slice(0, 10)) return from;
+  return from + ' – ' + UI.date(to);
 }
 
 /* ---------- อนุมัติ ---------- */
@@ -381,7 +400,7 @@ function openExportDialog() {
       const rows = ExportFilterDialog.filterRows(data.bookings || [], 'date', yBE, m, wkStart, wkEnd);
       const headers = ['วันที่', 'ห้องประชุม', 'รองรับ (คน)', 'ผู้จอง', 'เวลา', 'หัวข้อการประชุม', 'ผู้เข้าร่วม', 'สถานะ'];
       const out = rows.map((r) => [
-        r.date ? UI.date(r.date) : '',
+        r.date ? dateRangeText(r) : '',
         r.room_name || '',
         r.room_capacity || '',
         r.full_name || '',
@@ -509,7 +528,7 @@ function openExportDialog() {
             </thead>
             <tbody>
               <tr v-for="r in pagedBookings" :key="r.id">
-                <td>{{ UI.date(r.date) }}</td>
+                <td>{{ dateRangeText(r) }}</td>
                 <td>{{ UI.time(r.start_time) }} - {{ UI.time(r.end_time) }}</td>
                 <td class="nowrap">{{ UI.date(r.created_at) }}</td>
                 <td>
@@ -575,7 +594,7 @@ function openExportDialog() {
       </div>
       <div class="form-group">
         <label>วันที่</label>
-        <div>{{ UI.date(detail.date) }}</div>
+        <div>{{ dateRangeText(detail) }}</div>
       </div>
       <div class="form-group">
         <label>เวลา</label>
@@ -635,6 +654,11 @@ function openExportDialog() {
       <div class="form-group">
         <label>วันที่ใช้ <span class="req"> *</span></label>
         <input id="rb-date" v-model="bk.date" type="date" :min="UI.today()" />
+      </div>
+      <!-- ผู้ใช้สั่ง 18 พ.ย. 2569: เพิ่ม "ถึงวันที่" (ไว้ก่อนส่วนเวลาสิ้นสุด) -->
+      <div class="form-group">
+        <label>ถึงวันที่</label>
+        <input id="rb-date-to" v-model="bk.date_to" type="date" :min="bk.date || UI.today()" />
       </div>
       <div class="form-group">
         <label>เวลาเริ่ม</label>
@@ -772,7 +796,7 @@ function openExportDialog() {
       </div>
       <div class="form-group">
         <label>วันที่</label>
-        <div>{{ UI.date(finalTarget.date) }}</div>
+        <div>{{ dateRangeText(finalTarget) }}</div>
       </div>
       <div class="form-group">
         <label>เวลา</label>

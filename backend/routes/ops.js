@@ -1961,12 +1961,32 @@ router.get('/room-bookings', auth.requireAuth, async (req, res) => {
 });
 
 // ตรวจสอบว่าช่วงเวลาที่เลือกซ้อนทับกับการจองที่มีอยู่หรือไม่ (ชื่อคนจอง + หัวข้อ)
+/*
+ * ผู้ใช้สั่ง 18 พ.ย. 2569: จองห้องประชุมมี "ถึงวันที่" (จองหลายวันได้)
+ *   → การชนกันต้องเทียบทั้งช่วงวันที่และช่วงเวลา
+ *   แถวเก่าที่ไม่มี date_to = จองวันเดียว (date_to = date)
+ */
+function roomDateTo(row) {
+  const d = String((row && row.date_to) || '').slice(0, 10);
+  return d || String((row && row.date) || '').slice(0, 10);
+}
+
+/** แถวการจองที่ช่วงวันที่ทับกับ [date, dateTo] */
+async function roomRowsInDateRange(roomId, date, dateTo, excludeId = 0) {
+  let sql = `SELECT r.id, r.date, r.date_to, r.start_time, r.end_time, r.topic, r.status, u.full_name
+    FROM room_bookings r JOIN users u ON u.id = r.user_id
+    WHERE r.room_id = ? AND r.status IN ('pending','approved')
+      AND r.date <= ? AND COALESCE(NULLIF(r.date_to, ''), r.date) >= ?`;
+  const args = [Number(roomId), dateTo, date];
+  if (excludeId) { sql += ' AND r.id <> ?'; args.push(Number(excludeId)); }
+  return await db.prepare(sql).all(...args);
+}
+
 router.get('/room-bookings/conflicts', auth.requireAuth, async (req, res) => {
   const { room_id, date, start_time, end_time } = req.query;
+  const dateTo = String(req.query.date_to || date || '').slice(0, 10);
   if (!room_id || !date) return res.json({ conflicts: [] });
-  const rows = await db.prepare(`SELECT r.id, r.start_time, r.end_time, r.topic, r.status, u.full_name
-    FROM room_bookings r JOIN users u ON u.id = r.user_id
-    WHERE r.room_id = ? AND r.date = ? AND r.status IN ('pending','approved')`).all(Number(room_id), date);
+  const rows = await roomRowsInDateRange(room_id, String(date).slice(0, 10), dateTo);
   const s = (start_time || '').slice(0, 5), e = (end_time || '').slice(0, 5);
   const conflicts = s && e ? rows.filter((r) => timeOverlap(s, e, r.start_time, r.end_time)) : [];
   res.json({ conflicts });
@@ -1976,20 +1996,24 @@ router.post('/room-bookings', auth.requireAuth, async (req, res) => {
   const b = req.body || {};
   if (!b.room_id || !b.date) return res.status(400).json({ error: 'กรุณาเลือกห้องประชุมและวันที่' });
   if (!b.topic || !String(b.topic).trim()) return res.status(400).json({ error: 'กรุณากรอกหัวข้อการประชุม' });
+  const dateFrom = String(b.date).slice(0, 10);
+  const dateTo = String(b.date_to || b.date).slice(0, 10);
+  if (dateTo < dateFrom) return res.status(400).json({ error: 'ถึงวันที่ต้องไม่ก่อนวันที่เริ่มใช้ห้อง' });
   const start = (b.start_time || '').slice(0, 5), end = (b.end_time || '').slice(0, 5);
   if (start && end) {
-    const clash = await db.prepare(`SELECT r.id, r.start_time, r.end_time, r.topic, u.full_name
-      FROM room_bookings r JOIN users u ON u.id = r.user_id
-      WHERE r.room_id = ? AND r.date = ? AND r.status IN ('pending','approved')`).all(Number(b.room_id), b.date);
+    const clash = await roomRowsInDateRange(b.room_id, dateFrom, dateTo);
     const hit = clash.find((c) => timeOverlap(start, end, c.start_time, c.end_time));
     if (hit) {
-      return res.status(409).json({ error: `ห้องประชุมนี้ถูกจองไว้แล้วในช่วงเวลานี้ (${hit.full_name} • ${hit.topic})` });
+      const dayLabel = roomDateTo(hit) !== String(hit.date).slice(0, 10)
+        ? ` (${hit.date} ถึง ${roomDateTo(hit)})`
+        : ` (${hit.date})`;
+      return res.status(409).json({ error: `ห้องประชุมนี้ถูกจองไว้แล้วในช่วงเวลานี้ (${hit.full_name} • ${hit.topic})${dayLabel}` });
     }
   }
   const bookingNo = await nextDocNo('room_bookings', 'booking_no');
-  const info = await db.prepare(`INSERT INTO room_bookings (booking_no, room_id, user_id, date, start_time, end_time, topic, attendees)
-    VALUES (?,?,?,?,?,?,?,?)`).run(bookingNo, Number(b.room_id), req.user.id, b.date,
-    start, end, String(b.topic).trim(), Number(b.attendees) || 0);
+  const info = await db.prepare(`INSERT INTO room_bookings (booking_no, room_id, user_id, date, date_to, start_time, end_time, topic, attendees)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(bookingNo, Number(b.room_id), req.user.id, dateFrom,
+    dateTo, start, end, String(b.topic).trim(), Number(b.attendees) || 0);
   // แจ้งเตือน Telegram ไปยังผู้อนุมัติขั้นต้นว่ามีคำขอจองใหม่
   await telegram.notifyRoomSubmitted(Number(info.lastInsertRowid));
   res.json({ ok: true, id: info.lastInsertRowid, message: 'ส่งคำขอจองห้องประชุมเรียบร้อย รอผู้ดูแลระบบอนุมัติ' });
