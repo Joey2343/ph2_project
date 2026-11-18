@@ -28,6 +28,8 @@ const TABS = [
   { key: 'pending', label: '◷ รออนุมัติ' },
   { key: 'office', label: '📋 เจ้าหน้าที่ สพป.แพร่ เขต 2' },
   { key: 'school', label: '🏫 เจ้าหน้าที่สถานศึกษา' },
+  // ผู้ใช้สั่ง 18 พ.ย. 2569: แยกผู้ที่กำหนดเป็น "ผู้อำนวยการสถานศึกษา" มาอยู่แท็บนี้
+  { key: 'director', label: '🎓 ผู้อำนวยการสถานศึกษา' },
   { key: 'settings', label: '⊛ ตั้งค่าการอนุมัติ' },
   { key: 'simdate', label: '⏱ โหมดจำลองวันที่' },
 ];
@@ -85,8 +87,24 @@ const staff = ref([]);
 const staffLoading = ref(false);
 const staffError = ref('');
 
-/** กลุ่มงานของแท็บที่เลือก */
-const staffGroup = computed(() => (tab.value === 'school' ? 'school' : 'office'));
+/** กลุ่มงานของแท็บที่เลือก (แท็บผู้อำนวยการสถานศึกษา = ฝั่งสถานศึกษา) */
+const staffGroup = computed(() =>
+  (tab.value === 'school' || tab.value === 'director' ? 'school' : 'office'),
+);
+
+/**
+ * เป็น "ผู้อำนวยการสถานศึกษา" หรือไม่ (ผู้ใช้สั่ง 18 พ.ย. 2569)
+ *   · role = school_director (กำหนดสิทธิ์การใช้งานจากหน้าตั้งค่าบทบาท)
+ *   · หรือตำแหน่งมีคำว่า "ผู้อำนวยการสถานศึกษา" (ยกเว้น "รอง…" ซึ่งเป็นคนละบทบาท)
+ */
+function isSchoolDirector(u) {
+  const role = String((u && u.role) || '');
+  if (role === 'school_director') return true;
+  if (role === 'school_deputy') return false;
+  const pos = String((u && u.position) || '').trim();
+  if (!pos.includes('ผู้อำนวยการสถานศึกษา')) return false;
+  return !pos.startsWith('รอง');
+}
 
 async function loadStaff() {
   staffLoading.value = true;
@@ -97,7 +115,9 @@ async function loadStaff() {
   p.push('user_group=' + UI.encodePath(staffGroup.value));
   try {
     const d = await api.get('/staff?' + p.join('&'));
-    staff.value = d.staff || [];
+    const list = d.staff || [];
+    // แท็บผู้อำนวยการสถานศึกษา: กรองเฉพาะผู้ที่ถูกกำหนดเป็น ผอ.สถานศึกษา
+    staff.value = tab.value === 'director' ? list.filter(isSchoolDirector) : list;
   } catch (e) {
     staff.value = [];
     staffError.value = e.message;
@@ -571,7 +591,7 @@ const pendingGridStyle = {
     </div>
 
     <!-- ============ แท็บ: รายชื่อเจ้าหน้าที่ ============ -->
-    <template v-else-if="tab === 'office' || tab === 'school'">
+    <template v-else-if="tab === 'office' || tab === 'school' || tab === 'director'">
       <div class="filter-row" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
         <input
           id="st-q"
@@ -589,7 +609,9 @@ const pendingGridStyle = {
           <option value="rejected">ปฏิเสธ</option>
         </select>
 
+        <!-- แท็บผู้อำนวยการสถานศึกษาเป็นการกรองย่อยของฝั่งสถานศึกษา → ไม่มีไฟล์ Excel แยก -->
         <button
+          v-if="tab !== 'director'"
           id="st-download"
           class="btn btn-primary"
           style="margin-left: auto"
@@ -602,8 +624,11 @@ const pendingGridStyle = {
 
       <div class="card">
         <div class="card-title">
-          {{ staffGroup === 'office' ? '📋 เจ้าหน้าที่ สพป.แพร่ เขต 2' : '🏫 เจ้าหน้าที่สถานศึกษา' }}
-          ({{ staff.length }} คน)
+          <template v-if="tab === 'director'">🎓 ผู้อำนวยการสถานศึกษา ({{ staff.length }} คน)</template>
+          <template v-else>
+            {{ staffGroup === 'office' ? '📋 เจ้าหน้าที่ สพป.แพร่ เขต 2' : '🏫 เจ้าหน้าที่สถานศึกษา' }}
+            ({{ staff.length }} คน)
+          </template>
         </div>
 
         <div v-if="staffLoading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>

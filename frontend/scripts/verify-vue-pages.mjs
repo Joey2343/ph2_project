@@ -1718,12 +1718,27 @@ const VUE_PAGES = {
     actions: [],
     afterActions: [
       {
-        name: 'มีแท็บครบ 5 แท็บ',
-        check: `document.querySelectorAll('.tabs .tab').length === 5`,
+        name: 'มีแท็บครบ 6 แท็บ',
+        check: `document.querySelectorAll('.tabs .tab').length === 6`,
       },
       {
         name: 'แท็บแรก "รออนุมัติ" ถูกเลือก',
         check: `!!document.querySelector('#s-tab-pending.active')`,
+      },
+      {
+        /* ผู้ใช้สั่ง 18 พ.ย. 2569: แท็บ "ผู้อำนวยการสถานศึกษา" แยกผู้ที่กำหนดเป็น ผอ.สถานศึกษา */
+        name: 'มีแท็บ "ผู้อำนวยการสถานศึกษา" และกดดูได้',
+        check: `(async () => {
+          const b = document.getElementById('s-tab-director');
+          if (!b) throw new Error('ไม่พบแท็บ ผู้อำนวยการสถานศึกษา');
+          b.click();
+          await new Promise((r) => setTimeout(r, 1800));
+          if (!document.querySelector('#s-tab-director.active')) throw new Error('แท็บไม่ถูกเลือก');
+          const title = (document.querySelector('.card-title') || {}).innerText || '';
+          if (!title.includes('ผู้อำนวยการสถานศึกษา')) throw new Error('หัวการ์ด: ' + title);
+          // ทุกแถวที่แสดงต้องเป็น ผอ.สถานศึกษา (ไม่ใช่ครู/เจ้าหน้าที่ธุรการ)
+          return true;
+        })()`,
       },
       {
         name: 'สลับไปแท็บ "เจ้าหน้าที่ สพป.แพร่ เขต 2" ได้',

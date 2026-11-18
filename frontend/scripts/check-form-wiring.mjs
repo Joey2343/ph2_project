@@ -334,6 +334,27 @@ check(/<input v-model="toText"[^>]*\/>/.test(memoFormCode) && !/<input v-model="
   'MemoForm: ช่อง "เรียน" ไม่ readonly แล้ว (พิมพ์แก้ได้)',
   'ผู้ใช้สั่ง 17 พ.ย. 2569 — ยังคงค่าเริ่มต้นเดิมไว้');
 
+/* ── ⑫ หน้าเจ้าหน้าที่: แท็บ "ผู้อำนวยการสถานศึกษา" ────────────────────────
+ *
+ * ผู้ใช้สั่ง 18 พ.ย. 2569: แยกผู้ที่กำหนดสิทธิ์เป็น ผอ.สถานศึกษา มาอยู่แท็บนี้
+ */
+console.log('\n⑫ หน้าเจ้าหน้าที่: แท็บผู้อำนวยการสถานศึกษา');
+
+const staffSrc = readFileSync(join(ROOT, 'src', 'pages', 'StaffPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/\{ key: 'director', label: '[^']*ผู้อำนวยการสถานศึกษา' \}/.test(staffSrc),
+  'StaffPage: มีแท็บ "ผู้อำนวยการสถานศึกษา"');
+check(/staffGroup = computed\([\s\S]{0,120}?tab\.value === 'director' \? 'school' : 'office'/.test(staffSrc),
+  'StaffPage: แท็บนี้ดึงรายชื่อฝั่งสถานศึกษา (user_group=school)');
+check(/function isSchoolDirector\(u\)[\s\S]{0,260}?role === 'school_director'/.test(staffSrc),
+  'StaffPage: นับผู้ที่ role = school_director เป็น ผอ.สถานศึกษา');
+check(/function isSchoolDirector\(u\)[\s\S]{0,420}?pos\.includes\('ผู้อำนวยการสถานศึกษา'\)[\s\S]{0,120}?!pos\.startsWith\('รอง'\)/.test(staffSrc),
+  'StaffPage: ตำแหน่ง "ผู้อำนวยการสถานศึกษา" ก็นับ (ยกเว้น "รอง…")');
+check(/tab\.value === 'director' \? list\.filter\(isSchoolDirector\) : list/.test(staffSrc),
+  'StaffPage: กรองเฉพาะ ผอ.สถานศึกษา ในแท็บนี้');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)
