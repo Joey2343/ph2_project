@@ -47,8 +47,24 @@ const cols = computed(() => COLS[tab.value]);
 const officeStaff = computed(() => staff.value.filter((u) => (u.user_group || 'office') !== 'school'));
 const schoolStaff = computed(() => staff.value.filter((u) => (u.user_group || 'office') === 'school'));
 
+/**
+ * เป็น "ผู้อำนวยการสถานศึกษา" หรือไม่
+ *   ผู้ใช้สั่ง 19 พ.ย. 2569: แท็บเจ้าหน้าที่สถานศึกษา แสดงเฉพาะ ผอ.สถานศึกษา
+ */
+function isSchoolDirector(u) {
+  const role = String((u && u.role) || '');
+  if (role === 'school_director') return true;
+  if (role === 'school_deputy') return false;
+  const pos = String((u && u.position) || '').trim();
+  if (!pos.includes('ผู้อำนวยการสถานศึกษา')) return false;
+  return !pos.startsWith('รอง');
+}
+
+/** รายชื่อที่แสดงในแท็บสถานศึกษา = เฉพาะ ผอ.สถานศึกษา */
+const schoolDirectors = computed(() => schoolStaff.value.filter(isSchoolDirector));
+
 /** รายการที่แสดงในแท็บปัจจุบัน */
-const rows = computed(() => (tab.value === 'office' ? officeStaff.value : schoolStaff.value));
+const rows = computed(() => (tab.value === 'office' ? officeStaff.value : schoolDirectors.value));
 
 /** ตัวเลือกของ dropdown — ทั้งสองสายเลือกจากเจ้าหน้าที่ สพป.แพร่ เขต 2 */
 const pool = computed(() => officeStaff.value);
@@ -163,11 +179,13 @@ const tdStyle = { padding: '5px 8px', borderBottom: '1px solid #e5e7eb', fontSiz
           📋 เจ้าหน้าที่ สพป.แพร่ เขต 2 ({{ officeStaff.length }})
         </button>
         <button class="tab" :class="{ active: tab === 'school' }" @click="tab = 'school'">
-          🏫 เจ้าหน้าที่สถานศึกษา ({{ schoolStaff.length }})
+          🏫 เจ้าหน้าที่สถานศึกษา ({{ schoolDirectors.length }})
         </button>
       </div>
 
-      <div v-if="rows.length === 0" class="empty-state"><span class="em">👤</span>ไม่มีข้อมูลบุคลากรในกลุ่มนี้</div>
+      <div v-if="rows.length === 0" class="empty-state">
+        <span class="em">👤</span>{{ tab === 'school' ? 'ไม่พบผู้อำนวยการสถานศึกษา' : 'ไม่มีข้อมูลบุคลากรในกลุ่มนี้' }}
+      </div>
 
       <table v-else style="width: 100%; border-collapse: collapse">
         <thead>

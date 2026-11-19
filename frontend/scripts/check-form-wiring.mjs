@@ -372,6 +372,25 @@ check(/pos\.includes\('ผู้อำนวยการสถานศึกษ
 check(/return isSchoolScope\.value \? isSchoolDirector\(u\) : true/.test(leaveApproversSrc),
   'LeaveApprovers: ฝั่งสถานศึกษากรองเฉพาะ ผอ.สถานศึกษา');
 
+/* ── ⑭ กำหนดผู้อนุมัติไปราชการ: แท็บสถานศึกษาแสดงเฉพาะ ผอ.สถานศึกษา ─────────
+ *
+ * ผู้ใช้สั่ง 19 พ.ย. 2569
+ */
+console.log('\n⑭ กำหนดผู้อนุมัติไปราชการ: แท็บสถานศึกษาเฉพาะ ผอ.สถานศึกษา');
+
+const travelApproversSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelApprovers.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/function isSchoolDirector\(u\)[\s\S]{0,260}?role === 'school_director'/.test(travelApproversSrc),
+  'TravelApprovers: นับ role = school_director เป็น ผอ.สถานศึกษา');
+check(/const schoolDirectors = computed\(\(\) => schoolStaff\.value\.filter\(isSchoolDirector\)\)/.test(travelApproversSrc),
+  'TravelApprovers: มีรายชื่อเฉพาะ ผอ.สถานศึกษา');
+check(/tab\.value === 'office' \? officeStaff\.value : schoolDirectors\.value/.test(travelApproversSrc),
+  'TravelApprovers: แท็บสถานศึกษาแสดงเฉพาะ ผอ.สถานศึกษา');
+check(/for \(const u of schoolStaff\.value\)[\s\S]{0,200}?schoolMap\.value\[String\(u\.id\)\]/.test(travelApproversSrc),
+  'TravelApprovers: ตอนบันทึกยังวนทุกคน (ค่าเดิมของคนที่ไม่แสดงไม่หาย)');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)
