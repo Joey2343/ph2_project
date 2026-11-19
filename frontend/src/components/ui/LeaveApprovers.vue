@@ -33,9 +33,26 @@ function groupOf(u) {
   return u.user_group || 'office';
 }
 
-/** แถวของตาราง = ผู้ขอในกลุ่มของหน้านี้ */
+/**
+ * เป็น "ผู้อำนวยการสถานศึกษา" หรือไม่
+ *   ผู้ใช้สั่ง 19 พ.ย. 2569: แท็บเจ้าหน้าที่การลาของสถานศึกษา แสดงเฉพาะ ผอ.สถานศึกษา
+ */
+function isSchoolDirector(u) {
+  const role = String((u && u.role) || '');
+  if (role === 'school_director') return true;
+  if (role === 'school_deputy') return false;
+  const pos = String((u && u.position) || '').trim();
+  if (!pos.includes('ผู้อำนวยการสถานศึกษา')) return false;
+  return !pos.startsWith('รอง');
+}
+
+/** แถวของตาราง = ผู้ขอในกลุ่มของหน้านี้ (ฝั่งสถานศึกษา = เฉพาะ ผอ.สถานศึกษา) */
 const rowStaff = computed(() =>
-  staff.value.filter((u) => u.status === 'active' && groupOf(u) === (isSchoolScope.value ? 'school' : 'office')),
+  staff.value.filter((u) => {
+    if (u.status !== 'active') return false;
+    if (groupOf(u) !== (isSchoolScope.value ? 'school' : 'office')) return false;
+    return isSchoolScope.value ? isSchoolDirector(u) : true;
+  }),
 );
 
 /** ตัวเลือก = เจ้าหน้าที่ สพป. เท่านั้น (ทั้งสองหน้า) */
@@ -121,14 +138,21 @@ const tdStyle = { padding: '5px 10px', border: '1px solid #d1d5db', fontSize: '1
       {{ isSchoolScope ? '⊛ เจ้าหน้าที่การลาของสถานศึกษา (3 ลำดับ)' : '⊛ เจ้าหน้าที่การลาของ สพป.แพร่ เขต 2 (3 ลำดับ)' }}
     </div>
     <p class="hint" style="margin-bottom: 14px">
-      กำหนดเจ้าหน้าที่ที่จะพิจารณาคำขอลาตามลำดับขั้น — เลือกผู้ตรวจสอบ ผู้อนุมัติขั้นต้น ผู้อนุมัติ
-      ให้แต่ละคนได้อย่างอิสระ (ตัวเลือกแสดงเฉพาะเจ้าหน้าที่ สพป.แพร่ เขต 2)
+      <template v-if="isSchoolScope">
+        กำหนดเจ้าหน้าที่ที่จะพิจารณาคำขอลาตามลำดับขั้น — เลือกผู้ตรวจสอบ ผู้อนุมัติขั้นต้น ผู้อนุมัติ
+        ให้แต่ละคนได้อย่างอิสระ (ตัวเลือกแสดงเฉพาะเจ้าหน้าที่ สพป.แพร่ เขต 2)
+        · รายการนี้แสดงเฉพาะผู้ที่มีตำแหน่ง <b>ผู้อำนวยการสถานศึกษา</b>
+      </template>
+      <template v-else>
+        กำหนดเจ้าหน้าที่ที่จะพิจารณาคำขอลาตามลำดับขั้น — เลือกผู้ตรวจสอบ ผู้อนุมัติขั้นต้น ผู้อนุมัติ
+        ให้แต่ละคนได้อย่างอิสระ (ตัวเลือกแสดงเฉพาะเจ้าหน้าที่ สพป.แพร่ เขต 2)
+      </template>
     </p>
 
     <div v-if="loading" class="center-load"><span class="spin"></span> กำลังโหลดข้อมูล...</div>
     <div v-else-if="error" class="empty-state"><span class="em">⚠️</span>{{ error }}</div>
     <div v-else-if="rowStaff.length === 0" class="empty-state">
-      <span class="em">👤</span>ไม่มีข้อมูลบุคลากรในกลุ่มนี้
+      <span class="em">👤</span>{{ isSchoolScope ? 'ไม่พบผู้อำนวยการสถานศึกษา' : 'ไม่มีข้อมูลบุคลากรในกลุ่มนี้' }}
     </div>
 
     <div v-else class="table-wrap">

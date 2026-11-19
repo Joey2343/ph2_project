@@ -355,6 +355,23 @@ check(/function isSchoolDirector\(u\)[\s\S]{0,420}?pos\.includes\('ผู้อ�
 check(/tab\.value === 'director' \? list\.filter\(isSchoolDirector\) : list/.test(staffSrc),
   'StaffPage: กรองเฉพาะ ผอ.สถานศึกษา ในแท็บนี้');
 
+/* ── ⑬ เจ้าหน้าที่การลาของสถานศึกษา: แสดงเฉพาะ ผอ.สถานศึกษา ───────────────
+ *
+ * ผู้ใช้สั่ง 19 พ.ย. 2569
+ */
+console.log('\n⑬ เจ้าหน้าที่การลาของสถานศึกษา: เฉพาะ ผอ.สถานศึกษา');
+
+const leaveApproversSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveApprovers.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/function isSchoolDirector\(u\)[\s\S]{0,260}?role === 'school_director'/.test(leaveApproversSrc),
+  'LeaveApprovers: นับ role = school_director เป็น ผอ.สถานศึกษา');
+check(/pos\.includes\('ผู้อำนวยการสถานศึกษา'\)[\s\S]{0,120}?!pos\.startsWith\('รอง'\)/.test(leaveApproversSrc),
+  'LeaveApprovers: ตำแหน่ง "ผู้อำนวยการสถานศึกษา" นับด้วย (ยกเว้น "รอง…")');
+check(/return isSchoolScope\.value \? isSchoolDirector\(u\) : true/.test(leaveApproversSrc),
+  'LeaveApprovers: ฝั่งสถานศึกษากรองเฉพาะ ผอ.สถานศึกษา');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)
