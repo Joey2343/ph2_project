@@ -116,8 +116,16 @@ async function loadStaff() {
   try {
     const d = await api.get('/staff?' + p.join('&'));
     const list = d.staff || [];
-    // แท็บผู้อำนวยการสถานศึกษา: กรองเฉพาะผู้ที่ถูกกำหนดเป็น ผอ.สถานศึกษา
-    staff.value = tab.value === 'director' ? list.filter(isSchoolDirector) : list;
+    /*
+     * แยกแท็บ:
+     *   · director → เฉพาะ ผอ.สถานศึกษา
+     *   · school   → เจ้าหน้าที่สถานศึกษา (ไม่รวม ผอ. — มีแท็บของตัวเองแล้ว)
+     *   · office   → ตามเดิม
+     * (ผู้ใช้สั่ง 19 พ.ย. 2569)
+     */
+    if (tab.value === 'director') staff.value = list.filter(isSchoolDirector);
+    else if (tab.value === 'school') staff.value = list.filter((u) => !isSchoolDirector(u));
+    else staff.value = list;
   } catch (e) {
     staff.value = [];
     staffError.value = e.message;

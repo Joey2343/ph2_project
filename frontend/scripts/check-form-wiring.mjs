@@ -352,8 +352,12 @@ check(/function isSchoolDirector\(u\)[\s\S]{0,260}?role === 'school_director'/.t
   'StaffPage: นับผู้ที่ role = school_director เป็น ผอ.สถานศึกษา');
 check(/function isSchoolDirector\(u\)[\s\S]{0,420}?pos\.includes\('ผู้อำนวยการสถานศึกษา'\)[\s\S]{0,120}?!pos\.startsWith\('รอง'\)/.test(staffSrc),
   'StaffPage: ตำแหน่ง "ผู้อำนวยการสถานศึกษา" ก็นับ (ยกเว้น "รอง…")');
-check(/tab\.value === 'director' \? list\.filter\(isSchoolDirector\) : list/.test(staffSrc),
-  'StaffPage: กรองเฉพาะ ผอ.สถานศึกษา ในแท็บนี้');
+check(/tab\.value === 'director' \? list\.filter\(isSchoolDirector\) : list/.test(staffSrc) ||
+  /if \(tab\.value === 'director'\) staff\.value = list\.filter\(isSchoolDirector\)/.test(staffSrc),
+  'StaffPage: กรองเฉพาะ ผอ.สถานศึกษา ในแท็บผู้อำนวยการสถานศึกษา');
+check(/tab\.value === 'school'\) staff\.value = list\.filter\(\(u\) => !isSchoolDirector\(u\)\)/.test(staffSrc),
+  'StaffPage: แท็บเจ้าหน้าที่สถานศึกษาไม่แสดง ผอ.สถานศึกษา (มีแท็บแยกแล้ว)',
+  'ผู้ใช้สั่ง 19 พ.ย. 2569');
 
 /* ── ⑬ เจ้าหน้าที่การลาของสถานศึกษา: แสดงเฉพาะ ผอ.สถานศึกษา ───────────────
  *
