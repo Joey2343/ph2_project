@@ -788,8 +788,61 @@ async function sendTelegram({ token, chatId, text }) {
   }
 }
 
-// ========== ระบบลา ==========
+// ========== ผู้ลงทะเบียนใหม่ (แจ้ง admin) ==========
 
+/**
+ * ข้อความแจ้ง admin ว่ามีผู้ลงทะเบียนใหม่ (ผู้ใช้สั่ง 19 พ.ย. 2569)
+ *   "เมื่อมีผู้ลงทะเบียนใหม่ ให้มีข้อความเตือน Telegram แจ้งเตือน admin"
+ */
+function newRegistrationText(u) {
+  const info = u || {};
+  const groupLabel = String(info.user_group || '') === 'school'
+    ? 'เจ้าหน้าที่สถานศึกษา'
+    : 'เจ้าหน้าที่ สพป.แพร่ เขต 2';
+  const lines = [
+    '📣 P2-SMART สพป.แพร่ 2',
+    '',
+    '🆕 มีผู้ลงทะเบียนใหม่ (รออนุมัติ)',
+    '',
+    '📋 รายละเอียด:',
+    `• ชื่อ-สกุล: ${personName(info) || info.full_name || '-'}`,
+    `• ประเภทบัญชี: ${groupLabel}`,
+    `• ตำแหน่ง: ${info.position || '-'}`,
+    `• สังกัด/หน่วยงาน: ${info.workplace || '-'}`,
+  ];
+  if (info.phone) lines.push(`• โทร: ${info.phone}`);
+  if (info.username) lines.push(`• ชื่อผู้ใช้: ${info.username}`);
+  lines.push('');
+  lines.push('กรุณาตรวจสอบในเมนู "เจ้าหน้าที่ในระบบ" → แท็บ "รออนุมัติ"');
+  return lines.join('\n');
+}
+
+/**
+ * ส่งข้อความถึง admin ทุกคนที่ตั้งค่า Telegram ไว้
+ *   ตัวฟังก์ชันจับ error เอง (ไม่ทำให้การลงทะเบียนล้ม)
+ */
+async function notifyNewRegistration(user) {
+  try {
+    const admins = await db.prepare(`SELECT id, telegram_token, telegram_chat_id
+      FROM users
+      WHERE role = 'admin' AND status = 'active'
+        AND telegram_token IS NOT NULL AND telegram_token <> ''
+        AND telegram_chat_id IS NOT NULL AND telegram_chat_id <> ''`).all();
+    if (!admins.length) return 0;
+    const text = newRegistrationText(user);
+    let sent = 0;
+    for (const a of admins) {
+      const ok = await sendTelegram({ token: a.telegram_token, chatId: a.telegram_chat_id, text });
+      if (ok) sent += 1;
+    }
+    return sent;
+  } catch (e) {
+    console.error('[telegram] notifyNewRegistration error:', e.message);
+    return 0;
+  }
+}
+
+// ========== ระบบลา ==========
 /** ดึงข้อมูลคำขอลาพร้อมชื่อผู้ขอ/ค่า Telegram */
 async function fetchLeaveRow(id) {
   return await db.prepare(`SELECT l.*, u.title, u.full_name, u.first_name, u.last_name, u.telegram_token, u.telegram_chat_id,
@@ -1189,6 +1242,7 @@ module.exports = {
   notifyMemoSubmitted, notifyMemoNextLevel, notifyMemoForwarded, notifyMemoResubmitted, notifyMemoReturned,
   notifyDocumentReturned,
   incomingDocumentText, notifyIncomingDocument,
+  newRegistrationText, notifyNewRegistration,
   fetchLeaveRow, leaveSubmittedText, leaveDelegateText, leaveNextLevelText,
   notifyLeaveSubmitted, notifyLeaveNextLevel,
   notifyLeaveCancelRequested, notifyLeaveCancelled,

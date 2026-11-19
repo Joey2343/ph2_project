@@ -1259,6 +1259,16 @@ ph2_project/
     · ⚠️ อย่าส่งแค่ไฟล์ที่เพิ่งอัปโหลด (เดิมเป็นแบบนั้น) — ไฟล์เดิมจะหายจากหนังสือที่ส่ง
   - เทสต์กันไว้ที่ `backend/scripts/test-doc-stamp-replace.js` (ยิง API + ตรวจไฟล์บนดิสก์)
     และ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ⑥
+- **แจ้งเตือน Telegram เมื่อมีผู้ลงทะเบียนใหม่ (ถึง admin)** (ผู้ใช้สั่ง 19 พ.ย. 2569)
+  - `POST /auth/register` เรียก `telegram.notifyNewRegistration(userInfo)` หลังบันทึกผู้ใช้
+    · **ไม่ await** (`.catch(() => {})`) — การลงทะเบียนต้องไม่ค้างเพราะการส่งข้อความ
+  - ส่งถึง **admin ทุกคนที่ตั้งค่า Telegram** (`role='admin'`, `status='active'`,
+    `telegram_token` + `telegram_chat_id` ไม่ว่าง) — ไม่มีใครตั้งค่า = ไม่ส่ง
+  - ข้อความ: ชื่อ-สกุล · ประเภทบัญชี (เจ้าหน้าที่ สพป./สถานศึกษา) · ตำแหน่ง · สังกัด/หน่วยงาน
+    · โทร · ชื่อผู้ใช้ → ปิดท้าย "กรุณาตรวจสอบในเมนู \"เจ้าหน้าที่ในระบบ\" → แท็บ \"รออนุมัติ\""
+  - `TELEGRAM_DISABLED=1` ยังบล็อกการส่งจริง (เซิร์ฟเวอร์ทดสอบ)
+  - เทสต์กันไว้ที่ `backend/scripts/test-register-telegram.js`
+    (เนื้อความ + ส่งจริงด้วย fetch ปลอม + ปิด Telegram) — อยู่ใน `npm run verify`
 - **แจ้งเตือน Telegram เมื่อมีหนังสือเข้ามาในเมนู "หนังสือรับ"** (ผู้ใช้สั่ง 11 พ.ย. 2569)
   - ข้อความ: `📥 มีหนังสือส่งมาจาก <จาก>` · `เรื่อง: <เรื่อง>` · เลขที่หนังสือ · วันที่
     · ปิดท้าย `กรุณาตรวจสอบในเมนู "หนังสือรับ"`
@@ -1437,7 +1447,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **238** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 63/63 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 64/64 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (113 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

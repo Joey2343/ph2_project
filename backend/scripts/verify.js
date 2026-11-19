@@ -282,6 +282,9 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบแจ้งเตือน Telegram เมื่อมีผู้ลงทะเบียนใหม่ (แจ้ง admin)]');
+  results.push(run('test-register-telegram', [path.join(__dirname, 'test-register-telegram.js')]));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

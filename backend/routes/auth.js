@@ -3,7 +3,8 @@ const express = require('express');
 const db = require('../db');
 const auth = require('../lib/auth');
 const { uploadProfile, uploadErrorHandler, deleteUploadedFile, renameAsCitizen } = require('../lib/uploads');
-const { sendTelegram } = require('../lib/telegram');
+const telegram = require('../lib/telegram');
+const { sendTelegram } = telegram;
 const approvals = require('../lib/approvals');
 const { schoolCodeOf } = require('../lib/school-code');
 
@@ -60,6 +61,23 @@ router.post('/register', uploadProfile.fields([
       (b.academic_rank || '').trim(), (b.highest_education || '').trim(), (b.birth_date || '').trim() || null, citizen_id,
       (b.position || '').trim(), (b.workplace || '').trim(), (b.phone || '').trim(), (b.email || '').trim(),
       (b.telegram_token || '').trim(), (b.telegram_chat_id || '').trim(), photo, signature, userGroup, workplaceSecondary, schoolCode);
+
+  /*
+   * แจ้งเตือน Telegram ให้ admin รู้ว่ามีผู้ลงทะเบียนใหม่ (ผู้ใช้สั่ง 19 พ.ย. 2569)
+   *   ⚠️ ไม่ await — การลงทะเบียนต้องไม่ค้างเพราะการส่งข้อความ
+   *   ฟังก์ชันจับ error เองแล้ว (ไม่ทำให้ request ล้ม)
+   */
+  telegram.notifyNewRegistration({
+    title: b.title || 'นาย/นาง/นางสาว',
+    first_name,
+    last_name,
+    full_name,
+    position: (b.position || '').trim(),
+    workplace: (b.workplace || '').trim(),
+    phone: (b.phone || '').trim(),
+    username,
+    user_group: userGroup,
+  }).catch(() => {});
 
   res.json({ ok: true, message: 'ลงทะเบียนเรียบร้อย กรุณารอผู้ดูแลระบบอนุมัติก่อนเข้าสู่ระบบ', id: info.lastInsertRowid });
 });
