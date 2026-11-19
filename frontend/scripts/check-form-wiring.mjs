@@ -388,6 +388,9 @@ check(/const schoolDirectors = computed\(\(\) => schoolStaff\.value\.filter\(isS
   'TravelApprovers: มีรายชื่อเฉพาะ ผอ.สถานศึกษา');
 check(/tab\.value === 'office' \? officeStaff\.value : schoolDirectors\.value/.test(travelApproversSrc),
   'TravelApprovers: แท็บสถานศึกษาแสดงเฉพาะ ผอ.สถานศึกษา');
+check(/🎓 ผู้อำนวยการสถานศึกษา \(\{\{ schoolDirectors\.length \}\}\)/.test(travelApproversSrc),
+  'TravelApprovers: ชื่อแท็บเป็น "ผู้อำนวยการสถานศึกษา"',
+  'ผู้ใช้สั่ง 19 พ.ย. 2569 — เปลี่ยนจาก "เจ้าหน้าที่สถานศึกษา"');
 check(/for \(const u of schoolStaff\.value\)[\s\S]{0,200}?schoolMap\.value\[String\(u\.id\)\]/.test(travelApproversSrc),
   'TravelApprovers: ตอนบันทึกยังวนทุกคน (ค่าเดิมของคนที่ไม่แสดงไม่หาย)');
 

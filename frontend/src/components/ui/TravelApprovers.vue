@@ -179,7 +179,7 @@ const tdStyle = { padding: '5px 8px', borderBottom: '1px solid #e5e7eb', fontSiz
           📋 เจ้าหน้าที่ สพป.แพร่ เขต 2 ({{ officeStaff.length }})
         </button>
         <button class="tab" :class="{ active: tab === 'school' }" @click="tab = 'school'">
-          🏫 เจ้าหน้าที่สถานศึกษา ({{ schoolDirectors.length }})
+          🎓 ผู้อำนวยการสถานศึกษา ({{ schoolDirectors.length }})
         </button>
       </div>
 
