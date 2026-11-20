@@ -1161,9 +1161,16 @@ router.get('/time/all', auth.requireAuth, async (req, res) => {
 router.get('/time/stats', auth.requireAuth, async (req, res) => {
   if (!await isTimeEditor(req.user)) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์ดูสถิติในหน้านี้' });
   const today = simdate.todayISO();
-  const checkedIn = (await db.prepare('SELECT COUNT(*) c FROM time_records WHERE date = ? AND clock_in IS NOT NULL').get(today)).c;
-  const checkedOut = (await db.prepare('SELECT COUNT(*) c FROM time_records WHERE date = ? AND clock_out IS NOT NULL').get(today)).c;
-  const activeUsers = (await db.prepare("SELECT COUNT(*) c FROM users WHERE status = 'active'").get()).c;
+  /*
+   * ผู้ใช้สั่ง 20 พ.ย. 2569: การ์ด "เจ้าหน้าที่ทั้งหมด" ในภาพรวมการลงเวลาวันนี้
+   *   นับเฉพาะเจ้าหน้าที่ สพป.แพร่ เขต 2 (ไม่รวมบัญชีสถานศึกษา)
+   *   → เวลาเข้า/ออกก็นับเฉพาะฝั่ง สพป. ด้วย (โรงเรียนไม่ใช้ระบบลงเวลา)
+   */
+  const checkedIn = (await db.prepare(`SELECT COUNT(*) c FROM time_records t JOIN users u ON u.id = t.user_id
+    WHERE t.date = ? AND t.clock_in IS NOT NULL AND COALESCE(u.user_group, 'office') <> 'school'`).get(today)).c;
+  const checkedOut = (await db.prepare(`SELECT COUNT(*) c FROM time_records t JOIN users u ON u.id = t.user_id
+    WHERE t.date = ? AND t.clock_out IS NOT NULL AND COALESCE(u.user_group, 'office') <> 'school'`).get(today)).c;
+  const activeUsers = (await db.prepare("SELECT COUNT(*) c FROM users WHERE status = 'active' AND COALESCE(user_group, 'office') <> 'school'").get()).c;
   res.json({ date: today, checkedIn, checkedOut, activeUsers });
 });
 

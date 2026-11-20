@@ -868,6 +868,11 @@ ph2_project/
         ใช้ทั้ง `GET /time/report` และ `/time/report.xlsx`
       · ไม่ส่ง/ค่าผิด → แสดงทุกคน · หัวรายงานต่อท้าย "· เฉพาะ: <ชื่อ>"
       · เทสต์: `backend/scripts/test-time-report-user-filter.js` + `check-form-wiring.mjs` หัวข้อ ⑮
+  - **ภาพรวมการลงเวลาวันนี้ นับเฉพาะเจ้าหน้าที่ สพป.** (ผู้ใช้สั่ง 20 พ.ย. 2569)
+    · `GET /time/stats` → `activeUsers` / `checkedIn` / `checkedOut`
+      กรอง `COALESCE(user_group,'office') <> 'school'` ทั้ง 3 ค่า
+    · โรงเรียนไม่ใช้ระบบลงเวลา → ไม่ควรถูกนับในการ์ด "เจ้าหน้าที่ทั้งหมด"
+    · เทสต์กันไว้ที่ `backend/scripts/test-time-stats-scope.js` (ใน `npm run verify`)
   - **"ไม่ได้ลงชื่อปฏิบัติงาน" หลังเวลา 17:01**
     - `/time/all?date=...` จะเพิ่มรายชื่อเจ้าหน้าที่ สพป. ที่ **ไม่มีบันทึกเวลา/ไปราชการ/ลา** ของวันนั้น
       เมื่อวันที่ดูเป็น **วันนี้และเวลาผ่าน 17:01** หรือเป็น **วันในอดีต** (วันนั้นจบแล้ว)
@@ -1455,7 +1460,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **238** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 65/65 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 66/66 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (113 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0

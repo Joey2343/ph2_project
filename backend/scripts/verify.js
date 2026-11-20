@@ -290,6 +290,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบภาพรวมการลงเวลาวันนี้ — นับเฉพาะเจ้าหน้าที่ สพป.]');
+  results.push(run('test-time-stats-scope', [path.join(__dirname, 'test-time-stats-scope.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 
