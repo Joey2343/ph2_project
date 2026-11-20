@@ -1421,14 +1421,27 @@ function reportRange(period, ref) {
 }
 
 // ข้อมูลรายงาน — admin หรือผู้ได้รับสิทธิ์
+/**
+ * อ่านรายการ user_id ที่ส่งมาเป็น "1,2,3" (ตัวกรอง "ชื่อบุคลากร")
+ *   ผู้ใช้สั่ง 20 พ.ย. 2569: รายงานการลงเวลาทำงานมีตัวกรองชื่อบุคลากร (เฉพาะ สพป.)
+ */
+function parseUserIdsParam(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((s) => Number(String(s).trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
 router.get('/time/report', auth.requireAuth, async (req, res) => {
   if (!await isTimeEditor(req.user)) return res.status(403).json({ error: 'คุณไม่มีสิทธิ์ดูรายงานในหน้านี้' });
   const period = ['day', 'week', 'month', 'year'].includes(req.query.period) ? req.query.period : 'day';
   const range = reportRange(period, req.query.date);
   if (!range) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' });
   // รวมบันทึกเวลา + ไปราชการ + ลา (เรียงเหมือนหน้า "บันทึกเวลาทำงานของเจ้าหน้าที่")
-  const records = await buildReportRows(range);
-  res.json({ period, range, records });
+  let records = await buildReportRows(range);
+  const userIds = parseUserIdsParam(req.query.user_ids);
+  if (userIds.length) records = records.filter((r) => userIds.includes(Number(r.user_id)));
+  res.json({ period, range, records, user_ids: userIds });
 });
 
 // ดาวน์โหลดรายงาน .xlsx — admin หรือผู้ได้รับสิทธิ์
@@ -1438,7 +1451,9 @@ router.get('/time/report.xlsx', auth.requireAuth, async (req, res) => {
   const range = reportRange(period, req.query.date);
   if (!range) return res.status(400).json({ error: 'วันที่ไม่ถูกต้อง' });
   // แถวเดียวกับหน้าเว็บ (รวมไปราชการ/ลา และเรียงลำดับเดียวกัน)
-  const rows = await buildReportRows(range);
+  let rows = await buildReportRows(range);
+  const userIds = parseUserIdsParam(req.query.user_ids);
+  if (userIds.length) rows = rows.filter((r) => userIds.includes(Number(r.user_id)));
 
   const XLSX = require('xlsx');
   const head = [['รายงานการลงเวลาทำงาน', '', '', '', '', '', ''],

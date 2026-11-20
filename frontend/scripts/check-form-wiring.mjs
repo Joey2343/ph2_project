@@ -398,6 +398,34 @@ check(/🎓 ผู้อำนวยการสถานศึกษา \(\{\{ 
 check(/for \(const u of schoolStaff\.value\)[\s\S]{0,200}?schoolMap\.value\[String\(u\.id\)\]/.test(travelApproversSrc),
   'TravelApprovers: ตอนบันทึกยังวนทุกคน (ค่าเดิมของคนที่ไม่แสดงไม่หาย)');
 
+/* ── ⑮ รายงานการลงเวลาทำงาน: ตัวกรอง "ชื่อบุคลากร" เป็นตัวกรองแรก ─────────
+ *
+ * ผู้ใช้สั่ง 20 พ.ย. 2569 (เฉพาะเจ้าหน้าที่ สพป. · พิมพ์ค้นหาได้)
+ */
+console.log('\n⑮ รายงานการลงเวลาทำงาน: ตัวกรองชื่อบุคลากร');
+
+const clockSrc = readFileSync(join(ROOT, 'src', 'pages', 'ClockPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/id="rp-person"/.test(clockSrc), 'ClockPage: มีช่อง "ชื่อบุคลากร" (rp-person)');
+{
+  const modalAt = clockSrc.indexOf('รายงานการลงเวลาทำงาน');
+  const personAt = clockSrc.indexOf('id="rp-person"');
+  const yearAt = clockSrc.indexOf('id="rp-year"');
+  check(modalAt > -1 && personAt > modalAt && yearAt > personAt,
+    'ช่อง "ชื่อบุคลากร" อยู่ก่อนตัวกรองปี พ.ศ. (เป็นตัวกรองแรก)',
+    `ตำแหน่ง: modal=${modalAt} person=${personAt} year=${yearAt}`);
+}
+check(/<datalist id="rp-person-list">/.test(clockSrc), 'มี datalist ให้เลือก/พิมพ์ค้นหาชื่อ');
+check(/personPool\.value = list\.filter\(\(u\) => \(u\.user_group \|\| 'office'\) !== 'school'\)/.test(clockSrc),
+  'รายชื่อตัวเลือกเอาเฉพาะเจ้าหน้าที่ สพป. (ไม่รวมสถานศึกษา)');
+check(/user_ids=' \+ encodeURIComponent\(ids\.join\(','\)\)/.test(clockSrc),
+  'ส่ง user_ids ไปกรองที่เซิร์ฟเวอร์ (สร้าง query จาก id ที่ตรงกับชื่อ)');
+check(/api\.get\('\/time\/report\?period='[\s\S]{0,220}?\+ qs\)/.test(clockSrc) &&
+      /report\.xlsx\?period='[\s\S]{0,220}?\+ qs/.test(clockSrc),
+  'ทั้งรายงานบนจอและไฟล์ Excel ใช้ตัวกรองเดียวกัน');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

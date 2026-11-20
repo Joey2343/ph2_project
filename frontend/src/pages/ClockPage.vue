@@ -239,10 +239,52 @@ const beToCe = (yBE) => Number(yBE) - BE_OFFSET;
 // ค่าเริ่มต้องเป็นปี พ.ศ. ปัจจุบัน ไม่ใช่ ค.ศ.
 // เดิมใช้ getFullYear() ตรง ๆ ได้ค.ศ. (เช่น 2026) ซึ่งไม่ตรงกับตัวเลือกใน dropdown
 // ที่เป็น พ.ศ. (2564-2570) → ช่องเลือกปีจะไม่ตรงกับค่าใดเลย
-const rp = ref({ year: String(new Date().getFullYear() + BE_OFFSET), month: '', week: '', day: '' });
+const rp = ref({ year: String(new Date().getFullYear() + BE_OFFSET), month: '', week: '', day: '', person: '' });
 const reportLoading = ref(false);
 const reportError = ref('');
 const report = ref(null);
+
+/* ---------- ตัวกรอง "ชื่อบุคลากร" (เฉพาะเจ้าหน้าที่ สพป.) ----------
+ * ผู้ใช้สั่ง 20 พ.ย. 2569: ตัวกรองแรกของหน้าต่างรายงาน · เลือกจากรายชื่อ หรือพิมพ์ค้นหา
+ *   (ใช้ /users/active ซึ่งเปิดให้ผู้ใช้ที่ล็อกอินทุกคน — ไม่ต้องสิทธิ์ admin)
+ */
+const personPool = ref([]);
+const personLoading = ref(false);
+
+async function loadPersonPool() {
+  if (personPool.value.length || personLoading.value) return;
+  personLoading.value = true;
+  try {
+    const d = await api.get('/users/active');
+    const list = d.users || d.staff || [];
+    // เฉพาะบุคลากรฝั่ง สพป. (ไม่รวมสถานศึกษา) และไม่เอาบัญชีของตัวเองออก — เห็นครบทุกคน
+    personPool.value = list.filter((u) => (u.user_group || 'office') !== 'school');
+  } catch {
+    personPool.value = [];
+  } finally {
+    personLoading.value = false;
+  }
+}
+
+function personLabel(u) {
+  return UI.personName(u);
+}
+
+/** ผู้ที่ตรงกับข้อความที่พิมพ์ (ค้นหาแบบมีคำนั้นอยู่ในชื่อ) */
+const matchedPersons = computed(() => {
+  const t = String(rp.value.person || '').trim().toLowerCase();
+  if (!t) return [];
+  return personPool.value.filter((u) => personLabel(u).toLowerCase().includes(t));
+});
+
+/** id ที่จะส่งไปกรอง (ว่าง = ทุกคน) */
+const personFilterIds = computed(() => matchedPersons.value.map((u) => Number(u.id)).filter((n) => n > 0));
+
+/** เปิดหน้าต่างรายงาน → เตรียมรายชื่อบุคลากรสำหรับตัวกรอง */
+function openReport() {
+  reportOpen.value = true;
+  loadPersonPool();
+}
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const thShort = (mm, dd) => `${dd} ${MONTHS[mm - 1].slice(0, 3)}.`;
@@ -345,7 +387,9 @@ async function loadReport() {
   reportError.value = '';
   report.value = null;
   try {
-    const data = await api.get('/time/report?period=' + encodeURIComponent(period) + '&date=' + encodeURIComponent(date));
+    const ids = personFilterIds.value;
+    const qs = ids.length ? '&user_ids=' + encodeURIComponent(ids.join(',')) : '';
+    const data = await api.get('/time/report?period=' + encodeURIComponent(period) + '&date=' + encodeURIComponent(date) + qs);
     report.value = data;
   } catch (e) {
     reportError.value = e.message;
@@ -356,8 +400,10 @@ async function loadReport() {
 
 function downloadXlsx() {
   const { period, date } = reportQuery();
+  const ids = personFilterIds.value;
+  const qs = ids.length ? '&user_ids=' + encodeURIComponent(ids.join(',')) : '';
   window.open(
-    '/api/time/report.xlsx?period=' + encodeURIComponent(period) + '&date=' + encodeURIComponent(date),
+    '/api/time/report.xlsx?period=' + encodeURIComponent(period) + '&date=' + encodeURIComponent(date) + qs,
     '_blank',
   );
 }
@@ -637,7 +683,7 @@ onBeforeUnmount(() => {
       <ThaiDateField id="clock-day" :model-value="day" @update:model-value="onDayChange" />
     </div>
     <button class="btn btn-outline btn-sm" @click="loadRecords">⊕ แสดงข้อมูล</button>
-    <button v-if="canViewAll" class="btn btn-info btn-sm" @click="reportOpen = true">📊 รายงาน</button>
+    <button v-if="canViewAll" class="btn btn-info btn-sm" @click="openReport">📊 รายงาน</button>
     <div v-if="Auth.isAdmin()" style="display: flex; gap: 8px">
       <button class="btn btn-primary btn-sm" @click="openEditors">+ เพิ่มเจ้าหน้าที่</button>
       <button class="btn btn-outline btn-sm" @click="openLocationSettings">📍 ตั้งค่าตำแหน่งที่ทำงาน</button>
@@ -744,6 +790,26 @@ onBeforeUnmount(() => {
   <!-- ---------- รายงาน ---------- -->
   <AppModal v-if="reportOpen" title="📊 รายงานการลงเวลาทำงาน" size="lg" footer @close="reportOpen = false">
     <div class="form-row" style="align-items: flex-end">
+      <!-- ตัวกรองแรก: ชื่อบุคลากร (เฉพาะ สพป.) — เลือกจากรายชื่อหรือพิมพ์ค้นหา -->
+      <div class="form-group" style="flex: 1.6">
+        <label>ชื่อบุคลากร</label>
+        <input
+          id="rp-person"
+          v-model="rp.person"
+          list="rp-person-list"
+          :placeholder="personLoading ? 'กำลังโหลดรายชื่อ...' : 'ทั้งหมด — พิมพ์ชื่อเพื่อค้นหา'"
+          autocomplete="off"
+        />
+        <datalist id="rp-person-list">
+          <option v-for="u in personPool" :key="u.id" :value="personLabel(u)"></option>
+        </datalist>
+        <div v-if="rp.person && !matchedPersons.length" class="hint" style="color: #b45309">
+          ไม่พบชื่อนี้ในเจ้าหน้าที่ สพป. (ล้างช่อง = แสดงทุกคน)
+        </div>
+        <div v-else-if="matchedPersons.length" class="hint">
+          แสดงเฉพาะ {{ matchedPersons.length }} คน
+        </div>
+      </div>
       <div class="form-group" style="flex: 1">
         <label>เลือกปี พ.ศ.</label>
         <select id="rp-year" v-model="rp.year" @change="onYearChange">
@@ -779,7 +845,10 @@ onBeforeUnmount(() => {
       <div v-else-if="reportError" class="empty-state"><span class="em">⚠️</span>{{ reportError }}</div>
       <div v-else-if="!report" class="empty-state"><span class="em">📊</span>เลือกปี พ.ศ. แล้วกด “แสดงรายงาน”</div>
       <template v-else>
-        <div class="card-title" style="margin-bottom: 10px">รายงาน {{ reportKind }} — {{ report.range.label }}</div>
+        <div class="card-title" style="margin-bottom: 10px">
+          รายงาน {{ reportKind }} — {{ report.range.label }}
+          <span v-if="rp.person" style="color: #0369a1"> · เฉพาะ: {{ rp.person }}</span>
+        </div>
         <div v-if="!report.records.length" class="empty-state">
           <span class="em">🗓️</span>ไม่มีข้อมูลการลงเวลาในช่วงเวลานี้
         </div>

@@ -860,6 +860,14 @@ ph2_project/
       · เวลาเข้าล่าสุดก่อน · แถวไม่มีเวลาไปท้าย
     - ข้ามคนที่มีบันทึกเวลาของวันนั้นอยู่แล้ว (กันซ้ำ) · เฉพาะลาฝั่ง สพป.
     - **ปุ่ม "ส่งออกข้อมูล" ในหน้า #/clock ใช้ endpoint นี้ (period=day)** → ไฟล์ Excel มีแถวขาดงานด้วย
+    - **ตัวกรอง "ชื่อบุคลากร" เป็นตัวกรองแรกของหน้าต่างรายงาน** (ผู้ใช้สั่ง 20 พ.ย. 2569)
+      · `#rp-person` (input + `<datalist id="rp-person-list">`) — เลือกจากรายชื่อหรือพิมพ์ค้นหา
+      · ตัวเลือก = **เจ้าหน้าที่ สพป. เท่านั้น** (`/users/active` กรอง `user_group !== 'school'`)
+      · พิมพ์บางส่วน → กรองด้วย id ทุกคนที่ชื่อมีคำนั้น (`matchedPersons` → `user_ids=1,2`)
+      · เซิร์ฟเวอร์: `parseUserIdsParam()` → `records.filter(r => ids.includes(r.user_id))`
+        ใช้ทั้ง `GET /time/report` และ `/time/report.xlsx`
+      · ไม่ส่ง/ค่าผิด → แสดงทุกคน · หัวรายงานต่อท้าย "· เฉพาะ: <ชื่อ>"
+      · เทสต์: `backend/scripts/test-time-report-user-filter.js` + `check-form-wiring.mjs` หัวข้อ ⑮
   - **"ไม่ได้ลงชื่อปฏิบัติงาน" หลังเวลา 17:01**
     - `/time/all?date=...` จะเพิ่มรายชื่อเจ้าหน้าที่ สพป. ที่ **ไม่มีบันทึกเวลา/ไปราชการ/ลา** ของวันนั้น
       เมื่อวันที่ดูเป็น **วันนี้และเวลาผ่าน 17:01** หรือเป็น **วันในอดีต** (วันนั้นจบแล้ว)
@@ -1447,7 +1455,7 @@ npm run verify
 | `verify-vue-pages --all` | ผ่าน **238** · ไม่ผ่าน 0 |
 | `verify-runtime --all` | ผ่าน 21/21 |
 | `verify-runtime --auth` | ผ่าน 59/59 |
-| `backend: npm run verify` | ผ่าน 64/64 (MariaDB 11.4) |
+| `backend: npm run verify` | ผ่าน 65/65 (MariaDB 11.4) |
 | `backend: npm run check:returns` | ผ่าน (113 ไฟล์) |
 
 ถ้าแตะ `verify:pages` หรือ `verify:runtime` แล้วได้ exit ≠ 0
