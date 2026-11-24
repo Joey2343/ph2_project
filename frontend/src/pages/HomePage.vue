@@ -110,6 +110,37 @@ async function checkTime(type) {
   }
 }
 
+/* ---------- ทำงานล่วงเวลา (OT) — ผู้ใช้สั่ง 24 พ.ย. 2569 ---------- */
+const otOpen = ref(false);
+const otBusy = ref(''); // '' | 'in' | 'out'
+const otIn = computed(() => (clockRec.value ? clockRec.value.ot_in : null));
+const otOut = computed(() => (clockRec.value ? clockRec.value.ot_out : null));
+/** วันหยุดเสาร์–อาทิตย์ (ใช้วันที่ของวันนี้จาก /today-summary หรือวันที่บนกล่องนาฬิกา) */
+const otWeekend = computed(() => {
+  const t = todaySummary.value && todaySummary.value.today;
+  if (!t) return false;
+  const dow = new Date(String(t).slice(0, 10) + 'T00:00:00').getDay();
+  return dow === 0 || dow === 6;
+});
+
+async function doOt(type) {
+  if (otBusy.value) return;
+  if (otWeekend.value) {
+    UI.toast('วันหยุด (เสาร์-อาทิตย์) ไม่ต้องลงเวลาทำงานล่วงเวลา', 'error');
+    return;
+  }
+  otBusy.value = type;
+  try {
+    const res = await api.post('/time/overtime', { type });
+    UI.toast(res.message);
+    await Promise.all([loadClock(), loadTodaySummary()]);
+  } catch (e) {
+    UI.toast(e.message, 'error');
+  } finally {
+    otBusy.value = '';
+  }
+}
+
 /* ---------- สถิติรออนุมัติ (admin / ผู้มีสิทธิ์อนุมัติ) ---------- */
 const isManager = computed(
   () => Auth.isLoggedIn() && (Auth.isAdmin() || (Auth.user.can_approve && UI.isApprover())),
@@ -200,6 +231,13 @@ const TODAY_COLS = {
     },
     { key: 'position', label: 'ตำแหน่ง' },
   ],
+  overtime: [
+    { key: 'full_name', label: 'ชื่อ-นามสกุล', cell: (p) => ({ text: UI.personName(p) }) },
+    { key: 'position', label: 'ตำแหน่ง' },
+    { key: 'workplace', label: 'กลุ่มงาน' },
+    { key: 'ot_in', label: 'เวลาทำงานล่วงเวลา', cell: (p) => ({ text: p.ot_in ? UI.time(p.ot_in) : '-' }) },
+    { key: 'ot_out', label: 'เวลาออกงานล่วงเวลา', cell: (p) => ({ text: p.ot_out ? UI.time(p.ot_out) : 'ยังไม่ลง' }) },
+  ],
 };
 
 const todayCards = computed(() => {
@@ -241,6 +279,16 @@ const todayCards = computed(() => {
       color: 'var(--info-light)',
       title: '✈ ไปราชการวันนี้',
       subtitle: `ผู้ที่ไปราชการวันนี้ ${UI.thaiDate(s.today)} — ${s.travel.length} คน`,
+    },
+    {
+      /* ผู้ใช้สั่ง 24 พ.ย. 2569: การ์ดทำงานล่วงเวลา */
+      key: 'overtime',
+      icon: '⏱',
+      label: 'ทำงานล่วงเวลา',
+      count: (s.overtime || []).length,
+      color: 'var(--info-light)',
+      title: '⏱ ทำงานล่วงเวลาวันนี้',
+      subtitle: `ผู้ที่ลงเวลาทำงานล่วงเวลาวันนี้ ${UI.thaiDate(s.today)} — ${(s.overtime || []).length} คน`,
     },
   ].filter((c) => c.count > 0);
 });
@@ -482,7 +530,15 @@ const greeting = computed(() => {
           >
             🏁 ออกงาน
           </button>
+          <!-- ผู้ใช้สั่ง 24 พ.ย. 2569: ปุ่มทำงานล่วงเวลา (สีฟ้า) ต่อจากปุ่มออกงาน -->
+          <button id="home-clock-ot" class="btn home-clock-ot" title="ลงเวลาทำงานล่วงเวลา" @click="otOpen = true">
+            ⏱ ทำงานล่วงเวลา
+          </button>
           <a class="home-clock-history" href="#/clock" title="ดูประวัติการลงเวลา" aria-label="ดูประวัติการลงเวลา">🕘</a>
+        </div>
+        <!-- ทำงานล่วงเวลาวันนี้ (ถ้ามี) -->
+        <div v-if="otIn || otOut" class="home-clock-ot-note">
+          ⏱ ล่วงเวลาวันนี้: เข้า {{ otIn ? fmtTime(otIn) : '-' }} • ออก {{ otOut ? fmtTime(otOut) : 'ยังไม่ลง' }}
         </div>
       </div>
     </div>
@@ -571,6 +627,50 @@ const greeting = computed(() => {
 
     <template #footer>
       <button class="btn btn-outline" @click="listOpen = false">ปิด</button>
+    </template>
+  </AppModal>
+
+  <!-- ---------- ลงเวลาทำงานล่วงเวลา (ผู้ใช้สั่ง 24 พ.ย. 2569) ---------- -->
+  <AppModal v-if="otOpen" title="⏱ ลงเวลาทำงานล่วงเวลา" footer @close="otOpen = false">
+    <div style="font-size: 15px">
+      <div v-if="otWeekend" class="hint" style="color: #b45309; margin-bottom: 10px">
+        วันนี้เป็นวันหยุด (เสาร์–อาทิตย์) — ไม่ต้องลงเวลาทำงานล่วงเวลา
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1">
+          <label>เวลาทำงานล่วงเวลา (เข้า)</label>
+          <div id="home-ot-in-time" style="font-weight: 700; color: #1d4ed8">{{ otIn ? UI.time(otIn) : 'ยังไม่ลง' }}</div>
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>เวลาออกงานล่วงเวลา</label>
+          <div id="home-ot-out-time" style="font-weight: 700; color: #1d4ed8">{{ otOut ? UI.time(otOut) : 'ยังไม่ลง' }}</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px">
+        <button
+          id="home-ot-in-btn"
+          class="btn btn-primary"
+          :disabled="otWeekend || !!otIn || otBusy === 'in'"
+          @click="doOt('in')"
+        >
+          {{ otBusy === 'in' ? 'กำลังบันทึก...' : '⏱ ลงเวลาทำงานล่วงเวลา' }}
+        </button>
+        <button
+          id="home-ot-out-btn"
+          class="btn btn-outline"
+          style="border-color: #2563eb; color: #2563eb"
+          :disabled="otWeekend || !otIn || !!otOut || otBusy === 'out'"
+          @click="doOt('out')"
+        >
+          {{ otBusy === 'out' ? 'กำลังบันทึก...' : '🏁 ลงเวลาออกงานล่วงเวลา' }}
+        </button>
+      </div>
+      <div class="hint" style="margin-top: 10px">
+        ลงเวลาเข้า–ออกล่วงเวลาได้ทุกเวลาของวันทำการ · ไม่ต้องตรวจตำแหน่ง GPS
+      </div>
+    </div>
+    <template #footer>
+      <button class="btn btn-outline" @click="otOpen = false">ปิด</button>
     </template>
   </AppModal>
 </template>
@@ -691,5 +791,29 @@ const greeting = computed(() => {
   .home-clock-blink {
     animation: none;
   }
+}
+
+/*
+ * ปุ่ม "ทำงานล่วงเวลา" (ผู้ใช้สั่ง 24 พ.ย. 2569) — สีฟ้า ต่อจากปุ่มออกงาน
+ * และบรรทัดสรุปเวลาล่วงเวลาของวันนี้
+ */
+.home-clock-ot {
+  min-width: 96px;
+  padding: 9px 18px;
+  font-size: 14px;
+  background: #2563eb;
+  color: #fff;
+  border: 1px solid #2563eb;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.home-clock-ot:hover {
+  background: #1d4ed8;
+}
+.home-clock-ot-note {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #dbeafe;
 }
 </style>

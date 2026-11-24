@@ -868,8 +868,22 @@ ph2_project/
         ใช้ทั้ง `GET /time/report` และ `/time/report.xlsx`
       · ไม่ส่ง/ค่าผิด → แสดงทุกคน · หัวรายงานต่อท้าย "· เฉพาะ: <ชื่อ>"
       · เทสต์: `backend/scripts/test-time-report-user-filter.js` + `check-form-wiring.mjs` หัวข้อ ⑮
+- **หัวเว็บ: โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก** (ผู้ใช้สั่ง 24 พ.ย. 2569)
+  - อยู่ในกลุ่ม `.brand` เดียวกับโลโก้ P2-SMART (ต่อจากข้อความ P2-SMART)
+    · ไฟล์ `frontend/public/phrae2-logo.png` (runtime URL `/phrae2-logo.png` — ห้าม import)
+    · ข้อความ "phrae2.go.th" + "เว็บไซต์หลัก สพป.แพร่ เขต 2"
+    · เป็น `<a id="brand-main-site" href="https://www.phrae2.go.th/" target="_blank" rel="noopener noreferrer">`
+      และ `@click.stop` เพื่อไม่ให้ไปทับการกด `.brand` (กลับหน้าแรก)
+  - จอ < 860px ซ่อนบรรทัดรอง · จอ < 520px ซ่อนข้อความ เหลือโลโก้
+  - สไตล์อยู่ใน `<style>` ของ `App.vue` (ห้ามย้ายไป `theme.css`)
+  - เทสต์กันไว้ที่ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ⑰
 - **ทำงานล่วงเวลา (OT)** (ผู้ใช้สั่ง 24 พ.ย. 2569)
   - หน้า `#/clock` มีปุ่ม **⏱ ทำงานล่วงเวลา** (สีฟ้า `#2563eb`) ต่อจากปุ่ม "ลงเวลาออกงาน"
+  - **หน้าแรก (`#/home`)** ที่กล่อง "ยินดีต้อนรับ + ลงเวลา" มีปุ่มเดียวกัน (`#home-clock-ot`)
+    · หน้าต่าง `#home-ot-in-btn` / `#home-ot-out-btn` (ใช้ `POST /time/overtime` เดียวกัน)
+    · ใต้กล่องมีบรรทัด "⏱ ล่วงเวลาวันนี้: เข้า … • ออก …"
+    · **การ์ด "⏱ ทำงานล่วงเวลา"** ในแถวการ์ดสถานะวันนี้ (อ่าน `overtime` จาก `GET /today-summary`)
+      — คลิกดูรายชื่อ + เวลาเข้า/ออก (คอลัมน์ใน `TODAY_COLS.overtime`)
   - กดแล้วเปิดหน้าต่าง **"⏱ ลงเวลาทำงานล่วงเวลา"** มี 2 ปุ่ม
     · **⏱ ลงเวลาทำงานล่วงเวลา** (`#ot-in-btn`) → `POST /time/overtime {type:'in'}`
     · **🏁 ลงเวลาออกงานล่วงเวลา** (`#ot-out-btn`) → `{type:'out'}`

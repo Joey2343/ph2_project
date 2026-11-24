@@ -676,7 +676,18 @@ router.get('/today-summary', auth.requireAuth, async (req, res) => {
     (r) => !workedIds.has(Number(r.user_id)) && !leaveIds.has(Number(r.user_id)),
   );
 
-  res.json({ today, worked: workedFinal, birthdays, leave: leaveFiltered, travel: travelFiltered });
+  /*
+   * การ์ด "ทำงานล่วงเวลา" (ผู้ใช้สั่ง 24 พ.ย. 2569)
+   *   แยกจากการ์ดอื่นโดยเจตนา — คนที่ลงเวลาเข้าปกติแล้วก็ยังลงเวลา OT ได้
+   *   จึงไม่ต้องตัดซ้ำกับ "มาทำงานวันนี้" (เป็นการทำงานคนละช่วง)
+   */
+  const overtime = await db.prepare(`SELECT t.user_id, t.ot_in, t.ot_out,
+      u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace
+    FROM time_records t JOIN users u ON u.id = t.user_id
+    WHERE t.date = ? AND t.ot_in IS NOT NULL AND u.status = 'active'
+    ORDER BY u.full_name`).all(today);
+
+  res.json({ today, worked: workedFinal, birthdays, leave: leaveFiltered, travel: travelFiltered, overtime });
 });
 
 // ---------- งานที่ค้าง/รออนุมัติของฉัน (เฉพาะ user นั้น ๆ) ----------

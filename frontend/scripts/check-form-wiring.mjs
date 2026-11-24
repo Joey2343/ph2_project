@@ -14,7 +14,7 @@
  *
  * ใช้: node scripts/check-form-wiring.mjs
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -455,6 +455,45 @@ check(/v-if="canViewAll && stats" class="card" id="clock-ot-card"/.test(clockOtS
   'มีการ์ด "ทำงานล่วงเวลา" แสดงรายชื่อ');
 check(/stats\.overtime/.test(clockOtSrc), 'การ์ดอ่านรายชื่อจาก stats.overtime');
 check(/r\.ot_in \? UI\.time\(r\.ot_in\)/.test(clockOtSrc), 'ตารางบันทึกเวลาแสดงช่วง OT');
+
+/* หน้าแรก (ยินดีต้อนรับ + กล่องลงเวลา) ต้องมีปุ่ม/หน้าต่าง/การ์ดเช่นกัน */
+const homeSrc = readFileSync(join(ROOT, 'src', 'pages', 'HomePage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/id="home-clock-ot"[\s\S]{0,80}?ทำงานล่วงเวลา/.test(homeSrc),
+  'HomePage: ปุ่ม "ทำงานล่วงเวลา" ต่อจากปุ่มออกงาน');
+check(/id="home-ot-in-btn"/.test(homeSrc) && /id="home-ot-out-btn"/.test(homeSrc),
+  'HomePage: หน้าต่าง OT มีปุ่มเข้า/ออกล่วงเวลา');
+check(/key: 'overtime'/.test(homeSrc) && /⏱ ทำงานล่วงเวลาวันนี้/.test(homeSrc),
+  'HomePage: มีการ์ด "ทำงานล่วงเวลา"');
+check(/s\.overtime/.test(homeSrc), 'HomePage: การ์ดอ่านจาก /today-summary → overtime');
+
+/* ── ⑰ หัวเว็บ: โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก ───────────────────
+ *
+ * ผู้ใช้สั่ง 24 พ.ย. 2569 — อยู่ในกลุ่มเดียวกับโลโก้ P2-SMART กดแล้วเปิดแท็บใหม่
+ */
+console.log('\n⑰ หัวเว็บ: โลโก้และลิงก์เว็บไซต์หลัก สพป.แพร่ เขต 2');
+
+const appSrc = readFileSync(join(ROOT, 'src', 'App.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/id="brand-main-site"/.test(appSrc), 'App.vue: มีบล็อกโลโก้/ลิงก์เว็บไซต์หลัก');
+check(/href="https:\/\/www\.phrae2\.go\.th\/"/.test(appSrc), 'ลิงก์ไปที่ https://www.phrae2.go.th/');
+check(/target="_blank"/.test(appSrc) && /rel="noopener noreferrer"/.test(appSrc),
+  'เปิดแท็บใหม่ (target=_blank + rel noopener)');
+check(/src="\/phrae2-logo\.png"/.test(appSrc), 'ใช้รูป /phrae2-logo.png (runtime URL จาก public/)');
+check(/phrae2\.go\.th<\/span>/.test(appSrc) && /เว็บไซต์หลัก สพป\.แพร่ เขต 2/.test(appSrc),
+  'มีข้อความ "phrae2.go.th เว็บไซต์หลัก สพป.แพร่ เขต 2"');
+{
+  const after = appSrc.indexOf('brand-sub');
+  const ext = appSrc.indexOf('id="brand-main-site"');
+  check(after > -1 && ext > after, 'วางต่อจากโลโก้ P2-SMART (ในกลุ่ม .brand เดียวกัน)',
+    `ตำแหน่ง: brand-sub=${after} ext=${ext}`);
+}
+check(existsSync(join(ROOT, 'public', 'phrae2-logo.png')), 'มีไฟล์ public/phrae2-logo.png');
+check(/\.brand-ext-logo \{[\s\S]{0,160}?object-fit: contain/.test(appSrc), 'โลโก้ถูกจัดขนาดพอดี (object-fit: contain)');
 
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *

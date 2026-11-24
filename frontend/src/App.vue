@@ -30,6 +30,24 @@ const logoSrc = '/logo.png';
           <div class="brand-title">P2-SMART</div>
           <div class="brand-sub">Online Management System</div>
         </div>
+
+        <!-- ผู้ใช้สั่ง 24 พ.ย. 2569: โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก
+             อยู่ในกลุ่มเดียวกับโลโก้ P2-SMART · กดแล้วเปิดแท็บใหม่ -->
+        <a
+          id="brand-main-site"
+          class="brand-ext"
+          href="https://www.phrae2.go.th/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="เว็บไซต์หลัก สพป.แพร่ เขต 2"
+          @click.stop
+        >
+          <img class="brand-ext-logo" src="/phrae2-logo.png" alt="สพป.แพร่ เขต 2" />
+          <span class="brand-ext-text">
+            <span class="brand-ext-domain">phrae2.go.th</span>
+            <span class="brand-ext-sub">เว็บไซต์หลัก สพป.แพร่ เขต 2</span>
+          </span>
+        </a>
       </div>
       <div class="topbar-right">
         <TopBar />
@@ -79,6 +97,47 @@ const logoSrc = '/logo.png';
  * (0,2,0) > (0,1,0)
  */
 .topbar .topbar-inner { max-width: 1400px; }
+
+/*
+ * โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก (ผู้ใช้สั่ง 24 พ.ย. 2569)
+ *   อยู่ในกลุ่มเดียวกับโลโก้ P2-SMART (หลังข้อความ P2-SMART) มีเส้นคั่นบาง ๆ
+ *   กดแล้วเปิดแท็บใหม่ไปที่ https://www.phrae2.go.th/
+ */
+.brand-ext {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.45);
+  text-decoration: none;
+  color: #fff;
+  cursor: pointer;
+}
+.brand-ext:hover .brand-ext-domain { text-decoration: underline; }
+.brand-ext-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 12px;
+  padding: 3px;
+  display: block;
+}
+.brand-ext-text { display: flex; flex-direction: column; line-height: 1.2; }
+.brand-ext-domain { font-size: 15px; font-weight: 800; letter-spacing: 0.2px; }
+.brand-ext-sub { font-size: 12px; opacity: 0.9; }
+
+/* จอแคบ: ซ่อนบรรทัดรอง เหลือชื่อเว็บไซต์ + โลโก้ */
+@media (max-width: 860px) {
+  .brand-ext-sub { display: none; }
+  .brand-ext-logo { width: 36px; height: 36px; }
+  .brand-ext { padding-left: 10px; }
+}
+@media (max-width: 520px) {
+  .brand-ext-text { display: none; }
+}
 
 /* จอแคบ: .app ลด padding จาก 20px เหลือ 12px (theme.css:714)
    ต้องลดขอบแถบบนตามด้วย ไม่งั้นแถบบนจะเว้นขอบมากกว่าเนื้อหา 8px ทั้งสองด้าน */

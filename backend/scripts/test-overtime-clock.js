@@ -126,7 +126,14 @@ function check(ok, name, detail = '') {
       JSON.stringify({ count: stats.body.overtimeCount, rows: otRows.length }));
 
     console.log('');
-    console.log('⑥ วันเสาร์–อาทิตย์ → 400 (กดไม่ได้)');
+    console.log('⑥ การ์ด "ทำงานล่วงเวลา" บนหน้าแรก (/today-summary)');
+    const sum = await jget('/api/today-summary', adminCookie);
+    const sumOt = sum.body.overtime || [];
+    check(sumOt.some((r) => Number(r.user_id) === user), '/today-summary มีรายชื่อ OT',
+      JSON.stringify(sumOt.map((r) => r.user_id).slice(0, 10)));
+
+    console.log('');
+    console.log('⑦ วันเสาร์–อาทิตย์ → 400 (กดไม่ได้)');
     await jput('/api/sim-date', adminCookie, { date: WEEKEND });
     const weekend = await jpost('/api/time/overtime', cookie, { type: 'in' });
     check(weekend.status === 400, `POST (เสาร์) → 400 (ได้ ${weekend.status})`, JSON.stringify(weekend.body));
