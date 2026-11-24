@@ -426,6 +426,36 @@ check(/api\.get\('\/time\/report\?period='[\s\S]{0,220}?\+ qs\)/.test(clockSrc) 
       /report\.xlsx\?period='[\s\S]{0,220}?\+ qs/.test(clockSrc),
   'ทั้งรายงานบนจอและไฟล์ Excel ใช้ตัวกรองเดียวกัน');
 
+/* ── ⑯ ลงเวลาทำงานล่วงเวลา (OT) ─────────────────────────────────────────
+ *
+ * ผู้ใช้สั่ง 24 พ.ย. 2569 — ปุ่มสีฟ้าต่อจากปุ่มออกงาน + หน้าต่างลงเวลา OT
+ */
+console.log('\n⑯ ลงเวลาทำงานล่วงเวลา (OT)');
+
+const clockOtSrc = readFileSync(join(ROOT, 'src', 'pages', 'ClockPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+check(/id="clock-ot-btn"[\s\S]{0,80}?ทำงานล่วงเวลา/.test(clockOtSrc),
+  'ClockPage: มีปุ่ม "ทำงานล่วงเวลา"');
+{
+  const outBtn = clockOtSrc.indexOf('clock-btn-out');
+  const otBtn = clockOtSrc.indexOf('id="clock-ot-btn"');
+  check(outBtn > -1 && otBtn > outBtn, 'ปุ่มทำงานล่วงเวลาอยู่ต่อจากปุ่มออกงาน',
+    `ตำแหน่ง: out=${outBtn} ot=${otBtn}`);
+}
+check(/\.clock-ot-btn \{[\s\S]{0,120}?background: #2563eb/.test(clockOtSrc), 'ปุ่มเป็นสีฟ้า');
+check(/v-if="otOpen" title="⏱ ลงเวลาทำงานล่วงเวลา"/.test(clockOtSrc), 'มีหน้าต่าง "ลงเวลาทำงานล่วงเวลา"');
+check(/id="ot-in-btn"/.test(clockOtSrc) && /id="ot-out-btn"/.test(clockOtSrc),
+  'มีปุ่ม "ลงเวลาทำงานล่วงเวลา" และ "ลงเวลาออกงานล่วงเวลา"');
+check(/api\.post\('\/time\/overtime', \{ type \}\)/.test(clockOtSrc), 'เรียก POST /time/overtime');
+check(/const isWeekend = computed/.test(clockOtSrc) && /dow === 0 \|\| dow === 6/.test(clockOtSrc),
+  'ตรวจวันหยุดเสาร์–อาทิตย์ในหน้าเว็บด้วย');
+check(/v-if="canViewAll && stats" class="card" id="clock-ot-card"/.test(clockOtSrc),
+  'มีการ์ด "ทำงานล่วงเวลา" แสดงรายชื่อ');
+check(/stats\.overtime/.test(clockOtSrc), 'การ์ดอ่านรายชื่อจาก stats.overtime');
+check(/r\.ot_in \? UI\.time\(r\.ot_in\)/.test(clockOtSrc), 'ตารางบันทึกเวลาแสดงช่วง OT');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

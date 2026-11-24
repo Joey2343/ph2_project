@@ -295,6 +295,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบลงเวลาทำงานล่วงเวลา (OT) — วันทำการเท่านั้น + เข้า/ออกได้ทุกเวลา]');
+  results.push(run('test-overtime-clock', [path.join(__dirname, 'test-overtime-clock.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบ driver ฐานข้อมูล — tx.prepare ต้องมีจริง]');
   results.push(run('test-db-transaction', [path.join(__dirname, 'test-db-transaction.js')]));
 

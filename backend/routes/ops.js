@@ -991,11 +991,20 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
   const siteLabel = siteName ? ` (${siteName})` : '';
 
   if (type === 'in') {
+    if (rec && rec.clock_in) {
+      return res.status(400).json({ error: 'คุณได้ลงเวลาเข้างานแล้วในวันนี้' });
+    }
     if (!rec) {
       await db.prepare('INSERT INTO time_records (user_id, date, clock_in, clock_in_src) VALUES (?,?,?,?)').run(req.user.id, today, t, src || null);
-      return res.json({ ok: true, site: siteName || null, message: `ลงเวลาเข้างาน ${t}${siteLabel} เรียบร้อย${note}`, warning: warn });
+    } else {
+      /*
+       * มีแถวของวันนี้อยู่แล้วแต่ยังไม่ได้ลงเวลาเข้า
+       *   เช่น แถวที่เกิดจาก "ลงเวลาทำงานล่วงเวลา" (ot_in) ก่อน
+       *   → เติม clock_in ลงแถวเดิม (เดิมตอบ 400 ว่า "ลงเวลาเข้างานแล้ว" ทั้งที่ยังไม่ได้ลง)
+       */
+      await db.prepare('UPDATE time_records SET clock_in = ?, clock_in_src = ? WHERE id = ?').run(t, src || null, rec.id);
     }
-    return res.status(400).json({ error: 'คุณได้ลงเวลาเข้างานแล้วในวันนี้' });
+    return res.json({ ok: true, site: siteName || null, message: `ลงเวลาเข้างาน ${t}${siteLabel} เรียบร้อย${note}`, warning: warn });
   }
   if (type === 'out') {
     if (!rec || !rec.clock_in) return res.status(400).json({ error: 'กรุณาลงเวลาเข้างานก่อน' });
@@ -1006,6 +1015,50 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
     return res.json({ ok: true, site: null, message: `ลงเวลาออกงาน ${t} เรียบร้อย`, warning: [] });
   }
   res.status(400).json({ error: 'ประเภทการลงเวลาไม่ถูกต้อง' });
+});
+
+/**
+ * ลงเวลาทำงานล่วงเวลา (OT) — ผู้ใช้สั่ง 24 พ.ย. 2569
+ *   · กดได้ทุกวัน **ยกเว้นเสาร์–อาทิตย์**
+ *   · กดเข้า/ออกได้ทุกเวลา (ไม่ตรวจ GPS ไม่ผูกกับเวลาเข้างานปกติ)
+ *   · เก็บใน time_records ของวันนั้น (ot_in / ot_out) → ไปแสดงในรายการ + การ์ดทำงานล่วงเวลา
+ */
+router.post('/time/overtime', auth.requireAuth, async (req, res) => {
+  if (req.user.user_group === 'school' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'เจ้าหน้าที่สถานศึกษาไม่ใช้ระบบลงเวลาทำงาน' });
+  }
+  const today = simdate.todayISO();
+  const dow = new Date(today + 'T00:00:00').getDay(); // 0 = อาทิตย์, 6 = เสาร์
+  if (dow === 0 || dow === 6) {
+    return res.status(400).json({ error: 'วันหยุด (เสาร์-อาทิตย์) ไม่ต้องลงเวลาทำงานล่วงเวลา' });
+  }
+  const type = String((req.body || {}).type || '').trim();
+  if (type !== 'in' && type !== 'out') return res.status(400).json({ error: 'ประเภทการลงเวลาไม่ถูกต้อง' });
+
+  const t = new Date().toTimeString().slice(0, 8);
+  let rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
+
+  if (type === 'in') {
+    if (rec && rec.ot_in) return res.status(400).json({ error: 'คุณได้ลงเวลาทำงานล่วงเวลาแล้ววันนี้' });
+    if (!rec) {
+      await db.prepare('INSERT INTO time_records (user_id, date, ot_in) VALUES (?,?,?)').run(req.user.id, today, t);
+    } else {
+      await db.prepare('UPDATE time_records SET ot_in = ? WHERE id = ?').run(t, rec.id);
+    }
+  } else {
+    if (!rec || !rec.ot_in) return res.status(400).json({ error: 'กรุณาลงเวลาทำงานล่วงเวลาก่อน' });
+    if (rec.ot_out) return res.status(400).json({ error: 'คุณได้ลงเวลาออกงานล่วงเวลาแล้ววันนี้' });
+    await db.prepare('UPDATE time_records SET ot_out = ? WHERE id = ?').run(t, rec.id);
+  }
+
+  rec = await db.prepare('SELECT ot_in, ot_out FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
+  res.json({
+    ok: true,
+    date: today,
+    ot_in: rec ? rec.ot_in : null,
+    ot_out: rec ? rec.ot_out : null,
+    message: type === 'in' ? `ลงเวลาทำงานล่วงเวลา ${t} เรียบร้อย` : `ลงเวลาออกงานล่วงเวลา ${t} เรียบร้อย`,
+  });
 });
 
 router.get('/time/mine', auth.requireAuth, async (req, res) => {
@@ -1171,7 +1224,15 @@ router.get('/time/stats', auth.requireAuth, async (req, res) => {
   const checkedOut = (await db.prepare(`SELECT COUNT(*) c FROM time_records t JOIN users u ON u.id = t.user_id
     WHERE t.date = ? AND t.clock_out IS NOT NULL AND COALESCE(u.user_group, 'office') <> 'school'`).get(today)).c;
   const activeUsers = (await db.prepare("SELECT COUNT(*) c FROM users WHERE status = 'active' AND COALESCE(user_group, 'office') <> 'school'").get()).c;
-  res.json({ date: today, checkedIn, checkedOut, activeUsers });
+  /*
+   * การ์ด "ทำงานล่วงเวลา" (ผู้ใช้สั่ง 24 พ.ย. 2569)
+   *   รายชื่อผู้ที่ลงเวลาทำงานล่วงเวลาของวันนี้ (เฉพาะเจ้าหน้าที่ สพป. เช่นเดียวกับตัวเลขอื่น)
+   */
+  const overtimeRows = await db.prepare(`SELECT t.user_id, t.ot_in, t.ot_out, u.title, u.full_name, u.first_name, u.last_name, u.position, u.workplace
+    FROM time_records t JOIN users u ON u.id = t.user_id
+    WHERE t.date = ? AND t.ot_in IS NOT NULL AND COALESCE(u.user_group, 'office') <> 'school'
+    ORDER BY u.full_name`).all(today);
+  res.json({ date: today, checkedIn, checkedOut, activeUsers, overtime: overtimeRows, overtimeCount: overtimeRows.length });
 });
 
 // ---------- รายงานการลงเวลา (วัน/สัปดาห์/เดือน) ----------

@@ -219,7 +219,11 @@ const VUE_PAGES = {
       {
         name: 'ตารางบันทึกเวลามีคอลัมน์ "สถานที่ทำงาน" ต่อจาก "กลุ่มงาน"',
         check: `(() => {
-          const ths = [...document.querySelectorAll('.tbl thead th')].map(th => (th.innerText || '').trim());
+          // ตรวจเฉพาะตารางที่มีคอลัมน์ "สถานที่ทำงาน" (หน้า clock มีหลายตาราง เช่น การ์ดทำงานล่วงเวลา)
+          const tables = [...document.querySelectorAll('.tbl')];
+          const table = tables.find(t => [...t.querySelectorAll('thead th')].some(th => (th.innerText || '').trim() === 'สถานที่ทำงาน'));
+          if (!table) throw new Error('ไม่พบตารางที่มีคอลัมน์ "สถานที่ทำงาน"');
+          const ths = [...table.querySelectorAll('thead th')].map(th => (th.innerText || '').trim());
           const idxGroup = ths.indexOf('กลุ่มงาน');
           const idxSite = ths.indexOf('สถานที่ทำงาน');
           if (idxSite < 0) throw new Error('ไม่พบคอลัมน์ "สถานที่ทำงาน" ในตาราง (มี: ' + ths.join(', ') + ')');

@@ -110,6 +110,43 @@ async function loadStats() {
   }
 }
 
+/* ---------- ทำงานล่วงเวลา (OT) — ผู้ใช้สั่ง 24 พ.ย. 2569 ---------- */
+const otOpen = ref(false);
+const otBusy = ref(''); // '' | 'in' | 'out'
+
+/** วันหยุดเสาร์–อาทิตย์ (ใช้วันที่ของระบบ/วันจำลอง) */
+const isWeekend = computed(() => {
+  const d = String(today.value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const dow = new Date(d + 'T00:00:00').getDay();
+  return dow === 0 || dow === 6;
+});
+
+const otIn = computed(() => (record.value ? record.value.ot_in : null));
+const otOut = computed(() => (record.value ? record.value.ot_out : null));
+
+function openOt() {
+  otOpen.value = true;
+}
+
+async function doOt(type) {
+  if (otBusy.value) return;
+  if (isWeekend.value) {
+    UI.toast('วันหยุด (เสาร์-อาทิตย์) ไม่ต้องลงเวลาทำงานล่วงเวลา', 'error');
+    return;
+  }
+  otBusy.value = type;
+  try {
+    const res = await api.post('/time/overtime', { type });
+    UI.toast(res.message);
+    await Promise.all([loadToday(), loadRecords(), loadStats()]);
+  } catch (e) {
+    UI.toast(e.message, 'error');
+  } finally {
+    otBusy.value = '';
+  }
+}
+
 /* ---------- ตารางบันทึกเวลา (แสดงวันเดียว) ---------- */
 const tableLoading = ref(true);
 const tableError = ref('');
@@ -645,6 +682,16 @@ onBeforeUnmount(() => {
         >
           {{ checking === 'out' ? '📡 กำลังตรวจสอบตำแหน่ง...' : '🏁 ลงเวลาออกงาน' }}
         </button>
+        <!-- ผู้ใช้สั่ง 24 พ.ย. 2569: ปุ่มทำงานล่วงเวลา (สีฟ้า) ต่อจากปุ่มออกงาน -->
+        <button id="clock-ot-btn" class="btn clock-ot-btn" @click="openOt">
+          ⏱ ทำงานล่วงเวลา
+        </button>
+      </div>
+
+      <!-- ทำงานล่วงเวลาวันนี้ (ถ้ามี) -->
+      <div v-if="record && (record.ot_in || record.ot_out)" class="hint" style="margin-top: 10px; color: #1d4ed8; font-weight: 600">
+        ⏱ ทำงานล่วงเวลาวันนี้: เข้า {{ record.ot_in ? UI.time(record.ot_in) : '-' }}
+        • ออก {{ record.ot_out ? UI.time(record.ot_out) : 'ยังไม่ลง' }}
       </div>
     </div>
   </div>
@@ -674,6 +721,43 @@ onBeforeUnmount(() => {
           <div class="stat-label">ลงเวลาออกงานแล้ว</div>
         </div>
       </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: #dbeafe">⏱</div>
+        <div>
+          <div class="stat-value" style="color: #1d4ed8">{{ stats.overtimeCount || 0 }}</div>
+          <div class="stat-label">ทำงานล่วงเวลา</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- การ์ดทำงานล่วงเวลา (ผู้ใช้สั่ง 24 พ.ย. 2569) ---------- -->
+  <div v-if="canViewAll && stats" class="card" id="clock-ot-card">
+    <div class="card-title">⏱ ทำงานล่วงเวลา ({{ (stats.overtime || []).length }} คน)</div>
+    <div v-if="!(stats.overtime || []).length" class="empty-state" style="margin: 6px 0">
+      <span class="em">⏱</span>ยังไม่มีผู้ลงเวลาทำงานล่วงเวลาในวันนี้
+    </div>
+    <div v-else class="table-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width: 46px; text-align: center">ลำดับ</th>
+            <th>ชื่อ-นามสกุล</th>
+            <th>กลุ่มงาน</th>
+            <th>เวลาเข้าล่วงเวลา</th>
+            <th>เวลาออกล่วงเวลา</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(r, i) in stats.overtime" :key="'ot-' + (r.user_id || i)">
+            <td style="text-align: center">{{ i + 1 }}</td>
+            <td>{{ UI.personName(r) }}</td>
+            <td>{{ r.workplace || '-' }}</td>
+            <td>{{ r.ot_in ? UI.time(r.ot_in) : '-' }}</td>
+            <td>{{ r.ot_out ? UI.time(r.ot_out) : 'ยังไม่ลง' }}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -728,6 +812,7 @@ onBeforeUnmount(() => {
               <th>สถานที่ทำงาน</th>
               <th>เวลาเข้า</th>
               <th>เวลาออก</th>
+              <th>ล่วงเวลา</th>
               <th v-if="scope === 'all' || canEditMine"></th>
             </tr>
           </thead>
@@ -749,6 +834,13 @@ onBeforeUnmount(() => {
               <!-- ไปราชการ/ลา/ไม่ได้ลงชื่อปฏิบัติงาน: ไม่มีเวลาเข้า/ออก จึงเว้นว่างไว้ -->
               <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_in) }}</td>
               <td>{{ r.is_travel || r.is_leave || r.is_absent ? '' : UI.time(r.clock_out) }}</td>
+              <!-- ล่วงเวลา (ot_in–ot_out) ของวันนั้น -->
+              <td>
+                <span v-if="r.ot_in" style="color: #1d4ed8; font-weight: 600; white-space: nowrap">
+                  {{ UI.time(r.ot_in) }} – {{ r.ot_out ? UI.time(r.ot_out) : 'ยังไม่ลง' }}
+                </span>
+                <span v-else style="color: #94a3b8">-</span>
+              </td>
               <td v-if="(scope === 'all' || canEditMine) && !r.is_travel && !r.is_leave && !r.is_absent">
                 <div style="display: inline-flex; gap: 6px">
                   <button class="btn btn-xs btn-outline" title="แก้ไขเวลา" @click="openEdit(r)">✎</button>
@@ -761,6 +853,54 @@ onBeforeUnmount(() => {
       </div>
     </template>
   </div>
+
+  <!-- ---------- ลงเวลาทำงานล่วงเวลา (ผู้ใช้สั่ง 24 พ.ย. 2569) ---------- -->
+  <AppModal v-if="otOpen" title="⏱ ลงเวลาทำงานล่วงเวลา" footer @close="otOpen = false">
+    <div style="font-size: 15px">
+      <div style="margin-bottom: 10px">
+        วันที่ <b>{{ UI.thaiDate(today) }}</b>
+      </div>
+      <div v-if="isWeekend" class="hint" style="color: #b45309; margin-bottom: 10px">
+        วันนี้เป็นวันหยุด (เสาร์–อาทิตย์) — ไม่ต้องลงเวลาทำงานล่วงเวลา
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex: 1">
+          <label>เวลาทำงานล่วงเวลา (เข้า)</label>
+          <div id="ot-in-time" style="font-weight: 700; color: #1d4ed8">{{ otIn ? UI.time(otIn) : 'ยังไม่ลง' }}</div>
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>เวลาออกงานล่วงเวลา</label>
+          <div id="ot-out-time" style="font-weight: 700; color: #1d4ed8">{{ otOut ? UI.time(otOut) : 'ยังไม่ลง' }}</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px">
+        <button
+          id="ot-in-btn"
+          class="btn btn-primary"
+          :disabled="isWeekend || !!otIn || otBusy === 'in'"
+          @click="doOt('in')"
+        >
+          {{ otBusy === 'in' ? 'กำลังบันทึก...' : '⏱ ลงเวลาทำงานล่วงเวลา' }}
+        </button>
+        <button
+          id="ot-out-btn"
+          class="btn btn-outline"
+          style="border-color: #2563eb; color: #2563eb"
+          :disabled="isWeekend || !otIn || !!otOut || otBusy === 'out'"
+          @click="doOt('out')"
+        >
+          {{ otBusy === 'out' ? 'กำลังบันทึก...' : '🏁 ลงเวลาออกงานล่วงเวลา' }}
+        </button>
+      </div>
+      <div class="hint" style="margin-top: 10px">
+        ลงเวลาเข้า–ออกล่วงเวลาได้ทุกเวลาของวันทำการ · ไม่ต้องตรวจตำแหน่ง GPS ·
+        รายการจะไปแสดงใน "บันทึกเวลาทำงานของเจ้าหน้าที่" และการ์ดทำงานล่วงเวลา
+      </div>
+    </div>
+    <template #footer>
+      <button class="btn btn-outline" @click="otOpen = false">ปิด</button>
+    </template>
+  </AppModal>
 
   <!-- ---------- แก้ไขเวลาลงเวลา ---------- -->
   <AppModal v-if="editOpen" title="✎ แก้ไขเวลาลงเวลา" footer @close="editOpen = false">
@@ -1060,6 +1200,23 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * ปุ่ม "ทำงานล่วงเวลา" (ผู้ใช้สั่ง 24 พ.ย. 2569)
+ *   สีฟ้า วางต่อจากปุ่ม "ลงเวลาออกงาน" ในกล่องลงเวลา
+ *   ไม่ใช้คลาส .clock-btn เพราะปุ่มนั้นมีสไตล์ของเข้างาน/ออกงานโดยเฉพาะ
+ */
+.clock-ot-btn {
+  background: #2563eb;
+  color: #fff;
+  border: 1px solid #2563eb;
+  padding: 10px 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.clock-ot-btn:hover {
+  background: #1d4ed8;
 }
 
 /*
