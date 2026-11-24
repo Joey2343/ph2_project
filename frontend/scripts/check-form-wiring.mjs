@@ -448,7 +448,7 @@ check(/\.clock-ot-btn \{[\s\S]{0,120}?background: #2563eb/.test(clockOtSrc), '�
 check(/v-if="otOpen" title="⏱ ลงเวลาทำงานล่วงเวลา"/.test(clockOtSrc), 'มีหน้าต่าง "ลงเวลาทำงานล่วงเวลา"');
 check(/id="ot-in-btn"/.test(clockOtSrc) && /id="ot-out-btn"/.test(clockOtSrc),
   'มีปุ่ม "ลงเวลาทำงานล่วงเวลา" และ "ลงเวลาออกงานล่วงเวลา"');
-check(/api\.post\('\/time\/overtime', \{ type \}\)/.test(clockOtSrc), 'เรียก POST /time/overtime');
+check(/api\.post\('\/time\/overtime', payload\)/.test(clockOtSrc), 'เรียก POST /time/overtime');
 check(/const isWeekend = computed/.test(clockOtSrc) && /dow === 0 \|\| dow === 6/.test(clockOtSrc),
   'ตรวจวันหยุดเสาร์–อาทิตย์ในหน้าเว็บด้วย');
 check(/v-if="canViewAll && stats" class="card" id="clock-ot-card"/.test(clockOtSrc),
@@ -468,6 +468,18 @@ check(/id="home-ot-in-btn"/.test(homeSrc) && /id="home-ot-out-btn"/.test(homeSrc
 check(/key: 'overtime'/.test(homeSrc) && /⏱ ทำงานล่วงเวลาวันนี้/.test(homeSrc),
   'HomePage: มีการ์ด "ทำงานล่วงเวลา"');
 check(/s\.overtime/.test(homeSrc), 'HomePage: การ์ดอ่านจาก /today-summary → overtime');
+
+/* OT: ใช้พิกัด GPS เหมือนลงเวลาเข้างาน + ปุ่ม OT/ประวัติอยู่บรรทัดเดียวกัน (ผู้ใช้สั่ง 24 พ.ย. 2569) */
+check(/const payload = \{ type \};[\s\S]{0,400}?payload\.lat = pos\.coords\.latitude/.test(clockOtSrc),
+  'ClockPage: ลงเวลาเข้าล่วงเวลาขอพิกัด GPS');
+check(/const payload = \{ type \};[\s\S]{0,400}?payload\.lat = pos\.coords\.latitude/.test(homeSrc),
+  'HomePage: ลงเวลาเข้าล่วงเวลาขอพิกัด GPS');
+check(/api\.post\('\/time\/overtime', payload\)/.test(clockOtSrc) && /api\.post\('\/time\/overtime', payload\)/.test(homeSrc),
+  'ส่ง lat/lng ไปกับ POST /time/overtime (ทั้งสองหน้า)');
+check(/<span class="home-clock-extra">[\s\S]{0,400}?id="home-clock-ot"[\s\S]{0,400}?home-clock-history/.test(homeSrc),
+  'ปุ่มทำงานล่วงเวลา + ดูประวัติ อยู่ในบล็อกเดียวกัน (บรรทัดเดียวกัน)');
+check(/\.home-clock-extra \{[\s\S]{0,140}?flex-wrap: nowrap/.test(homeSrc),
+  'บล็อกนั้นไม่ตัดบรรทัด (nowrap)');
 
 /* ── ⑰ หัวเว็บ: โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก ───────────────────
  *

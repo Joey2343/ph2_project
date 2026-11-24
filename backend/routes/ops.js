@@ -902,6 +902,64 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
 });
 
 // ---------- เมนู 3: ลงเวลาทำงาน ----------
+/**
+ * ตรวจตำแหน่ง GPS ของ "การลงเวลาเข้างาน" (และลงเวลาทำงานล่วงเวลา)
+ *
+ * ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ใดสถานที่หนึ่ง (ตั้งค่าได้หลายแห่งในหน้าตั้งค่าตำแหน่งที่ทำงาน)
+ *   · ยังไม่ได้ตั้งพิกัดเลย → ไม่บล็อก แค่เตือน (เพื่อให้เทสต์/ระบบใหม่ใช้งานได้)
+ *   · ตั้งพิกัดแล้วแต่ไม่ส่ง lat/lng → 400
+ *   · อยู่นอกรัศมี → 403 พร้อมบอกระยะห่าง
+ *
+ * @returns {{ error?: {code:number, message:string}, src?: string, siteName?: string, warn: string[] }}
+ */
+async function validateClockGeo(lat, lng) {
+  const cfg = await getClockGeoConfig();
+  const warn = [];
+  let src = '';
+  let siteName = '';
+  if (!cfg.enabled) return { src, siteName, warn };
+  const sites = (cfg.sites || []).filter((s) => s.lat !== null && s.lng !== null);
+  if (!sites.length) {
+    warn.push('ยังไม่ได้ตั้งค่าพิกัด (ละติจูด/ลองติจูด) ของสถานที่ทำงาน');
+    return { src, siteName, warn };
+  }
+  const la = Number(lat);
+  const lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+    return {
+      error: {
+        code: 400,
+        message: 'ไม่ได้รับตำแหน่ง GPS ของอุปกรณ์ — กรุณาอนุญาตให้เบราว์เซอร์เข้าถึงตำแหน่งแล้วลองใหม่',
+      },
+      warn,
+    };
+  }
+  // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ "ใดสถานที่หนึ่ง"
+  //   best = สถานที่ที่ใกล้ที่สุด (ใช้บอกระยะในข้อความเมื่อไม่ผ่าน)
+  //   hit  = สถานที่ที่อยู่ในรัศมี (ถ้ามีหลายแห่ง ใช้แห่งที่ใกล้ที่สุดเป็นชื่อใน src)
+  let best = null;
+  let hit = null;
+  for (const s of sites) {
+    const d = haversineMeters(la, lo, s.lat, s.lng);
+    if (!best || d < best.dist) best = { site: s, dist: d };
+    if (d <= s.radius && (!hit || d < hit.dist)) hit = { site: s, dist: d };
+  }
+  if (!hit) {
+    return {
+      error: {
+        code: 403,
+        message:
+          `คุณอยู่นอกพื้นที่ที่กำหนด — ห่างจาก ${best.site.name} ${Math.round(best.dist)} เมตร` +
+          ` (ต้องอยู่ในรัศมี ${best.site.radius} เมตร)`,
+      },
+      warn,
+    };
+  }
+  siteName = hit.site.name;
+  src = `GPS (${la.toFixed(6)}, ${lo.toFixed(6)}) · ${siteName} (${Math.round(hit.dist)} ม.)`;
+  return { src, siteName, warn };
+}
+
 router.get('/time/today', auth.requireAuth, async (req, res) => {
   const today = simdate.todayISO();
   const rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
@@ -951,51 +1009,21 @@ router.post('/time/check', auth.requireAuth, async (req, res) => {
 
   const t = new Date().toTimeString().slice(0, 8); // เวลาบนนาฬิกาของระบบ (จำลองตามวันที่ sim_today เมื่อเปิดใช้)
   const { type, lat, lng } = req.body || {};
-  const cfg = await getClockGeoConfig();
-  let rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
+  const rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
 
   // ---- ตรวจตำแหน่งด้วย GPS "เฉพาะการลงเวลาเข้างาน" ----
-  // ใช้ GPS ทุกอุปกรณ์ (มือถือ/แท็บเล็ต/คอมพิวเตอร์) — ไม่ตรวจจาก IP อีกแล้ว
-  // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ใดสถานที่หนึ่ง (มี 2 แห่ง)
-  //
   // ⚠️ การลงเวลาออกงาน "ไม่ต้องอ้างอิงพิกัด" (ผู้ใช้สั่ง)
   //    เพราะบางวันต้องออกไปปฏิบัติงานนอกสถานที่/กลับบ้านก่อนเวลา
   //    → ไม่บล็อกการออกงาน และไม่บันทึกสถานที่
   let src = '';
   let siteName = '';
-  const warn = [];
-  if (type === 'in' && cfg.enabled) {
-    const sites = (cfg.sites || []).filter((s) => s.lat !== null && s.lng !== null);
-    if (!sites.length) {
-      warn.push('ยังไม่ได้ตั้งค่าพิกัด (ละติจูด/ลองติจูด) ของสถานที่ทำงาน');
-    } else {
-      const la = Number(lat);
-      const lo = Number(lng);
-      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
-        return res.status(400).json({
-          error: 'ไม่ได้รับตำแหน่ง GPS ของอุปกรณ์ — กรุณาอนุญาตให้เบราว์เซอร์เข้าถึงตำแหน่งแล้วลองใหม่',
-        });
-      }
-      // ผ่านได้ถ้าอยู่ในรัศมีของสถานที่ "ใดสถานที่หนึ่ง"
-      //   best = สถานที่ที่ใกล้ที่สุด (ใช้บอกระยะในข้อความเมื่อไม่ผ่าน)
-      //   hit  = สถานที่ที่อยู่ในรัศมี (ถ้ามีหลายแห่ง ใช้แห่งที่ใกล้ที่สุดเป็นชื่อใน src)
-      let best = null;
-      let hit = null;
-      for (const s of sites) {
-        const d = haversineMeters(la, lo, s.lat, s.lng);
-        if (!best || d < best.dist) best = { site: s, dist: d };
-        if (d <= s.radius && (!hit || d < hit.dist)) hit = { site: s, dist: d };
-      }
-      if (!hit) {
-        return res.status(403).json({
-          error:
-            `คุณอยู่นอกพื้นที่ที่กำหนด — ห่างจาก ${best.site.name} ${Math.round(best.dist)} เมตร` +
-            ` (ต้องอยู่ในรัศมี ${best.site.radius} เมตร)`,
-        });
-      }
-      siteName = hit.site.name;
-      src = `GPS (${la.toFixed(6)}, ${lo.toFixed(6)}) · ${siteName} (${Math.round(hit.dist)} ม.)`;
-    }
+  let warn = [];
+  if (type === 'in') {
+    const geo = await validateClockGeo(lat, lng);
+    if (geo.error) return res.status(geo.error.code).json({ error: geo.error.message });
+    src = geo.src;
+    siteName = geo.siteName;
+    warn = geo.warn;
   }
 
   const note = warn.length ? ` (หมายเหตุ: ${warn.join('; ')})` : '';
@@ -1049,12 +1077,24 @@ router.post('/time/overtime', auth.requireAuth, async (req, res) => {
   const t = new Date().toTimeString().slice(0, 8);
   let rec = await db.prepare('SELECT * FROM time_records WHERE user_id = ? AND date = ?').get(req.user.id, today);
 
+  /*
+   * ลงเวลาเข้าล่วงเวลาใช้พิกัด GPS ชุดเดียวกับ "ลงเวลาเข้างาน" (ผู้ใช้สั่ง 24 พ.ย. 2569)
+   *   · ตรวจกับสถานที่ในหน้าตั้งค่าตำแหน่งที่ทำงาน (ผ่านได้ถ้าอยู่ในรัศมีแห่งใดแห่งหนึ่ง)
+   *   · ลงเวลาออกล่วงเวลาไม่ต้องมีพิกัด (เหมือนออกงานปกติ)
+   */
+  let otSrc = null;
+  if (type === 'in') {
+    const geo = await validateClockGeo((req.body || {}).lat, (req.body || {}).lng);
+    if (geo.error) return res.status(geo.error.code).json({ error: geo.error.message });
+    otSrc = geo.src || null;
+  }
+
   if (type === 'in') {
     if (rec && rec.ot_in) return res.status(400).json({ error: 'คุณได้ลงเวลาทำงานล่วงเวลาแล้ววันนี้' });
     if (!rec) {
-      await db.prepare('INSERT INTO time_records (user_id, date, ot_in) VALUES (?,?,?)').run(req.user.id, today, t);
+      await db.prepare('INSERT INTO time_records (user_id, date, ot_in, ot_in_src) VALUES (?,?,?,?)').run(req.user.id, today, t, otSrc);
     } else {
-      await db.prepare('UPDATE time_records SET ot_in = ? WHERE id = ?').run(t, rec.id);
+      await db.prepare('UPDATE time_records SET ot_in = ?, ot_in_src = ? WHERE id = ?').run(t, otSrc, rec.id);
     }
   } else {
     if (!rec || !rec.ot_in) return res.status(400).json({ error: 'กรุณาลงเวลาทำงานล่วงเวลาก่อน' });

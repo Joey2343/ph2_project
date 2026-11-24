@@ -137,7 +137,21 @@ async function doOt(type) {
   }
   otBusy.value = type;
   try {
-    const res = await api.post('/time/overtime', { type });
+    /*
+     * ลงเวลาเข้าล่วงเวลาใช้พิกัด GPS ชุดเดียวกับ "ลงเวลาเข้างาน" (ผู้ใช้สั่ง 24 พ.ย. 2569)
+     * ลงเวลาออกล่วงเวลาไม่ต้องมีพิกัด
+     */
+    const payload = { type };
+    if (type === 'in') {
+      try {
+        const pos = await getPosition();
+        payload.lat = pos.coords.latitude;
+        payload.lng = pos.coords.longitude;
+      } catch (e) {
+        return UI.toast(geoErrorMessage(e), 'error');
+      }
+    }
+    const res = await api.post('/time/overtime', payload);
     UI.toast(res.message);
     await Promise.all([loadToday(), loadRecords(), loadStats()]);
   } catch (e) {

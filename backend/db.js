@@ -380,6 +380,7 @@ CREATE TABLE IF NOT EXISTS \`time_records\` (
   \`clock_out_src\` mediumtext DEFAULT NULL,
   \`ot_in\` mediumtext DEFAULT NULL,
   \`ot_out\` mediumtext DEFAULT NULL,
+  \`ot_in_src\` mediumtext DEFAULT NULL,
   PRIMARY KEY (\`id\`),
   UNIQUE KEY \`user_id\` (\`user_id\`,\`date\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
@@ -568,6 +569,7 @@ const COLUMN_MIGRATIONS = [
   ['time_records', 'clock_out_src', "clock_out_src VARCHAR(2000) COLLATE utf8mb4_bin"],
   ['time_records', 'ot_in', "ot_in VARCHAR(2000) COLLATE utf8mb4_bin"],
   ['time_records', 'ot_out', "ot_out VARCHAR(2000) COLLATE utf8mb4_bin"],
+  ['time_records', 'ot_in_src', "ot_in_src VARCHAR(2000) COLLATE utf8mb4_bin"],
   ['memos', 'office', "office VARCHAR(2000) COLLATE utf8mb4_bin"],
   ['memos', 'urgency', "urgency VARCHAR(2000) COLLATE utf8mb4_bin"],
   ['memos', 'to_text', "to_text VARCHAR(2000) COLLATE utf8mb4_bin"],

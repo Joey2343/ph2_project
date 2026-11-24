@@ -131,7 +131,21 @@ async function doOt(type) {
   }
   otBusy.value = type;
   try {
-    const res = await api.post('/time/overtime', { type });
+    /*
+     * ลงเวลาเข้าล่วงเวลาใช้พิกัด GPS ชุดเดียวกับ "ลงเวลาเข้างาน" (ผู้ใช้สั่ง 24 พ.ย. 2569)
+     * ลงเวลาออกล่วงเวลาไม่ต้องมีพิกัด
+     */
+    const payload = { type };
+    if (type === 'in') {
+      try {
+        const pos = await getPosition();
+        payload.lat = pos.coords.latitude;
+        payload.lng = pos.coords.longitude;
+      } catch (e) {
+        return UI.toast(geoErrorMessage(e), 'error');
+      }
+    }
+    const res = await api.post('/time/overtime', payload);
     UI.toast(res.message);
     await Promise.all([loadClock(), loadTodaySummary()]);
   } catch (e) {
@@ -530,11 +544,14 @@ const greeting = computed(() => {
           >
             🏁 ออกงาน
           </button>
-          <!-- ผู้ใช้สั่ง 24 พ.ย. 2569: ปุ่มทำงานล่วงเวลา (สีฟ้า) ต่อจากปุ่มออกงาน -->
-          <button id="home-clock-ot" class="btn home-clock-ot" title="ลงเวลาทำงานล่วงเวลา" @click="otOpen = true">
-            ⏱ ทำงานล่วงเวลา
-          </button>
-          <a class="home-clock-history" href="#/clock" title="ดูประวัติการลงเวลา" aria-label="ดูประวัติการลงเวลา">🕘</a>
+          <!-- ผู้ใช้สั่ง 24 พ.ย. 2569: ปุ่มทำงานล่วงเวลา (สีฟ้า) ต่อจากปุ่มออกงาน
+               อยู่ในบรรทัดเดียวกันกับปุ่มดูประวัติการลงเวลาเสมอ -->
+          <span class="home-clock-extra">
+            <button id="home-clock-ot" class="btn home-clock-ot" title="ลงเวลาทำงานล่วงเวลา" @click="otOpen = true">
+              ⏱ ทำงานล่วงเวลา
+            </button>
+            <a class="home-clock-history" href="#/clock" title="ดูประวัติการลงเวลา" aria-label="ดูประวัติการลงเวลา">🕘</a>
+          </span>
         </div>
         <!-- ทำงานล่วงเวลาวันนี้ (ถ้ามี) -->
         <div v-if="otIn || otOut" class="home-clock-ot-note">
@@ -814,6 +831,14 @@ const greeting = computed(() => {
 /* ให้ปุ่มในกล่องลงเวลาตัดบรรทัดได้ (กันปุ่มล้น/ทับกันบนจอแคบ) */
 .home-clock-btns {
   flex-wrap: wrap;
+  align-items: center;
+}
+/* ปุ่มทำงานล่วงเวลา + ปุ่มดูประวัติ ต้องอยู่บรรทัดเดียวกันเสมอ */
+.home-clock-extra {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 .home-clock-ot-note {
   margin-top: 8px;
