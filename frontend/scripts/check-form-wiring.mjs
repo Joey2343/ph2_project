@@ -480,6 +480,10 @@ check(/<span class="home-clock-extra">[\s\S]{0,400}?id="home-clock-ot"[\s\S]{0,4
   'ปุ่มทำงานล่วงเวลา + ดูประวัติ อยู่ในบล็อกเดียวกัน (บรรทัดเดียวกัน)');
 check(/\.home-clock-extra \{[\s\S]{0,140}?flex-wrap: nowrap/.test(homeSrc),
   'บล็อกนั้นไม่ตัดบรรทัด (nowrap)');
+check(/\.home-clock \{[\s\S]{0,80}?max-width: 430px/.test(homeSrc),
+  'ขยายกล่องลงเวลาให้ปุ่ม 4 ตัวอยู่บรรทัดเดียวกัน (max-width 430px)');
+check(/\.home-clock-btns \{[\s\S]{0,80}?flex-wrap: nowrap/.test(homeSrc),
+  'แถวปุ่มลงเวลาไม่ตัดบรรทัด (nowrap)');
 
 /* ── ⑰ หัวเว็บ: โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก ───────────────────
  *

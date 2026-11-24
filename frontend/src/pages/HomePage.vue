@@ -828,9 +828,15 @@ const greeting = computed(() => {
 .home-clock-ot:hover {
   background: #1d4ed8;
 }
-/* ให้ปุ่มในกล่องลงเวลาตัดบรรทัดได้ (กันปุ่มล้น/ทับกันบนจอแคบ) */
+/* ให้ปุ่มในกล่องลงเวลาเรียงบรรทัดเดียวกัน (ผู้ใช้สั่ง 24 พ.ย. 2569)
+ * theme.css ตั้ง .home-clock max-width 330px → ปุ่ม 4 ตัวไม่พอดี (ตัดขึ้นบรรทัดใหม่)
+ * override ใน component (ห้ามแก้ theme.css) ให้กว้างพอ + ไม่ตัดบรรทัด
+ */
+.home-clock {
+  max-width: 430px;
+}
 .home-clock-btns {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
 }
 /* ปุ่มทำงานล่วงเวลา + ปุ่มดูประวัติ ต้องอยู่บรรทัดเดียวกันเสมอ */
@@ -839,6 +845,15 @@ const greeting = computed(() => {
   align-items: center;
   gap: 10px;
   flex-wrap: nowrap;
+}
+/* จอแคบมาก (มือถือ) ปล่อยให้ตัดบรรทัดได้ กันปุ่มล้นออกนอกจอ */
+@media (max-width: 560px) {
+  .home-clock {
+    max-width: none;
+  }
+  .home-clock-btns {
+    flex-wrap: wrap;
+  }
 }
 .home-clock-ot-note {
   margin-top: 8px;
