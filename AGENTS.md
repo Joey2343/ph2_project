@@ -875,6 +875,8 @@ ph2_project/
     · เป็น `<a id="brand-main-site" href="https://www.phrae2.go.th/" target="_blank" rel="noopener noreferrer">`
       และ `@click.stop` เพื่อไม่ให้ไปทับการกด `.brand` (กลับหน้าแรก)
   - จอ < 860px ซ่อนบรรทัดรอง · จอ < 520px ซ่อนข้อความ เหลือโลโก้
+  - **เว้นช่องว่างระหว่าง 2 บรรทัด** (`gap: 4px` ใน `.brand-ext-text`) และ
+    **ไม่ขีดเส้นใต้เมื่อเอาเมาส์วาง** (ผู้ใช้สั่ง 24 พ.ย. 2569)
   - สไตล์อยู่ใน `<style>` ของ `App.vue` (ห้ามย้ายไป `theme.css`)
   - เทสต์กันไว้ที่ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ⑰
 - **ทำงานล่วงเวลา (OT)** (ผู้ใช้สั่ง 24 พ.ย. 2569)

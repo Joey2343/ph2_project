@@ -798,9 +798,10 @@ const greeting = computed(() => {
  * และบรรทัดสรุปเวลาล่วงเวลาของวันนี้
  */
 .home-clock-ot {
-  min-width: 96px;
-  padding: 9px 18px;
-  font-size: 14px;
+  /* กว้างพอดีข้อความ (ไม่ล้นออกนอกปุ่ม) — ผู้ใช้สั่ง 24 พ.ย. 2569 */
+  min-width: 0;
+  padding: 9px 14px;
+  font-size: 13.5px;
   background: #2563eb;
   color: #fff;
   border: 1px solid #2563eb;
@@ -809,6 +810,10 @@ const greeting = computed(() => {
 }
 .home-clock-ot:hover {
   background: #1d4ed8;
+}
+/* ให้ปุ่มในกล่องลงเวลาตัดบรรทัดได้ (กันปุ่มล้น/ทับกันบนจอแคบ) */
+.home-clock-btns {
+  flex-wrap: wrap;
 }
 .home-clock-ot-note {
   margin-top: 8px;

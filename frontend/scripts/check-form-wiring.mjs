@@ -494,6 +494,10 @@ check(/phrae2\.go\.th<\/span>/.test(appSrc) && /เว็บไซต์หล�
 }
 check(existsSync(join(ROOT, 'public', 'phrae2-logo.png')), 'มีไฟล์ public/phrae2-logo.png');
 check(/\.brand-ext-logo \{[\s\S]{0,160}?object-fit: contain/.test(appSrc), 'โลโก้ถูกจัดขนาดพอดี (object-fit: contain)');
+check(!/brand-ext:hover \.brand-ext-domain \{ text-decoration: underline/.test(appSrc),
+  'ไม่ขีดเส้นใต้เมื่อเอาเมาส์วาง (ผู้ใช้สั่ง 24 พ.ย. 2569)');
+check(/\.brand-ext-text \{[\s\S]{0,120}?gap: 4px/.test(appSrc),
+  'มีช่องว่างระหว่างบรรทัด "phrae2.go.th" กับ "เว็บไซต์หลัก…"');
 
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *

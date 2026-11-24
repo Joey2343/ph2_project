@@ -114,7 +114,13 @@ const logoSrc = '/logo.png';
   color: #fff;
   cursor: pointer;
 }
-.brand-ext:hover .brand-ext-domain { text-decoration: underline; }
+/* ไม่ขีดเส้นใต้ตอนเอาเมาส์วาง (ผู้ใช้สั่ง 24 พ.ย. 2569) */
+.brand-ext,
+.brand-ext:hover,
+.brand-ext:focus,
+.brand-ext:hover .brand-ext-domain {
+  text-decoration: none;
+}
 .brand-ext-logo {
   width: 44px;
   height: 44px;
@@ -125,9 +131,15 @@ const logoSrc = '/logo.png';
   padding: 3px;
   display: block;
 }
-.brand-ext-text { display: flex; flex-direction: column; line-height: 1.2; }
+.brand-ext-text {
+  display: flex;
+  flex-direction: column;
+  /* เว้นช่องว่างระหว่าง "phrae2.go.th" กับบรรทัด "เว็บไซต์หลัก…" (ผู้ใช้สั่ง 24 พ.ย. 2569) */
+  gap: 4px;
+  line-height: 1.25;
+}
 .brand-ext-domain { font-size: 15px; font-weight: 800; letter-spacing: 0.2px; }
-.brand-ext-sub { font-size: 12px; opacity: 0.9; }
+.brand-ext-sub { font-size: 12px; opacity: 0.9; margin-top: 0; }
 
 /* จอแคบ: ซ่อนบรรทัดรอง เหลือชื่อเว็บไซต์ + โลโก้ */
 @media (max-width: 860px) {
