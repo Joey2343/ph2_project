@@ -485,6 +485,20 @@ check(/\.home-clock \{[\s\S]{0,80}?max-width: 430px/.test(homeSrc),
 check(/\.home-clock-btns \{[\s\S]{0,80}?flex-wrap: nowrap/.test(homeSrc),
   'แถวปุ่มลงเวลาไม่ตัดบรรทัด (nowrap)');
 
+/* ลงเวลาเข้างานแล้วยังไม่ออกงาน → กด OT ไม่ได้ (ผู้ใช้สั่ง 24 พ.ย. 2569) */
+const opsSrc = readFileSync(join(ROOT, '..', 'backend', 'routes', 'ops.js'), 'utf8');
+check(/rec\.clock_in && !rec\.clock_out[\s\S]{0,160}?กรุณาลงเวลาออกงานก่อน/.test(opsSrc),
+  'เซิร์ฟเวอร์: ยังไม่ออกงาน → ปฏิเสธการลงเวลาล่วงเวลา (403)');
+check(/const otInBlocked = computed/.test(clockOtSrc) &&
+      /:disabled="isWeekend \|\| otInBlocked \|\| !!otIn/.test(clockOtSrc),
+  'ClockPage: ปุ่มลงเวลาเข้าล่วงเวลาถูกปิดเมื่อยังไม่ออกงาน');
+check(/const otInBlocked = computed/.test(homeSrc) &&
+      /:disabled="otWeekend \|\| otInBlocked \|\| !!otIn/.test(homeSrc),
+  'HomePage: ปุ่มลงเวลาเข้าล่วงเวลาถูกปิดเมื่อยังไม่ออกงาน');
+check(/กรุณาลงเวลาออกงานก่อน จึงจะลงเวลาทำงานล่วงเวลาได้/.test(clockOtSrc) &&
+      /กรุณาลงเวลาออกงานก่อน จึงจะลงเวลาทำงานล่วงเวลาได้/.test(homeSrc),
+  'ทั้งสองหน้าแจ้งเหตุผลให้ลงเวลาออกงานก่อน');
+
 /* ── ⑰ หัวเว็บ: โลโก้ สพป.แพร่ เขต 2 + ลิงก์เว็บไซต์หลัก ───────────────────
  *
  * ผู้ใช้สั่ง 24 พ.ย. 2569 — อยู่ในกลุ่มเดียวกับโลโก้ P2-SMART กดแล้วเปิดแท็บใหม่

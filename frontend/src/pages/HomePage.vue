@@ -115,6 +115,15 @@ const otOpen = ref(false);
 const otBusy = ref(''); // '' | 'in' | 'out'
 const otIn = computed(() => (clockRec.value ? clockRec.value.ot_in : null));
 const otOut = computed(() => (clockRec.value ? clockRec.value.ot_out : null));
+/**
+ * ลงเวลาเข้าล่วงเวลาไม่ได้ตอนนี้หรือไม่ (ผู้ใช้สั่ง 24 พ.ย. 2569)
+ *   ลงเวลาเข้างานแล้วแต่ยังไม่ออกงาน → ต้องรอลงเวลาออกงานก่อน
+ *   ยังไม่ได้ลงเวลาเข้างานเลย → ลงล่วงเวลาได้ตามปกติ
+ */
+const otInBlocked = computed(() => {
+  const r = clockRec.value;
+  return !!(r && r.clock_in && !r.clock_out);
+});
 /** วันหยุดเสาร์–อาทิตย์ (ใช้วันที่ของวันนี้จาก /today-summary หรือวันที่บนกล่องนาฬิกา) */
 const otWeekend = computed(() => {
   const t = todaySummary.value && todaySummary.value.today;
@@ -653,6 +662,9 @@ const greeting = computed(() => {
       <div v-if="otWeekend" class="hint" style="color: #b45309; margin-bottom: 10px">
         วันนี้เป็นวันหยุด (เสาร์–อาทิตย์) — ไม่ต้องลงเวลาทำงานล่วงเวลา
       </div>
+      <div v-else-if="otInBlocked" class="hint" style="color: #b45309; margin-bottom: 10px">
+        ลงเวลาเข้างานแล้ว — กรุณาลงเวลาออกงานก่อน จึงจะลงเวลาทำงานล่วงเวลาได้
+      </div>
       <div class="form-row">
         <div class="form-group" style="flex: 1">
           <label>เวลาทำงานล่วงเวลา (เข้า)</label>
@@ -667,7 +679,7 @@ const greeting = computed(() => {
         <button
           id="home-ot-in-btn"
           class="btn btn-primary"
-          :disabled="otWeekend || !!otIn || otBusy === 'in'"
+          :disabled="otWeekend || otInBlocked || !!otIn || otBusy === 'in'"
           @click="doOt('in')"
         >
           {{ otBusy === 'in' ? 'กำลังบันทึก...' : '⏱ ลงเวลาทำงานล่วงเวลา' }}
@@ -683,7 +695,8 @@ const greeting = computed(() => {
         </button>
       </div>
       <div class="hint" style="margin-top: 10px">
-        ลงเวลาเข้า–ออกล่วงเวลาได้ทุกเวลาของวันทำการ · ไม่ต้องตรวจตำแหน่ง GPS
+        ลงเวลาเข้า–ออกล่วงเวลาได้ทุกเวลาของวันทำการ ·
+        ลงเวลาเข้าล่วงเวลาใช้พิกัด GPS เหมือนลงเวลาเข้างาน (ออกงานไม่ต้องมีพิกัด)
       </div>
     </div>
     <template #footer>

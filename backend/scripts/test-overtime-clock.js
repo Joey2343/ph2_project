@@ -194,6 +194,38 @@ function check(ok, name, detail = '') {
     check(row2 && !!row2.ot_in && !!row2.ot_out, 'มีทั้ง ot_in และ ot_out', JSON.stringify(row2));
 
     console.log('');
+    console.log('④.๑ ลงเวลาเข้างานแล้วยังไม่ออกงาน → ลงเวลาล่วงเวลาไม่ได้ (ผู้ใช้สั่ง 24 พ.ย. 2569)');
+    {
+      const u4 = await mkUser('block');
+      const c4 = 'sid=' + (await auth.newSession(u4));
+
+      const inNormal = await jpost('/api/time/check', c4, { type: 'in', ...geo });
+      check(inNormal.status === 200, `ลงเวลาเข้างานปกติ → 200 (ได้ ${inNormal.status})`,
+        JSON.stringify(inNormal.body));
+
+      const blocked = await jpost('/api/time/overtime', c4, { type: 'in', ...geo });
+      check(blocked.status === 403, `ยังไม่ออกงาน → OT 403 (ได้ ${blocked.status})`,
+        JSON.stringify(blocked.body));
+      check(String(blocked.body.error || '').includes('ออกงาน'), 'ข้อความบอกให้ลงเวลาออกงานก่อน',
+        JSON.stringify(blocked.body.error));
+
+      const rowB = await db.prepare('SELECT clock_in, clock_out, ot_in FROM time_records WHERE user_id = ? AND date = ?')
+        .get(u4, WORKDAY);
+      check(rowB && !rowB.ot_in, 'ยังไม่บันทึก ot_in', JSON.stringify(rowB));
+
+      const outNormal = await jpost('/api/time/check', c4, { type: 'out' });
+      check(outNormal.status === 200, `ลงเวลาออกงานปกติ → 200 (ได้ ${outNormal.status})`,
+        JSON.stringify(outNormal.body));
+
+      const okAfter = await jpost('/api/time/overtime', c4, { type: 'in', ...geo });
+      check(okAfter.status === 200, `ออกงานแล้ว → OT 200 (ได้ ${okAfter.status})`,
+        JSON.stringify(okAfter.body));
+
+      const rowB2 = await db.prepare('SELECT ot_in FROM time_records WHERE user_id = ? AND date = ?').get(u4, WORKDAY);
+      check(rowB2 && !!rowB2.ot_in, 'บันทึก ot_in หลังลงเวลาออกงาน', JSON.stringify(rowB2));
+    }
+
+    console.log('');
     console.log('⑤ รายการบันทึกเวลาของวันนั้นมีแถว OT');
     const list = await jget('/api/time/all?date=' + WORKDAY, adminCookie);
     const found = (list.body.records || []).find((r) => Number(r.user_id) === user);

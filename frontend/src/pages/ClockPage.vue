@@ -124,6 +124,15 @@ const isWeekend = computed(() => {
 
 const otIn = computed(() => (record.value ? record.value.ot_in : null));
 const otOut = computed(() => (record.value ? record.value.ot_out : null));
+/**
+ * ลงเวลาเข้าล่วงเวลาไม่ได้ตอนนี้หรือไม่ (ผู้ใช้สั่ง 24 พ.ย. 2569)
+ *   ลงเวลาเข้างานแล้วแต่ยังไม่ออกงาน → ต้องรอลงเวลาออกงานก่อน
+ *   ยังไม่ได้ลงเวลาเข้างานเลย → ลงล่วงเวลาได้ตามปกติ
+ */
+const otInBlocked = computed(() => {
+  const r = record.value;
+  return !!(r && r.clock_in && !r.clock_out);
+});
 
 function openOt() {
   otOpen.value = true;
@@ -877,6 +886,9 @@ onBeforeUnmount(() => {
       <div v-if="isWeekend" class="hint" style="color: #b45309; margin-bottom: 10px">
         วันนี้เป็นวันหยุด (เสาร์–อาทิตย์) — ไม่ต้องลงเวลาทำงานล่วงเวลา
       </div>
+      <div v-else-if="otInBlocked" class="hint" style="color: #b45309; margin-bottom: 10px">
+        ลงเวลาเข้างานแล้ว — กรุณาลงเวลาออกงานก่อน จึงจะลงเวลาทำงานล่วงเวลาได้
+      </div>
       <div class="form-row">
         <div class="form-group" style="flex: 1">
           <label>เวลาทำงานล่วงเวลา (เข้า)</label>
@@ -891,7 +903,7 @@ onBeforeUnmount(() => {
         <button
           id="ot-in-btn"
           class="btn btn-primary"
-          :disabled="isWeekend || !!otIn || otBusy === 'in'"
+          :disabled="isWeekend || otInBlocked || !!otIn || otBusy === 'in'"
           @click="doOt('in')"
         >
           {{ otBusy === 'in' ? 'กำลังบันทึก...' : '⏱ ลงเวลาทำงานล่วงเวลา' }}
@@ -907,7 +919,8 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div class="hint" style="margin-top: 10px">
-        ลงเวลาเข้า–ออกล่วงเวลาได้ทุกเวลาของวันทำการ · ไม่ต้องตรวจตำแหน่ง GPS ·
+        ลงเวลาเข้า–ออกล่วงเวลาได้ทุกเวลาของวันทำการ ·
+        ลงเวลาเข้าล่วงเวลาใช้พิกัด GPS เหมือนลงเวลาเข้างาน (ออกงานไม่ต้องมีพิกัด) ·
         รายการจะไปแสดงใน "บันทึกเวลาทำงานของเจ้าหน้าที่" และการ์ดทำงานล่วงเวลา
       </div>
     </div>
