@@ -445,7 +445,13 @@ function submit() {
 
   emit('submit', {
     travel_subject: v.travel_subject.trim(),
-    title: v.travel_subject.trim() || 'ขออนุมัติ/อนุญาตเดินทางไปราชการ',
+    /*
+     * ผู้ใช้สั่ง 25 พ.ย. 2569: ฟอร์มของสถานศึกษาใช้ชื่อเรื่อง
+     * "ขออนุญาตเดินทางไปราชการในราชอาณาจักร" (ให้ตรงกับหัวแบบฟอร์ม/ใบลา)
+     */
+    title:
+      v.travel_subject.trim() ||
+      (isSchoolScope.value ? 'ขออนุญาตเดินทางไปราชการในราชอาณาจักร' : 'ขออนุมัติ/อนุญาตเดินทางไปราชการ'),
     destination: v.destination.trim(),
     date_from: v.date_from,
     date_to: v.date_to,
@@ -504,7 +510,8 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
 
       <div :style="lineStyle">
         <span style="font-weight: bold">เรื่อง </span>
-        <span>ขออนุมัติ/อนุญาตเดินทางไปราชการ</span>
+        <!-- ผู้ใช้สั่ง 25 พ.ย. 2569: ฟอร์มสถานศึกษาใช้ "ขออนุญาตเดินทางไปราชการในราชอาณาจักร" -->
+        <span>{{ isSchoolScope ? 'ขออนุญาตเดินทางไปราชการในราชอาณาจักร' : 'ขออนุมัติ/อนุญาตเดินทางไปราชการ' }}</span>
       </div>
 
       <div style="margin-bottom: 10px">

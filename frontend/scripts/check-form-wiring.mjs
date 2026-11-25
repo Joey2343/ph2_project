@@ -568,6 +568,25 @@ check(/u\.monk \+= d/.test(leaveStatsSrc) && /ลาบวช \(วัน\)/.tes
 check(/u\.monk \+= d/.test(leaveExportSrc) && /'ลาบวช \(วัน\)'/.test(leaveExportSrc),
   'ไฟล์ Excel สถิติการลา: มีคอลัมน์ "ลาบวช (วัน)"');
 
+/* ── ⑲ ฟอร์มไปราชการของสถานศึกษา: เรื่อง = "ขออนุญาตเดินทางไปราชการในราชอาณาจักร" ──
+ *
+ * ผู้ใช้สั่ง 25 พ.ย. 2569 — ต้องตรงกับหัวแบบฟอร์มและใบลา (TravelDoc)
+ */
+console.log('\n⑲ ฟอร์มไปราชการ (สถานศึกษา): ชื่อเรื่อง');
+
+const travelFormSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelForm.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+check(/isSchoolScope \? 'ขออนุญาตเดินทางไปราชการในราชอาณาจักร' : 'ขออนุมัติ\/อนุญาตเดินทางไปราชการ'/
+  .test(travelFormSrc), 'ช่อง "เรื่อง" ของสถานศึกษาใช้ชื่อใหม่ (สพป. คงเดิม)');
+check(/title:[\s\S]{0,200}?isSchoolScope\.value \? 'ขออนุญาตเดินทางไปราชการในราชอาณาจักร'/
+  .test(travelFormSrc), 'ชื่อเรื่องที่บันทึกของสถานศึกษาใช้ชื่อใหม่ด้วย');
+{
+  const docSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelDoc.vue'), 'utf8');
+  check(/reqIsSchool \? 'ขออนุญาตเดินทางไปราชการในราชอาณาจักร'/.test(docSrc),
+    'ใบลา (TravelDoc) ใช้ชื่อเรื่องเดียวกัน → ฟอร์มกับใบลาตรงกัน');
+}
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)
