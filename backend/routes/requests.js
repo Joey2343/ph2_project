@@ -1020,7 +1020,8 @@ router.get('/leave-stats', auth.requireAuth, async (req, res) => {
   const fyCE = Number(todayIso.slice(0, 4)), fyMo = Number(todayIso.slice(5, 7));
   const fy = fyMo >= 10 ? fyCE : fyCE - 1;
   const fyFrom = `${fy}-10-01`;
-  const fyTo = `${fy + 1}-09-30`;    const types = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร'];
+  const fyTo = `${fy + 1}-09-30`;    // เพิ่ม "ลาบวช" ตามประเภทที่เพิ่มใหม่ (ผู้ใช้สั่ง 25 พ.ย. 2569)
+    const types = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'];
     const stats = await Promise.all(types.map(async (t) => {
       const row = await db.prepare(`SELECT COALESCE(SUM(days), 0) as total
         FROM leave_requests WHERE user_id = ? AND leave_type = ?
@@ -1035,11 +1036,11 @@ router.get('/leave-stats', auth.requireAuth, async (req, res) => {
     res.json({ stats, fyYear: fy });
 });
 
-// ดึงรายการลาล่าสุดของผู้ใช้ (ลาป่วย/ลากิจ/ลาคลอดบุตร)
+// ดึงรายการลาล่าสุดของผู้ใช้ (ลาป่วย/ลากิจ/ลาคลอดบุตร/ลาบวช)
 router.get('/leave-last', auth.requireAuth, async (req, res) => {
   const userId = req.user.id;
   const row = await db.prepare(`SELECT date_from, date_to, days, leave_type
-    FROM leave_requests WHERE user_id = ? AND leave_type IN ('ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร')
+    FROM leave_requests WHERE user_id = ? AND leave_type IN ('ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช')
     AND status IN ('approved', 'pending') ORDER BY id DESC LIMIT 1`).get(userId);
   res.json({ last: row || null });
 });

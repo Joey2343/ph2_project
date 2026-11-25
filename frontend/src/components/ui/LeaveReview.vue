@@ -40,7 +40,7 @@ const statusLabel = computed(() => {
 
 /* ---------- ตารางสถิติที่แก้ได้ ---------- */
 const TYPES = computed(() =>
-  isVacation.value ? ['ลาพักผ่อน'] : ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร'],
+  isVacation.value ? ['ลาพักผ่อน'] : ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'],
 );
 
 const usedMap = ref({});
@@ -67,11 +67,12 @@ const inputStyle = 'width: 60px; text-align: center; border: 1px solid #d1d5db; 
 const tdStyle = 'padding: 4px 12px; border: 1px solid #d1d5db; text-align: center;';
 const thStyle = 'padding: 4px 12px; border: 1px solid #d1d5db; text-align: center;';
 
-const HEAD = { sick: 'ป่วย', personal: 'กิจ', maternity: 'คลอดบุตร', vacation: 'ลาพักผ่อน' };
+const HEAD = { sick: 'ป่วย', personal: 'กิจ', maternity: 'คลอดบุตร', monk: 'บวช', vacation: 'ลาพักผ่อน' };
 function headOf(t) {
   if (t === 'ลาป่วย') return HEAD.sick;
   if (t === 'ลากิจ') return HEAD.personal;
   if (t === 'ลาคลอดบุตร') return HEAD.maternity;
+  if (t === 'ลาบวช') return HEAD.monk;
   return HEAD.vacation;
 }
 

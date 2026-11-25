@@ -75,7 +75,7 @@ async function build() {
     const map = {};
     for (const x of list) {
       if (!map[x.user_id]) {
-        map[x.user_id] = { name: UI.personName(x), position: x.position || '-', sick: 0, personal: 0, maternity: 0, total: 0 };
+        map[x.user_id] = { name: UI.personName(x), position: x.position || '-', sick: 0, personal: 0, maternity: 0, monk: 0, total: 0 };
       }
       const u = map[x.user_id];
       const d = Number(x.days) || 0;
@@ -83,11 +83,12 @@ async function build() {
       if (x.leave_type === 'ลาป่วย') u.sick += d;
       else if (x.leave_type === 'ลากิจ') u.personal += d;
       else if (x.leave_type === 'ลาคลอดบุตร') u.maternity += d;
+      else if (x.leave_type === 'ลาบวช') u.monk += d;
     }
     const users = Object.values(map).sort((a, b) => b.total - a.total);
     return {
-      headers: ['ลำดับ', 'ชื่อบุคลากร', 'ตำแหน่ง', 'ลาป่วย (วัน)', 'ลากิจ (วัน)', 'ลาคลอด (วัน)', 'รวม (วัน)'],
-      dataRows: users.map((u, i) => [i + 1, u.name, u.position, u.sick, u.personal, u.maternity, u.total]),
+      headers: ['ลำดับ', 'ชื่อบุคลากร', 'ตำแหน่ง', 'ลาป่วย (วัน)', 'ลากิจ (วัน)', 'ลาคลอด (วัน)', 'ลาบวช (วัน)', 'รวม (วัน)'],
+      dataRows: users.map((u, i) => [i + 1, u.name, u.position, u.sick, u.personal, u.maternity, u.monk, u.total]),
       count: users.length,
     };
   }

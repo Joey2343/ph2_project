@@ -5,7 +5,7 @@
  * ย้ายจาก openLeaveForm() และ openVacationForm() ใน LeaveView.js
  *
  * หน้าเดียวรองรับ 2 ประเภท (เลือกตาม prop `mode`):
- *   'general'   — ลาป่วย / ลากิจ / ลาคลอดบุตร (มีช่อง "เนื่องจาก" และ "ลาครั้งสุดท้าย")
+ *   'general'   — ลาป่วย / ลากิจ / ลาคลอดบุตร / ลาบวช (มีช่อง "เนื่องจาก" และ "ลาครั้งสุดท้าย")
  *   'vacation'  — ลาพักผ่อน (มีสิทธิ์วันลาแสดงก่อนช่องวันลา)
  *
  * ส่งเป็น multipart/form-data เสมอ เพราะรองรับไฟล์แนบ
@@ -148,6 +148,8 @@ const statRows = computed(() => {
     { label: 'ป่วย', before: usedOf('ลาป่วย'), now: is === 'ลาป่วย' ? thisDays : 0 },
     { label: 'กิจส่วนตัว', before: usedOf('ลากิจ'), now: is === 'ลากิจ' ? thisDays : 0 },
     { label: 'คลอดบุตร', before: usedOf('ลาคลอดบุตร'), now: is === 'ลาคลอดบุตร' ? thisDays : 0 },
+    /* เพิ่มตามประเภทที่เพิ่มใหม่ (ผู้ใช้สั่ง 25 พ.ย. 2569) */
+    { label: 'บวช', before: usedOf('ลาบวช'), now: is === 'ลาบวช' ? thisDays : 0 },
   ];
 });
 
@@ -161,8 +163,10 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** แสดงช่อง "เนื่องจาก" เฉพาะลากิจและลาป่วย */
-const showReason = computed(() => f.value.leave_type === 'ลากิจ' || f.value.leave_type === 'ลาป่วย');
+/** แสดงช่อง "เนื่องจาก" เฉพาะลากิจ ลาป่วย และลาบวช */
+const showReason = computed(
+  () => f.value.leave_type === 'ลากิจ' || f.value.leave_type === 'ลาป่วย' || f.value.leave_type === 'ลาบวช',
+);
 
 /* ---------- คำนวณจำนวนวัน ---------- */
 function span(from, to) {
@@ -204,7 +208,7 @@ async function save() {
   if (v.last_leave_to) fd.append('last_leave_to', v.last_leave_to);
   if (v.last_leave_days) fd.append('last_leave_days', num(v.last_leave_days));
   if (v.delegate_to) fd.append('delegate_to', v.delegate_to);
-  // เหตุผลมีเฉพาะลากิจ/ลาป่วย
+  // เหตุผลมีเฉพาะลากิจ/ลาป่วย/ลาบวช
   if (showReason.value && v.reason.trim()) fd.append('reason', v.reason.trim());
   if (attachment.value) fd.append('attachment', attachment.value);
 
@@ -223,7 +227,8 @@ async function save() {
   }
 }
 
-const TYPES = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร'];
+/* ประเภทการลาของแบบ "ลาป่วย ลากิจ ลาคลอด" — ผู้ใช้สั่ง 25 พ.ย. 2569: เพิ่ม "ลาบวช" */
+const TYPES = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'];
 const TITLE = computed(
   () =>
     (props.record ? '✎ แก้ไขคำขอลา — ' + (props.record.leave_no || '') : '') ||

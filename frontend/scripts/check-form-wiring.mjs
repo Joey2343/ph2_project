@@ -529,6 +529,45 @@ check(!/brand-ext:hover \.brand-ext-domain \{ text-decoration: underline/.test(a
 check(/\.brand-ext-text \{[\s\S]{0,120}?gap: 4px/.test(appSrc),
   'มีช่องว่างระหว่างบรรทัด "phrae2.go.th" กับ "เว็บไซต์หลัก…"');
 
+/* ── ⑱ ประเภทการลา "ลาบวช" (ผู้ใช้สั่ง 25 พ.ย. 2569) ─────────────────────
+ *
+ * เพิ่มตัวเลือกในช่อง "เรื่อง" ของฟอร์มยื่นคำลา (ทั้ง 2 ฟอร์ม) แล้วต้องไปครบทุกที่
+ * ที่แยกประเภทการลา — ไม่งั้นวันลาบวชจะหายจากสถิติ/ใบลา
+ */
+console.log('\n⑱ ประเภทการลา "ลาบวช"');
+
+const leaveFormSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveForm.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+const leaveDocSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveDoc.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+const leaveReviewSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveReview.vue'), 'utf8');
+const leaveStatsSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveStats.vue'), 'utf8');
+const leaveExportSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveStatsExport.vue'), 'utf8');
+const opsLeaveSrc = readFileSync(join(ROOT, '..', 'backend', 'routes', 'requests.js'), 'utf8');
+
+check(/const TYPES = \['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'\]/.test(leaveFormSrc),
+  'LeaveForm: ช่อง "เรื่อง" มีตัวเลือก "ลาบวช"');
+check(/f\.value\.leave_type === 'ลาบวช'/.test(leaveFormSrc),
+  'LeaveForm: เลือกลาบวชแล้วมีช่อง "เนื่องจาก"');
+check(/\{ label: 'บวช'[\s\S]{0,120}?usedOf\('ลาบวช'\)/.test(leaveFormSrc),
+  'LeaveForm: ตารางสถิติในฟอร์มมีแถว "บวช"');
+check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'\]/.test(opsLeaveSrc),
+  'เซิร์ฟเวอร์: /leave-stats นับ "ลาบวช" ด้วย');
+check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'\]/.test(leaveReviewSrc),
+  'หน้าตรวจสอบคำขอลา: ตารางสถิติมีคอลัมน์ "บวช"');
+check(/t === 'ลาบวช'\) return HEAD\.monk/.test(leaveReviewSrc),
+  'หน้าตรวจสอบคำขอลา: หัวคอลัมน์ของลาบวช = "บวช"');
+check(/r\.value\.leave_type === 'ลาบวช'/.test(leaveDocSrc),
+  'ใบลา: แสดง "เนื่องจาก" ของลาบวชด้วย');
+check(/<td style="text-align: left">บวช<\/td>/.test(leaveDocSrc),
+  'ใบลา: ตารางสถิติมีแถว "บวช"');
+check(/u\.monk \+= d/.test(leaveStatsSrc) && /ลาบวช \(วัน\)/.test(leaveStatsSrc),
+  'หน้าสถิติการลา: นับและแสดงคอลัมน์ "ลาบวช (วัน)"');
+check(/u\.monk \+= d/.test(leaveExportSrc) && /'ลาบวช \(วัน\)'/.test(leaveExportSrc),
+  'ไฟล์ Excel สถิติการลา: มีคอลัมน์ "ลาบวช (วัน)"');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

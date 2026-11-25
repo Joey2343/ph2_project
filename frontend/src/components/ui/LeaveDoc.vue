@@ -75,7 +75,11 @@ const headerTitle = computed(() =>
 );
 
 const isVacation = computed(() => r.value.leave_type === 'ลาพักผ่อน');
-const showReasonInDoc = computed(() => (r.value.leave_type === 'ลากิจ' || r.value.leave_type === 'ลาป่วย') && r.value.reason);
+const showReasonInDoc = computed(
+  () =>
+    (r.value.leave_type === 'ลากิจ' || r.value.leave_type === 'ลาป่วย' || r.value.leave_type === 'ลาบวช') &&
+    r.value.reason,
+);
 
 /** ชื่อผู้ตรวจสอบ = ชื่อจริงจาก staff-public ถ้ามี ไม่งั้นใช้ชื่อที่บันทึกไว้ใน approval */
 function signerLabel(s, fallbackName) {
@@ -399,6 +403,15 @@ const SPAN = { marginRight: '40px' };
                 <td>{{ r.leave_type === 'ลาคลอดบุตร' ? r.days || 1 : 0 }}</td>
                 <td style="font-weight: 700; color: #059669">
                   {{ usedOf('ลาคลอดบุตร') + (r.leave_type === 'ลาคลอดบุตร' ? r.days || 1 : 0) }}
+                </td>
+              </tr>
+              <!-- เพิ่มตามประเภทการลาที่เพิ่มใหม่ (ผู้ใช้สั่ง 25 พ.ย. 2569) -->
+              <tr>
+                <td style="text-align: left">บวช</td>
+                <td>{{ usedOf('ลาบวช') }}</td>
+                <td>{{ r.leave_type === 'ลาบวช' ? r.days || 1 : 0 }}</td>
+                <td style="font-weight: 700; color: #059669">
+                  {{ usedOf('ลาบวช') + (r.leave_type === 'ลาบวช' ? r.days || 1 : 0) }}
                 </td>
               </tr>
             </tbody>
