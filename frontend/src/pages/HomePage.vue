@@ -229,8 +229,8 @@ const TODAY_COLS = {
     { key: 'clock_out', label: 'เวลาออก', cell: (p) => ({ text: UI.time(p.clock_out) }) },
   ],
   birthdays: [
+    /* ผู้ใช้สั่ง 25 พ.ย. 2569: เอาคอลัมน์ "อายุ" ออก (เหลือชื่อ · ตำแหน่ง · กลุ่มงาน) */
     { key: 'full_name', label: 'ชื่อ-นามสกุล', cell: (p) => ({ text: UI.personName(p) }) },
-    { key: 'age', label: 'อายุ', cell: (p) => ({ text: p.age != null ? p.age + ' ปี' : '-' }) },
     { key: 'position', label: 'ตำแหน่ง' },
     { key: 'workplace', label: 'กลุ่มงาน' },
   ],
