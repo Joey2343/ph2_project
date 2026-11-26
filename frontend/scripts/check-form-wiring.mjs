@@ -672,6 +672,17 @@ check(/canTravelApprover\(user, curLevel, id\)/.test(tripsBackend),
 check(/if \(Number\(r\.final_approver_id\) && next === finalLv\)/.test(travelPageSrc),
   'TravelPage: ปุ่มอนุมัติขั้นสุดท้ายเป็นของคนที่ถูกเลือก (ทั้ง 2 สาย)');
 
+/* ผู้ใช้สั่ง 26 พ.ย. 2569: ตำแหน่งมาก่อนผู้อนุมัติ + เปลี่ยนชื่อส่วนในขั้นอนุมัติขั้นต้น */
+{
+  const posIdx = decideSrc.indexOf('id="travel-position-label"');
+  const apprIdx = decideSrc.indexOf('id="travel-final-approver"');
+  check(posIdx > -1 && apprIdx > -1 && posIdx < apprIdx,
+    'หน้าต่างอนุมัติขั้นต้น: "เลือกตำแหน่ง" อยู่ก่อน "เลือกผู้อนุมัติ"',
+    `ตำแหน่ง: position=${posIdx} approver=${apprIdx}`);
+}
+check(/mode === 'level1' \? 'เลือกตำแหน่งของท่าน\/อนุมัติขั้นต้น' : 'กรุณาเลือกตำแหน่งที่จะอนุมัติ\/อนุญาต'/.test(decideSrc),
+  'หัวข้อ "เลือกตำแหน่งของท่าน/อนุมัติขั้นต้น" ในขั้นอนุมัติขั้นต้น (ขั้นสุดท้ายยังใช้ข้อความเดิม)');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

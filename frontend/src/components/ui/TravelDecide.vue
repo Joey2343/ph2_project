@@ -320,6 +320,22 @@ function confirm() {
           </div>
         </div>
 
+        <!-- ---------- ตำแหน่งที่จะลงนาม (ขั้นสุดท้าย + ขั้นอนุมัติขั้นต้นของสถานศึกษา) ----------
+             ผู้ใช้สั่ง 26 พ.ย. 2569: ย้ายมาไว้ "ก่อน" ส่วนเลือกผู้อนุมัติ
+             และเปลี่ยนชื่อส่วนเป็น "เลือกตำแหน่งของท่าน/อนุมัติขั้นต้น" ในขั้นอนุมัติขั้นต้น -->
+        <template v-if="showPosition">
+          <div id="travel-position-label" style="margin-top: 14px; font-weight: 700">
+            {{ mode === 'level1' ? 'เลือกตำแหน่งของท่าน/อนุมัติขั้นต้น' : 'กรุณาเลือกตำแหน่งที่จะอนุมัติ/อนุญาต' }}
+          </div>
+          <select
+            id="travel-position"
+            v-model="position"
+            style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; margin-top: 8px"
+          >
+            <option v-for="p in posOptions" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </template>
+
         <!-- ---------- ผู้อนุมัติ (ขั้นผู้บังคับบัญชาขั้นต้น — ผู้ใช้สั่ง 26 พ.ย. 2569) ---------- -->
         <template v-if="showFinalApprover">
           <div style="margin-top: 14px; font-weight: 700">
@@ -344,17 +360,6 @@ function confirm() {
           <div v-else class="hint" style="margin-top: 6px">
             คนที่เลือกจะกลายเป็นผู้อนุมัติขั้นสุดท้ายของคำขอนี้
           </div>
-        </template>
-
-        <!-- ---------- ตำแหน่งที่จะลงนาม (ขั้นสุดท้าย + ขั้นอนุมัติขั้นต้นของสถานศึกษา) ---------- -->
-        <template v-if="showPosition">
-          <div style="margin-top: 10px; font-weight: 700">กรุณาเลือกตำแหน่งที่จะอนุมัติ/อนุญาต</div>
-          <select
-            v-model="position"
-            style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; margin-top: 8px"
-          >
-            <option v-for="p in posOptions" :key="p" :value="p">{{ p }}</option>
-          </select>
         </template>
       </template>
     </div>
