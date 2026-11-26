@@ -189,6 +189,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบเลขหนังสือสถานศึกษา — ผู้ใช้ทุกคนในโรงเรียนใช้เลขชุดเดียวกัน]');
+  results.push(run('test-school-prefix-shared', [path.join(__dirname, 'test-school-prefix-shared.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบงานหนังสือราชการของสำนักงานเขต — เปลี่ยนตัวสารบัญเขตแล้วต้องเห็นงานเดิมครบ]');
   results.push(run('test-office-doc-handover', [path.join(__dirname, 'test-office-doc-handover.js')], {
     env: { TEST_BASE_URL },

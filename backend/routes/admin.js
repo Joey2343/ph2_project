@@ -1099,15 +1099,14 @@ router.get('/document-staff/me', auth.requireAuth, async (req, res) => {
  *    ยังเขียนสำเนาลง document_staff.doc_prefix ด้วย เพื่อให้โค้ด/รายงานเดิมอ่านได้
  */
 router.get('/document-staff/school-prefix', auth.requireAuth, async (req, res) => {
-  const userId = req.user.id;
   const myCode = schoolCodeOf(req.user);
   if (!myCode) return res.json({ doc_prefix: '', school_code: '' });
-  // ต้องเป็นเจ้าหน้าที่สารบัญของสถานศึกษานี้เท่านั้น (เหมือนเดิม)
-  const isClerk = await db
-    .prepare('SELECT id FROM document_staff WHERE staff_type = ? AND user_id = ? AND school_code = ?')
-    .get('school', userId, myCode);
-  if (!isClerk) return res.json({ doc_prefix: '', school_code: myCode });
-
+  /*
+   * ผู้ใช้สั่ง 26 พ.ย. 2569: "เลขหนังสือสถานศึกษา" ต้องเป็นค่าเดียวกันทั้งโรงเรียน
+   *   → ผู้ใช้ทุกคนของสถานศึกษานี้อ่านค่าได้ (เดิมอ่านได้เฉพาะเจ้าหน้าที่สารบัญ
+   *     ทำให้คนอื่นลงทะเบียนหนังสือส่งแล้วได้เลขคนละชุด)
+   *   · การ "กำหนด/แก้ไข" เลขยังเป็นสิทธิ์ของเจ้าหน้าที่สารบัญเท่านั้น (PUT ด้านล่าง)
+   */
   let row = await db.prepare('SELECT doc_prefix FROM school_doc_prefix WHERE school_code = ?').get(myCode);
   if (!row) {
     // ค่าเดิมเคยอยู่กับบัญชีผู้ใช้ — ย้ายมาเก็บตามโรงเรียนเมื่อเปิดใช้ครั้งแรก

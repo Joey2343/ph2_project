@@ -653,6 +653,27 @@ check(/travelSupervisorCandidates/.test(approvalsSrc) && /chosen_supervisor_id/.
   'approvals: สายของคำขอใช้ผู้บังคับบัญชาที่เลือก');
 check(/chosen_supervisor_id/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ travel_requests.chosen_supervisor_id');
 
+/* ── ㉓ เลขหนังสือสถานศึกษา = ค่าเดียวกันทั้งโรงเรียน (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
+ *
+ * เดิม GET /document-staff/school-prefix ตอบค่าว่างให้คนที่ไม่ใช่เจ้าหน้าที่สารบัญ
+ * → ผู้ใช้คนอื่นในโรงเรียนเดียวกันลงทะเบียนหนังสือส่งแล้วได้เลขคนละชุด
+ */
+console.log('\n㉓ เลขหนังสือสถานศึกษาใช้ร่วมกันทั้งโรงเรียน');
+
+const adminRouteSrc = readFileSync(join(ROOT, '..', 'backend', 'routes', 'admin.js'), 'utf8');
+const prefixGet = adminRouteSrc.slice(
+  adminRouteSrc.indexOf("router.get('/document-staff/school-prefix'"),
+  adminRouteSrc.indexOf("router.put('/document-staff/school-prefix'"),
+);
+check(prefixGet.length > 0, 'เซิร์ฟเวอร์: มี GET /document-staff/school-prefix');
+check(!/isClerk/.test(prefixGet), 'GET เลขหนังสือไม่เช็ค isClerk แล้ว (ทุกคนในโรงเรียนอ่านได้)');
+check(/school_doc_prefix WHERE school_code = \?/.test(prefixGet), 'อ่านค่าจากตาราง school_doc_prefix ตามรหัสโรงเรียน');
+{
+  const putSrc = adminRouteSrc.slice(adminRouteSrc.indexOf("router.put('/document-staff/school-prefix'"));
+  check(/document_staff WHERE staff_type = \? AND user_id = \? AND school_code = \?/.test(putSrc),
+    'PUT ยังจำกัดสิทธิ์เจ้าหน้าที่สารบัญเท่านั้น');
+}
+
 /* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
  *
  * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"
