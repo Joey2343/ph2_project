@@ -809,10 +809,15 @@ router.put('/travel/:id', auth.requireAuth, uploadTravelDyn.single('attachment')
     if (Number(row.approval_level) > 0) {
       return res.status(403).json({ error: 'รายการนี้ได้รับการอนุมัติขั้นต้นแล้ว แก้ไขไม่ได้' });
     }
-    if (row.status !== 'pending') {
+    /*
+     * ผู้ใช้สั่ง 26 พ.ย. 2569: คำขอที่ถูก "ส่งกลับเพื่อแก้ไข" (status = returned)
+     *   เจ้าของแก้ไขได้ทันที — บันทึกแล้วระบบส่งกลับเข้าสายอนุมัติให้เอง
+     */
+    if (row.status !== 'pending' && row.status !== 'returned') {
       return res.status(403).json({ error: 'รายการนี้ดำเนินการแล้ว แก้ไขไม่ได้' });
     }
   }
+  const wasReturned = row.status === 'returned';
 
   const b = req.body || {};
   if (!b.travel_subject || !String(b.travel_subject).trim()) return res.status(400).json({ error: 'กรุณากรอกเรื่อง/งานที่ไปราชการ' });
@@ -864,7 +869,56 @@ router.put('/travel/:id', auth.requireAuth, uploadTravelDyn.single('attachment')
   // ลบไฟล์แนบเดิม "หลัง" บันทึกสำเร็จเท่านั้น (กันไฟล์หายถ้า UPDATE ล้มเหลว)
   if (oldFile && oldFile !== form_data.attachment) deleteUploadedFile(oldFile);
 
-  res.json({ ok: true, message: 'บันทึกการแก้ไขคำขอไปราชการเรียบร้อย' });
+  /*
+   * เดิมเป็นคำขอที่ถูก "ส่งกลับเพื่อแก้ไข" → บันทึกแล้วส่งเข้าสายอนุมัติใหม่ทันที
+   * (ผู้ใช้สั่ง 26 พ.ย. 2569) · แจ้งผู้ตรวจสอบ/ผู้บังคับบัญชาขั้นต้นรายเดิมอีกครั้ง
+   */
+  if (wasReturned) {
+    await db.prepare("UPDATE travel_requests SET status = 'pending', revision_note = NULL, returned_at = NULL, returned_by = NULL, decided_by = NULL, decided_at = NULL WHERE id = ?").run(id);
+    await telegram.notifyTravelSubmitted(id);
+  }
+
+  res.json({
+    ok: true,
+    message: wasReturned ? 'แก้ไขและส่งคำขอใหม่เรียบร้อย' : 'บันทึกการแก้ไขคำขอไปราชการเรียบร้อย',
+    resubmitted: wasReturned,
+    row: wasReturned ? { status: 'pending', revision_note: '', returned_at: null, returned_by: null, decided_by: null, decided_at: null } : undefined,
+  });
+});
+
+/**
+ * ส่งกลับเพื่อให้แก้ไข (ผู้ใช้สั่ง 26 พ.ย. 2569)
+ *
+ * ผู้ตรวจสอบ/ผู้บังคับบัญชาขั้นต้นที่กำลังพิจารณาขั้นแรก กด "ส่งกลับเพื่อแก้ไข"
+ *   → status = 'returned' + บันทึกเหตุผล (revision_note) + แจ้งเตือนผู้ยื่นคำขอ
+ *   → ผู้ยื่นแก้ไขแล้วบันทึก (PUT /travel/:id) ระบบส่งเข้าสายอนุมัติใหม่ให้เอง
+ */
+router.put('/travel/:id/return', auth.requireApprover, async (req, res) => {
+  const id = Number(req.params.id);
+  const note = String((req.body || {}).note || '').trim();
+  if (!note) return res.status(400).json({ error: 'กรุณากรอกสิ่งที่ให้แก้ไขก่อนส่งกลับ' });
+  const row = await db.prepare('SELECT * FROM travel_requests WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'ไม่พบรายการ' });
+  if (row.status !== 'pending') return res.status(400).json({ error: 'รายการนี้ไม่รอการอนุมัติแล้ว' });
+  const doneCount = approvals.parseApprovals(row.approval_data).length;
+  if (doneCount > 0) {
+    return res.status(400).json({ error: 'ส่งกลับเพื่อแก้ไขได้เฉพาะตอนผู้ตรวจสอบพิจารณาครั้งแรกเท่านั้น' });
+  }
+  const levels = await approvals.travelLevelsForRequest(row);
+  const nextLevel = Number(levels[doneCount]) || levels[0];
+  if (!await approvals.canTravelApprover(req.user, nextLevel, id)) {
+    return res.status(403).json({ error: 'คุณไม่มีสิทธิ์พิจารณาคำขอนี้' });
+  }
+  const at = auth.now();
+  await db.prepare("UPDATE travel_requests SET status = 'returned', revision_note = ?, returned_at = ?, returned_by = ? WHERE id = ?")
+    .run(note, at, req.user.id, id);
+  // แจ้งเตือนผู้ยื่นคำขอ (ไม่บล็อกการตอบกลับ)
+  await telegram.notifyTravelReturned(id, req.user.full_name, note).catch(() => {});
+  res.json({
+    ok: true,
+    row: { status: 'returned', revision_note: note, returned_at: at, returned_by: req.user.id },
+    message: 'ส่งกลับเพื่อให้แก้ไขแล้ว — ผู้ยื่นคำขอจะได้รับแจ้งเตือน',
+  });
 });
 
 router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {

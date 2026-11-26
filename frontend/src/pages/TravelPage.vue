@@ -25,6 +25,7 @@ import StatusBadge from '../components/ui/StatusBadge.vue';
 import TravelForm from '../components/ui/TravelForm.vue';
 import TravelDoc from '../components/ui/TravelDoc.vue';
 import TravelDecide from '../components/ui/TravelDecide.vue';
+import TravelReturnModal from '../components/ui/TravelReturnModal.vue';
 import TravelApprovers from '../components/ui/TravelApprovers.vue';
 import Pagination from '../components/ui/Pagination.vue';
 
@@ -242,11 +243,13 @@ function openEdit(r) {
 /**
  * ผู้จองแก้ไขคำขอของตัวเองได้ (ผู้ใช้สั่ง 5 พ.ย. 2569)
  *   · เฉพาะตอนที่ยังไม่มีใครอนุมัติ (pending + approval_level = 0)
- *   · admin แก้ได้ตราบที่ยัง pending
+ *   · ผู้ใช้สั่ง 26 พ.ย. 2569: คำขอที่ถูก "ส่งกลับเพื่อแก้ไข" (returned) แก้ได้เช่นกัน
+ *   · admin แก้ได้ตราบที่ยัง pending/returned
  */
 function canEditTravel(r) {
-  if (Auth.isAdmin()) return r.status === 'pending';
-  return r.user_id === Auth.user?.id && r.status === 'pending' && !Number(r.approval_level || 0);
+  const editable = r.status === 'pending' || r.status === 'returned';
+  if (Auth.isAdmin()) return editable;
+  return r.user_id === Auth.user?.id && editable && !Number(r.approval_level || 0);
 }
 
 async function submitForm(payload) {
@@ -365,6 +368,29 @@ async function onDecide(out) {
   }
 }
 
+/* ---------- ส่งกลับเพื่อแก้ไข (ผู้ใช้สั่ง 26 พ.ย. 2569) ---------- */
+const returnOpen = ref(false);
+const returnTarget = ref(null);
+
+/**
+ * ปุ่ม "ส่งกลับเพื่อแก้ไข" — เฉพาะผู้ตรวจสอบ (ขั้นที่ 1 ของสายสถานศึกษา)
+ *   และต้องเป็นผู้ที่มีสิทธิ์พิจารณาขั้นนั้นจริง
+ */
+function canReturn(r) {
+  if (!canApprove(r)) return false;
+  if (!requestIsSchool(r)) return false;
+  return nextLevel(r) === 1;
+}
+
+function openReturn(r) {
+  returnTarget.value = r;
+  returnOpen.value = true;
+}
+
+function onReturned({ id, row }) {
+  applyRow(requests.value, id, { row }, load);
+}
+
 /* ---------- ลบ ---------- */
 async function remove(r) {
   const yes = await UI.confirm('ต้องการลบรายการคำขอนี้ใช่หรือไม่?', { danger: true, okText: 'ลบ' });
@@ -402,6 +428,7 @@ const STATUS_TH = {
   pending: 'รออนุมัติ',
   approved: 'อนุมัติแล้ว',
   rejected: 'ไม่อนุมัติ',
+  returned: 'ส่งกลับเพื่อแก้ไข',
   cancelled: 'ยกเลิก',
 };
 
@@ -466,6 +493,7 @@ function openExportDialog() {
       <option value="pending">รออนุมัติ</option>
       <option value="approved">อนุมัติแล้ว</option>
       <option value="rejected">ไม่อนุมัติ</option>
+      <option value="returned">ส่งกลับเพื่อแก้ไข</option>
       <option value="cancelled">ยกเลิก</option>
     </select>
     <select id="trv-year" v-model="year">
@@ -526,7 +554,17 @@ function openExportDialog() {
         <tbody>
           <tr v-for="r in pagedRequests" :key="r.id">
             <td>{{ noOf(r) }}</td>
-            <td>{{ r.title }}</td>
+            <td>
+              {{ r.title }}
+              <!-- เหตุผลที่ส่งกลับ (เห็นเฉพาะผู้ยื่น/admin) -->
+              <div
+                v-if="r.status === 'returned' && r.revision_note"
+                class="hint"
+                style="color: #b45309; margin-top: 4px; white-space: pre-wrap"
+              >
+                ↩ สิ่งที่ให้แก้ไข: {{ r.revision_note }}
+              </div>
+            </td>
             <td>{{ r.destination }}</td>
             <td>{{ UI.date(r.date_from) }} ถึง {{ UI.date(r.date_to) }}</td>
             <td class="num">{{ r.days }}</td>
@@ -551,6 +589,17 @@ function openExportDialog() {
                   @click="openDecide(r)"
                 >
                   {{ approveButtonLabel(r) }}
+                </button>
+                <!-- ส่งกลับเพื่อแก้ไข — ผู้ตรวจสอบ (ขั้นที่ 1 สายสถานศึกษา) ผู้ใช้สั่ง 26 พ.ย. 2569 -->
+                <button
+                  v-if="canReturn(r)"
+                  id="travel-return-btn"
+                  class="btn btn-xs btn-outline"
+                  style="border-color: #b45309; color: #b45309"
+                  title="ส่งกลับเพื่อให้แก้ไข"
+                  @click="openReturn(r)"
+                >
+                  ↩ ส่งกลับเพื่อแก้ไข
                 </button>
                 <button
                   v-if="canEditTravel(r)"
@@ -595,6 +644,13 @@ function openExportDialog() {
     :scope="props.scope"
     @close="decideOpen = false"
     @confirm="onDecide"
+  />
+
+  <TravelReturnModal
+    v-if="returnOpen"
+    :record="returnTarget"
+    @close="returnOpen = false"
+    @done="onReturned"
   />
 
   <TravelApprovers

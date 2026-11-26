@@ -489,6 +489,14 @@ const checkboxStyle = { width: '16px', height: '16px', flexShrink: '0', vertical
     @close="emit('close')"
   >
     <div style="font-size: 14px; line-height: 1.8">
+      <!-- ---------- เหตุผลที่ถูกส่งกลับเพื่อแก้ไข (ผู้ใช้สั่ง 26 พ.ย. 2569) ---------- -->
+      <div
+        v-if="record && record.status === 'returned' && record.revision_note"
+        style="margin-bottom: 12px; padding: 10px 12px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; color: #92400e; font-size: 14px; white-space: pre-wrap"
+      >
+        <b>↩ ส่งกลับเพื่อแก้ไข:</b> {{ record.revision_note }}
+      </div>
+
       <!-- ---------- หัวแบบฟอร์ม ---------- -->
       <!--
         ชื่อเรื่องของแบบฟอร์ม — สถานศึกษาใช้ชื่อ "แบบขออนุญาตเดินทางไปราชการในราชอาณาจักร"

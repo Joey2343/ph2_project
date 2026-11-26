@@ -410,6 +410,10 @@ CREATE TABLE IF NOT EXISTS \`travel_requests\` (
   \`final_approver_id\` int(11) DEFAULT NULL,
   -- ผู้บังคับบัญชาขั้นต้นที่ "ผู้ตรวจสอบ" เลือกเองตอนกดตรวจสอบ (สายสถานศึกษา · ผู้ใช้สั่ง 26 พ.ย. 2569)
   \`chosen_supervisor_id\` int(11) DEFAULT NULL,
+  -- "ส่งกลับเพื่อแก้ไข" (ผู้ใช้สั่ง 26 พ.ย. 2569) — status='returned' + เหตุผลให้แก้
+  \`revision_note\` mediumtext DEFAULT NULL,
+  \`returned_at\` varchar(30) DEFAULT NULL,
+  \`returned_by\` int(11) DEFAULT NULL,
   PRIMARY KEY (\`id\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
@@ -522,6 +526,9 @@ const COLUMN_MIGRATIONS = [
   ['travel_requests', 'form_data', "form_data VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT '{}'"],
   ['travel_requests', 'final_approver_id', 'final_approver_id INT DEFAULT NULL'],
   ['travel_requests', 'chosen_supervisor_id', 'chosen_supervisor_id INT DEFAULT NULL'],
+  ['travel_requests', 'revision_note', 'revision_note MEDIUMTEXT'],
+  ['travel_requests', 'returned_at', 'returned_at VARCHAR(30)'],
+  ['travel_requests', 'returned_by', 'returned_by INT DEFAULT NULL'],
   ['leave_requests', 'approval_level', "approval_level INT NOT NULL DEFAULT 0"],
   ['leave_requests', 'approval_data', "approval_data VARCHAR(1000) COLLATE utf8mb4_bin NOT NULL DEFAULT '[]'"],
   ['leave_requests', 'writing_at', "writing_at VARCHAR(2000) COLLATE utf8mb4_bin"],

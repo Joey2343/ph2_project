@@ -1159,6 +1159,22 @@ ph2_project/
     · ขั้นสุดท้าย (`mode='final'`) ยังใช้ข้อความเดิม "กรุณาเลือกตำแหน่งที่จะอนุมัติ/อนุญาต"
   - เทสต์กันไว้ที่ `backend/scripts/test-travel-school-approver-choose.js` (13 ข้อ · อยู่ใน `npm run verify`)
     และ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ㉒
+- **ส่งกลับคำขอไปราชการเพื่อให้แก้ไข (ผู้ตรวจสอบ · สายสถานศึกษา)** (ผู้ใช้สั่ง 26 พ.ย. 2569)
+  - ปุ่ม **"↩ ส่งกลับเพื่อแก้ไข"** (`#travel-return-btn`) ต่อจากปุ่ม "⊙ ตรวจสอบ" ในรายการของ
+    ผู้ตรวจสอบ (ขั้นที่ 1 สายสถานศึกษา) — `canReturn(r)` = สิทธิ์พิจารณาขั้นนั้น + `nextLevel === 1`
+  - กรอกเหตุผลในหน้าต่าง `TravelReturnModal.vue` → `PUT /travel/:id/return`
+    · `status = 'returned'` · `revision_note` · `returned_at` / `returned_by`
+    · ไม่กรอกเหตุผล → 400 · ไม่ใช่ผู้พิจารณาขั้นนั้น → 403 · อนุมัติขั้น 1 แล้ว → 400
+    · แจ้งเตือน Telegram ถึงผู้ยื่นคำขอ (`notifyTravelReturned`)
+  - ผู้ยื่นแก้ไขได้ทันที (`canEditTravel` อนุญาต `status='returned'`)
+    · ฟอร์ม `TravelForm` แสดงแถบ "↩ ส่งกลับเพื่อแก้ไข: …" ด้านบน
+    · บันทึกแล้ว `PUT /travel/:id` ตั้ง `status='pending'` + ล้าง `revision_note` ให้เอง
+      (`resubmitted: true`) และแจ้งผู้ตรวจสอบอีกครั้ง (`notifyTravelSubmitted`)
+  - รายการแสดงเหตุผลใต้ชื่อเรื่อง · ตัวกรองสถานะมี "ส่งกลับเพื่อแก้ไข" · ป้ายสถานะมาจาก UI kit เดิม
+  - เทสต์กันไว้ที่ `backend/scripts/test-travel-return.js` (14 ข้อ · อยู่ใน `npm run verify`)
+    และ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ㉗
+  - ⚠️ `travel_requests.revision_note` ต้องเป็น **MEDIUMTEXT** (VARCHAR(2000) ทำให้
+    "Row size too large" ตอน migrate — เจอจริง 26 พ.ย. 2569)
 - **หน้าขออนุญาตลา (`#/leave`) เปิดมาที่แท็บ "ขออนุญาตลาพักผ่อน" + ตัวกรอง "ขออนุญาตลาทั้งหมด" เสมอ · แต่กดรีเฟรชแล้วอยู่แท็บเดิม**
   - ผู้ใช้สั่ง 5 พ.ย. 2569 — `pickInitialTab()` ใช้ `'vacation'` เป็นค่าเริ่มต้น
     **เลิกอ่าน `localStorage.leave_tab`** (เดิมจำแท็บที่เคยเปิด → เปิดครั้งถัดไปไม่ใช่พักผ่อน)

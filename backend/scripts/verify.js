@@ -234,6 +234,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบส่งกลับคำขอไปราชการเพื่อให้แก้ไข — ผู้ยื่นแก้แล้วกลับเข้าสายอนุมัติ]');
+  results.push(run('test-travel-return', [path.join(__dirname, 'test-travel-return.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบตำแหน่งที่เลือกตอนอนุมัติคำขอลา — ต้องบันทึกลง approval_data]');
   results.push(run('test-leave-approve-position', [path.join(__dirname, 'test-leave-approve-position.js')], {
     env: { TEST_BASE_URL },

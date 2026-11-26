@@ -742,6 +742,33 @@ check(/normalizeYearDocNo\(/.test(adminRouteSrc) && /b\.doc_type === 'order'/.te
     'หนังสือรับรอง: ยังรันอัตโนมัติเหมือนเดิม');
 }
 
+/* ── ㉗ ส่งกลับคำขอไปราชการเพื่อให้แก้ไข (ผู้ใช้สั่ง 26 พ.ย. 2569) ────────── */
+console.log('\n㉗ ส่งกลับคำขอไปราชการเพื่อแก้ไข');
+
+const travelPageSrc2 = travelPageSrc;
+check(existsSync(join(ROOT, 'src', 'components', 'ui', 'TravelReturnModal.vue')),
+  'มีหน้าต่างกรอกเหตุผลส่งกลับ (TravelReturnModal.vue)');
+check(/id="travel-return-btn"/.test(travelPageSrc2), 'มีปุ่ม "ส่งกลับเพื่อแก้ไข" ในรายการ');
+check(/function canReturn\(r\)[\s\S]{0,220}?requestIsSchool\(r\)[\s\S]{0,80}?nextLevel\(r\) === 1/.test(travelPageSrc2),
+  'ปุ่มแสดงเฉพาะผู้ตรวจสอบ (ขั้นที่ 1 สายสถานศึกษา)');
+check(/api\.put\(`\/travel\/\$\{props\.record\.id\}\/return`/.test(
+  readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelReturnModal.vue'), 'utf8')),
+  'หน้าต่างส่งกลับเรียก PUT /travel/:id/return');
+check(/status === 'returned'/.test(travelPageSrc2) && /canEditTravel[\s\S]{0,260}?'returned'/.test(travelPageSrc2),
+  'ผู้ยื่นแก้ไขคำขอที่ถูกส่งกลับได้');
+check(/r\.status === 'returned' && r\.revision_note/.test(travelPageSrc2),
+  'แสดงเหตุผลที่ให้แก้ไขในรายการ');
+check(/status === 'returned' && record\.revision_note/.test(
+  readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelForm.vue'), 'utf8')),
+  'ฟอร์มแก้ไขแสดงเหตุผลที่ให้แก้ไข');
+check(/router\.put\('\/travel\/:id\/return'/.test(tripsBackend), 'เซิร์ฟเวอร์: มี PUT /travel/:id/return');
+check(/travel_requests SET status = 'returned', revision_note = \?/.test(tripsBackend),
+  'เซิร์ฟเวอร์: บันทึกสถานะ returned + เหตุผล');
+check(/resubmitted: wasReturned/.test(tripsBackend) &&
+      /travel_requests SET status = 'pending', revision_note = NULL/.test(tripsBackend),
+  'เซิร์ฟเวอร์: ผู้ยื่นแก้ไขแล้วกลับเข้าสายอนุมัติ (pending)');
+check(/revision_note/.test(dbSrc) && /returned_at/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ revision_note/returned_at');
+
 /* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
  *
  * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"

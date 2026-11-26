@@ -492,6 +492,34 @@ async function notifyDocumentReturned(id, deciderName, note) {
   }
 }
 
+/**
+ * แจ้งเตือนผู้ยื่นคำขอว่าคำขอไปราชการถูก "ส่งกลับเพื่อแก้ไข" (ผู้ใช้สั่ง 26 พ.ย. 2569)
+ */
+async function notifyTravelReturned(id, deciderName, note) {
+  try {
+    const b = await fetchTravelRow(id);
+    if (!b) return;
+    if (!b.telegram_token || !b.telegram_chat_id) return;
+    const text = [
+      '📣 P2-SMART สพป.แพร่ 2',
+      '',
+      '↩ คำขออนุมัติ/อนุญาตเดินทางไปราชการ ถูกส่งกลับเพื่อแก้ไข',
+      '',
+      '📋 รายละเอียด:',
+      ...detailLines('travel', b),
+      '',
+      '📝 สิ่งที่ให้แก้ไข:',
+      String(note || '-'),
+      '',
+      `ผู้ส่งกลับ: ${deciderName || '-'}`,
+      'กรุณาแก้ไขในเมนู "ขออนุญาตไปราชการ" แล้วส่งคำขอใหม่',
+    ].join('\n');
+    await sendTelegram({ token: b.telegram_token, chatId: b.telegram_chat_id, text });
+  } catch (e) {
+    console.error('[telegram] notifyTravelReturned error:', e.message);
+  }
+}
+
 /** แจ้งเตือนผู้จัดทำว่าบันทึกข้อความถูกส่งกลับเพื่อแก้ไข (การ์ดหน้าแรก + Telegram) */
 async function notifyMemoReturned(id, deciderName, note) {
   try {
@@ -1264,6 +1292,7 @@ module.exports = {
   notifyVehicleEdited, notifyVehicleCancelled,
   memoSubmittedText, memoNextLevelText, memoForwardedText, memoResubmittedText,
   notifyMemoSubmitted, notifyMemoNextLevel, notifyMemoForwarded, notifyMemoResubmitted, notifyMemoReturned,
+  notifyTravelReturned,
   notifyDocumentReturned,
   incomingDocumentText, notifyIncomingDocument,
   newRegistrationText, notifyNewRegistration,
