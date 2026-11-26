@@ -153,7 +153,7 @@ function canApprove(r) {
    *   → ขั้นผู้อนุมัติของคำขอใบนี้เป็นของ "คนที่เลือก" เท่านั้น
    */
   const finalLv = school ? 3 : 2;
-  if (!school && Number(r.final_approver_id) && next === finalLv) {
+  if (Number(r.final_approver_id) && next === finalLv) {
     return Number(r.final_approver_id) === u.id;
   }
   /*

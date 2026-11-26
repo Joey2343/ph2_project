@@ -214,6 +214,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบผู้อนุมัติขั้นต้น (สถานศึกษา) เลือกผู้อนุมัติเอง — ขั้นที่ 3]');
+  results.push(run('test-travel-school-approver-choose', [path.join(__dirname, 'test-travel-school-approver-choose.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบตำแหน่งที่เลือกตอนอนุมัติคำขอลา — ต้องบันทึกลง approval_data]');
   results.push(run('test-leave-approve-position', [path.join(__dirname, 'test-leave-approve-position.js')], {
     env: { TEST_BASE_URL },

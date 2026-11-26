@@ -898,6 +898,10 @@ router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
     if (Number(baseLevels[0]) !== 1) {
       return res.status(400).json({ error: 'ขั้นนี้ไม่ใช่ขั้นของผู้ตรวจสอบ ไม่ต้องเลือกผู้บังคับบัญชาขั้นต้น' });
     }
+    // ต้องเป็นผู้ที่มีสิทธิ์พิจารณาขั้นนี้จริง (กันคนอื่นตั้งค่าแล้วโดน 403 ทีหลัง)
+    if (!await approvals.canTravelApprover(user, Number(baseLevels[0]), id)) {
+      return res.status(403).json({ error: 'คุณไม่มีสิทธิ์พิจารณาคำขอในขั้นนี้' });
+    }
     const supervisors = await approvals.travelSupervisorCandidates();
     if (!supervisors.some((s) => Number(s.id) === chosenSupervisorId)) {
       return res.status(400).json({ error: 'ผู้บังคับบัญชาขั้นต้นที่เลือกไม่ได้อยู่ในรายชื่อที่กำหนดไว้' });
@@ -907,15 +911,19 @@ router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
   }
   if (finalApproverId) {
     const group = await approvals.userGroupOf(row.user_id);
-    if (group === 'school') {
-      return res.status(400).json({ error: 'การเลือกผู้อนุมัติใช้กับสายเจ้าหน้าที่ สพป.แพร่ เขต 2 เท่านั้น' });
+    const doneCount = approvals.parseApprovals(row.approval_data).length;
+    const currentLevels = await approvals.travelLevelsForRequest(row);
+    const curLevel = Number(currentLevels[doneCount]) || 0;
+    const finalLv = approvals.travelFinalLevel(group);
+    if (row.final_approver_id) {
+      return res.status(400).json({ error: 'คำขอนี้เลือกผู้อนุมัติไว้แล้ว' });
     }
-    if (approvals.parseApprovals(row.approval_data).length > 0) {
-      return res.status(400).json({ error: 'เลือกผู้อนุมัติได้เฉพาะตอนผู้บังคับบัญชาขั้นต้นพิจารณาครั้งแรกเท่านั้น' });
-    }
-    const baseLevels = await approvals.travelChainLevels(row.user_id);
-    if (baseLevels[0] === approvals.travelFinalLevel(group)) {
+    if (!curLevel || curLevel === finalLv) {
       return res.status(400).json({ error: 'ขั้นนี้เป็นขั้นของผู้อนุมัติอยู่แล้ว ไม่ต้องเลือกผู้อนุมัติ' });
+    }
+    // ต้องเป็นผู้ที่มีสิทธิ์พิจารณาขั้นนี้จริง (กันคนอื่นตั้งค่าแล้วโดน 403 ทีหลัง)
+    if (!await approvals.canTravelApprover(user, curLevel, id)) {
+      return res.status(403).json({ error: 'คุณไม่มีสิทธิ์พิจารณาคำขอในขั้นนี้' });
     }
     const candidates = await approvals.travelFinalApproverCandidates();
     if (!candidates.some((c) => Number(c.id) === finalApproverId)) {

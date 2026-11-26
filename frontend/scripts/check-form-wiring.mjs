@@ -605,8 +605,8 @@ const tripsBackend = readFileSync(join(ROOT, '..', 'backend', 'routes', 'request
 const approvalsSrc = readFileSync(join(ROOT, '..', 'backend', 'lib', 'approvals.js'), 'utf8');
 const dbSrc = readFileSync(join(ROOT, '..', 'backend', 'db.js'), 'utf8');
 
-check(/showFinalApprover = computed\(\(\) => props\.mode === 'level1' && !isSchool\.value\)/.test(decideSrc),
-  'หน้าต่างพิจารณา: แสดงตัวเลือกผู้อนุมัติเฉพาะขั้นผู้บังคับบัญชาขั้นต้น (สาย สพป.)');
+check(/showFinalApprover = computed\(\(\) => props\.mode === 'level1'\)/.test(decideSrc),
+  'หน้าต่างพิจารณา: แสดงตัวเลือกผู้อนุมัติเฉพาะขั้นก่อนผู้อนุมัติ (สาย สพป. ขั้น 1 · สายสถานศึกษา ขั้น 2)');
 check(/id="travel-final-approver"/.test(decideSrc), 'มี dropdown เลือกผู้อนุมัติ (#travel-final-approver)');
 check(/api\.get\('\/travel\/final-approvers'\)/.test(decideSrc), 'ดึงรายชื่อจาก GET /travel/final-approvers');
 check(/final_approver_id: showFinalApprover\.value \? Number\(finalApproverId\.value\) \|\| 0 : 0/.test(decideSrc),
@@ -652,6 +652,25 @@ check(/UPDATE travel_requests SET chosen_supervisor_id = \?/.test(tripsBackend),
 check(/travelSupervisorCandidates/.test(approvalsSrc) && /chosen_supervisor_id/.test(approvalsSrc),
   'approvals: สายของคำขอใช้ผู้บังคับบัญชาที่เลือก');
 check(/chosen_supervisor_id/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ travel_requests.chosen_supervisor_id');
+
+/* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
+ *
+ * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"
+ * คนที่เลือกเป็นผู้อนุมัติขั้นสุดท้ายของคำขอใบนั้น
+ */
+console.log('\n㉒ ผู้อนุมัติขั้นต้น (สถานศึกษา) เลือกผู้อนุมัติ');
+
+check(/showFinalApprover = computed\(\(\) => props\.mode === 'level1'\)/.test(decideSrc),
+  'หน้าต่างอนุมัติขั้นต้น: มีตัวเลือกผู้อนุมัติทั้ง 2 สาย');
+check(/travelFinalApproverCandidates/.test(approvalsSrc), 'approvals: มีรายชื่อผู้อนุมัติให้เลือก');
+check(!/การเลือกผู้อนุมัติใช้กับสายเจ้าหน้าที่ สพป/.test(tripsBackend),
+  'เซิร์ฟเวอร์: ไม่ปฏิเสธการเลือกผู้อนุมัติของสายสถานศึกษาแล้ว');
+check(/const curLevel = Number\(currentLevels\[doneCount\]\) \|\| 0/.test(tripsBackend),
+  'เซิร์ฟเวอร์: ตรวจว่าขั้นปัจจุบันไม่ใช่ขั้นผู้อนุมัติก่อนบันทึก');
+check(/canTravelApprover\(user, curLevel, id\)/.test(tripsBackend),
+  'เซิร์ฟเวอร์: คนที่ตั้งค่าต้องมีสิทธิ์ในขั้นนั้นจริง');
+check(/if \(Number\(r\.final_approver_id\) && next === finalLv\)/.test(travelPageSrc),
+  'TravelPage: ปุ่มอนุมัติขั้นสุดท้ายเป็นของคนที่ถูกเลือก (ทั้ง 2 สาย)');
 
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
