@@ -625,6 +625,34 @@ check(/final_approver_id/.test(approvalsSrc) && /travelFinalApproverCandidates/.
   'approvals: สายของคำขอใช้คนที่เลือก + มีรายชื่อตัวเลือก');
 check(/final_approver_id/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ travel_requests.final_approver_id');
 
+/* ── ㉑ ผู้ตรวจสอบเลือกผู้บังคับบัญชาขั้นต้น (ผู้ใช้สั่ง 26 พ.ย. 2569) ──────────
+ *
+ * สายสถานศึกษา ขั้นที่ 1 (ผู้ตรวจสอบ) → หน้าต่าง "⊙ เสนอเรื่อง…" ต้องมี "เสนอเรื่องถึง"
+ * รายชื่อมาจากคอลัมน์ "ผู้บังคับบัญชาขั้นต้น" ของหน้า ⊛ กำหนดผู้อนุมัติไปราชการ
+ * คนที่เลือกเป็นผู้บังคับบัญชาขั้นต้น (ขั้นที่ 2) ของคำขอใบนั้น
+ */
+console.log('\n㉑ ผู้ตรวจสอบเลือกผู้บังคับบัญชาขั้นต้น');
+
+check(/showSupervisorPicker = computed\(\(\) => props\.mode === 'forward' && isSchool\.value\)/.test(decideSrc),
+  'หน้าต่างเสนอเรื่อง: แสดงตัวเลือกเฉพาะขั้นผู้ตรวจสอบ (สายสถานศึกษา)');
+check(/id="travel-supervisor"/.test(decideSrc), 'มี dropdown "เสนอเรื่องถึง" (#travel-supervisor)');
+check(/api\.get\('\/travel\/supervisor-candidates'\)/.test(decideSrc), 'ดึงรายชื่อจาก GET /travel/supervisor-candidates');
+check(/chosen_supervisor_id: showSupervisorPicker\.value \? Number\(supervisorId\.value\) \|\| 0 : 0/.test(decideSrc),
+  'ส่ง chosen_supervisor_id กลับไปกับผลการพิจารณา');
+check(/supervisors\.value\.length && !supervisorId\.value/.test(decideSrc),
+  'ต้องเลือกผู้บังคับบัญชาขั้นต้นก่อนยืนยัน (เมื่อมีรายชื่อให้เลือก)');
+check(/body\.chosen_supervisor_id = Number\(out\.chosen_supervisor_id\)/.test(travelPageSrc),
+  'TravelPage: ส่ง chosen_supervisor_id ไปกับ PUT /travel/:id/approve');
+check(/Number\(r\.chosen_supervisor_id\) && next === 2/.test(travelPageSrc),
+  'TravelPage: ปุ่มอนุมัติขั้นที่ 2 เป็นของคนที่ผู้ตรวจสอบเลือก');
+check(/router\.get\('\/travel\/supervisor-candidates'/.test(tripsBackend),
+  'เซิร์ฟเวอร์: มี endpoint รายชื่อผู้บังคับบัญชาขั้นต้น');
+check(/UPDATE travel_requests SET chosen_supervisor_id = \?/.test(tripsBackend),
+  'เซิร์ฟเวอร์: บันทึก chosen_supervisor_id ตอนผู้ตรวจสอบเลือก');
+check(/travelSupervisorCandidates/.test(approvalsSrc) && /chosen_supervisor_id/.test(approvalsSrc),
+  'approvals: สายของคำขอใช้ผู้บังคับบัญชาที่เลือก');
+check(/chosen_supervisor_id/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ travel_requests.chosen_supervisor_id');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

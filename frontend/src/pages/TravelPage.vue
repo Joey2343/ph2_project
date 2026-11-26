@@ -156,6 +156,13 @@ function canApprove(r) {
   if (!school && Number(r.final_approver_id) && next === finalLv) {
     return Number(r.final_approver_id) === u.id;
   }
+  /*
+   * ผู้ตรวจสอบเลือกผู้บังคับบัญชาขั้นต้นไว้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   → ขั้นที่ 2 ของคำขอใบนี้เป็นของ "คนที่เลือก" เท่านั้น
+   */
+  if (school && Number(r.chosen_supervisor_id) && next === 2) {
+    return Number(r.chosen_supervisor_id) === u.id;
+  }
   const entry = school
     ? approversSchool.value[String(r.user_id)]
     : approvers.value[String(r.user_id)];
@@ -332,7 +339,10 @@ async function onDecide(out) {
     let res;
     if (decideMode.value === 'forward') {
       // ผู้ตรวจสอบสายสถานศึกษา: ส่ง approve ว่าง ๆ ไม่บันทึกความเห็น
-      res = await api.put(`/travel/${r.id}/approve`, {});
+      // (ถ้าเลือก "เสนอเรื่องถึง" → ส่งคนที่เลือกไปด้วย ผู้ใช้สั่ง 26 พ.ย. 2569)
+      const body = {};
+      if (out && Number(out.chosen_supervisor_id)) body.chosen_supervisor_id = Number(out.chosen_supervisor_id);
+      res = await api.put(`/travel/${r.id}/approve`, body);
     } else {
       const note = JSON.stringify({ choices: out.choices || [], reasonMap: out.reasonMap || {} });
       /*

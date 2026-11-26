@@ -209,6 +209,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบผู้ตรวจสอบเลือกผู้บังคับบัญชาขั้นต้นเอง — สายสถานศึกษา ขั้นที่ 2]');
+  results.push(run('test-travel-supervisor-choose', [path.join(__dirname, 'test-travel-supervisor-choose.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบตำแหน่งที่เลือกตอนอนุมัติคำขอลา — ต้องบันทึกลง approval_data]');
   results.push(run('test-leave-approve-position', [path.join(__dirname, 'test-leave-approve-position.js')], {
     env: { TEST_BASE_URL },

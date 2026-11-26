@@ -120,6 +120,33 @@ async function loadFinalApprovers() {
 
 loadFinalApprovers();
 
+/* ---------- เลือกผู้บังคับบัญชาขั้นต้น (ผู้ใช้สั่ง 26 พ.ย. 2569) ----------
+ *
+ * ขั้นผู้ตรวจสอบของสายสถานศึกษา (mode='forward') → เลือก "เสนอเรื่องถึง" ได้
+ *   รายชื่อดึงจากหน้า ⊛ กำหนดผู้อนุมัติไปราชการ (คอลัมน์ "ผู้บังคับบัญชาขั้นต้น")
+ *   คนที่เลือกจะกลายเป็นผู้บังคับบัญชาขั้นต้น (ขั้นที่ 2) ของคำขอใบนั้น
+ *   (บันทึกที่ travel_requests.chosen_supervisor_id)
+ */
+const supervisors = ref([]);
+const supervisorId = ref('');
+const supervisorError = ref('');
+
+/** แสดงตัวเลือก "เสนอเรื่องถึง" = ขั้นผู้ตรวจสอบของสายสถานศึกษาเท่านั้น */
+const showSupervisorPicker = computed(() => props.mode === 'forward' && isSchool.value);
+
+async function loadSupervisors() {
+  if (!showSupervisorPicker.value) return;
+  supervisorError.value = '';
+  try {
+    const d = await api.get('/travel/supervisor-candidates');
+    supervisors.value = d.supervisors || [];
+  } catch (e) {
+    supervisorError.value = e.message || 'โหลดรายชื่อผู้บังคับบัญชาไม่สำเร็จ';
+  }
+}
+
+loadSupervisors();
+
 /**
  * ตำแหน่งที่ให้เลือกตอนอนุมัติ
  *
@@ -148,7 +175,9 @@ watch(
     reasons.value = {};
     position.value = posOptions.value[0] || '';
     finalApproverId.value = '';
+    supervisorId.value = '';
     loadFinalApprovers();
+    loadSupervisors();
   },
   { immediate: true },
 );
@@ -190,7 +219,15 @@ const showPosition = computed(
 
 function confirm() {
   if (props.mode === 'forward') {
-    emit('confirm', { forward: forward.value });
+    // ผู้ตรวจสอบ: ต้องเลือก "เสนอเรื่องถึง" (ถ้ามีรายชื่อให้เลือก)
+    if (showSupervisorPicker.value && supervisors.value.length && !supervisorId.value) {
+      return UI.toast('กรุณาเลือกผู้บังคับบัญชาขั้นต้น (เสนอเรื่องถึง)', 'error');
+    }
+    emit('confirm', {
+      forward: forward.value,
+      // คนที่เลือกจะเป็นผู้บังคับบัญชาขั้นต้น (ขั้นที่ 2) ของคำขอใบนี้
+      chosen_supervisor_id: showSupervisorPicker.value ? Number(supervisorId.value) || 0 : 0,
+    });
     return;
   }
   // ขั้นผู้บังคับบัญชาขั้นต้น: ต้องเลือกผู้อนุมัติ (ถ้ามีรายชื่อให้เลือก)
@@ -227,6 +264,30 @@ function confirm() {
         <div class="hint" style="margin-top: 8px">
           การเสนอเรื่องจะส่งต่อให้ผู้บังคับบัญชาขั้นต้นพิจารณา โดยไม่บันทึกความเห็นลงในเอกสาร
         </div>
+
+        <!-- ---------- เสนอเรื่องถึง (ผู้บังคับบัญชาขั้นต้น — ผู้ใช้สั่ง 26 พ.ย. 2569) ---------- -->
+        <template v-if="showSupervisorPicker">
+          <div style="margin-top: 14px; font-weight: 700">เสนอเรื่องถึง</div>
+          <select
+            id="travel-supervisor"
+            v-model="supervisorId"
+            style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; margin-top: 8px"
+          >
+            <option value="">— เลือกผู้บังคับบัญชาขั้นต้น —</option>
+            <option v-for="s in supervisors" :key="s.id" :value="String(s.id)">
+              {{ s.name }}{{ s.position ? ' · ' + s.position : '' }}
+            </option>
+          </select>
+          <div v-if="supervisorError" class="hint" style="color: #dc2626; margin-top: 6px">
+            {{ supervisorError }}
+          </div>
+          <div v-else-if="!supervisors.length" class="hint" style="color: #b45309; margin-top: 6px">
+            ยังไม่มีรายชื่อผู้บังคับบัญชาขั้นต้น — กำหนดได้ที่ปุ่ม "⊛ กำหนดผู้อนุมัติไปราชการ" (คอลัมน์ผู้บังคับบัญชาขั้นต้น)
+          </div>
+          <div v-else class="hint" style="margin-top: 6px">
+            คนที่เลือกจะกลายเป็นผู้บังคับบัญชาขั้นต้น (ขั้นที่ 2) ของคำขอนี้
+          </div>
+        </template>
       </template>
 
       <!-- ---------- ขั้นที่ 1 สาย สพป. / ขั้นสุดท้าย ---------- -->

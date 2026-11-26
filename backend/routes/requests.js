@@ -739,6 +739,16 @@ router.get('/travel/final-approvers', auth.requireApprover, async (req, res) => 
   res.json({ approvers });
 });
 
+/**
+ * รายชื่อตัวเลือก "เสนอเรื่องถึง" (ผู้บังคับบัญชาขั้นต้น ขั้นที่ 2)
+ * สำหรับหน้าต่างของผู้ตรวจสอบ (สายสถานศึกษา · ขั้นที่ 1) — ผู้ใช้สั่ง 26 พ.ย. 2569
+ * ดึงจากคอลัมน์ "ผู้บังคับบัญชาขั้นต้น" ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ
+ */
+router.get('/travel/supervisor-candidates', auth.requireApprover, async (req, res) => {
+  const supervisors = await approvals.travelSupervisorCandidates();
+  res.json({ supervisors });
+});
+
 router.post('/travel', auth.requireAuth, uploadTravelDyn.single('attachment'), uploadErrorHandler, async (req, res) => {
   const b = req.body || {};
   if (!b.travel_subject || !String(b.travel_subject).trim()) return res.status(400).json({ error: 'กรุณากรอกเรื่อง/งานที่ไปราชการ' });
@@ -865,11 +875,36 @@ router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
    *   ส่งมาเฉพาะตอนพิจารณาครั้งแรก (ยังไม่มีใครอนุมัติ) ของสาย สพป. เท่านั้น
    */
   const finalApproverId = Number((req.body || {}).final_approver_id) || 0;
+  /*
+   * ผู้ตรวจสอบ (สายสถานศึกษา ขั้น 1) เลือก "ผู้บังคับบัญชาขั้นต้น" ได้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   → คนที่เลือกกลายเป็นผู้บังคับบัญชาขั้นต้น (ขั้นที่ 2) ของคำขอใบนั้น
+   *   ส่งมาเฉพาะตอนพิจารณาครั้งแรกของผู้ตรวจสอบเท่านั้น
+   */
+  const chosenSupervisorId = Number((req.body || {}).chosen_supervisor_id) || 0;
   // ถ้ามี position ให้ใช้ position ที่เลือกแทน position ของผู้ใช้
   const user = position ? Object.assign({}, req.user, { position }) : req.user;
   const id = Number(req.params.id);
-  const row = await db.prepare('SELECT user_id, approval_data, status, final_approver_id FROM travel_requests WHERE id = ?').get(id);
+  const row = await db.prepare('SELECT user_id, approval_data, status, final_approver_id, chosen_supervisor_id FROM travel_requests WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'ไม่พบรายการ' });
+  if (chosenSupervisorId) {
+    const group = await approvals.userGroupOf(row.user_id);
+    if (group !== 'school') {
+      return res.status(400).json({ error: 'การเลือกผู้บังคับบัญชาขั้นต้นใช้กับสายสถานศึกษาเท่านั้น' });
+    }
+    if (approvals.parseApprovals(row.approval_data).length > 0) {
+      return res.status(400).json({ error: 'เลือกผู้บังคับบัญชาขั้นต้นได้เฉพาะตอนผู้ตรวจสอบพิจารณาครั้งแรกเท่านั้น' });
+    }
+    const baseLevels = await approvals.travelChainLevels(row.user_id);
+    if (Number(baseLevels[0]) !== 1) {
+      return res.status(400).json({ error: 'ขั้นนี้ไม่ใช่ขั้นของผู้ตรวจสอบ ไม่ต้องเลือกผู้บังคับบัญชาขั้นต้น' });
+    }
+    const supervisors = await approvals.travelSupervisorCandidates();
+    if (!supervisors.some((s) => Number(s.id) === chosenSupervisorId)) {
+      return res.status(400).json({ error: 'ผู้บังคับบัญชาขั้นต้นที่เลือกไม่ได้อยู่ในรายชื่อที่กำหนดไว้' });
+    }
+    await db.prepare('UPDATE travel_requests SET chosen_supervisor_id = ? WHERE id = ?').run(chosenSupervisorId, id);
+    row.chosen_supervisor_id = chosenSupervisorId;
+  }
   if (finalApproverId) {
     const group = await approvals.userGroupOf(row.user_id);
     if (group === 'school') {
@@ -900,10 +935,11 @@ router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
     levelsFn: () => levels,
     levelLabelFn: (lvl) => approvals.travelLevelLabel(row ? row.user_id : null, lvl) });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
-  // ส่ง final_approver_id + สายจริงกลับไปให้หน้าเว็บอัปเดตแถวนี้ได้ทันที
+  // ส่ง final_approver_id + chosen_supervisor_id + สายจริงกลับไปให้หน้าเว็บอัปเดตแถวนี้ได้ทันที
   if (result.row) {
     result.row.chain = levels;
     if (Number(row.final_approver_id)) result.row.final_approver_id = Number(row.final_approver_id);
+    if (Number(row.chosen_supervisor_id)) result.row.chosen_supervisor_id = Number(row.chosen_supervisor_id);
   }
   if (result.approved) {
     // อนุมัติครบขั้นแล้ว → แจ้งเตือน Telegram (ข้อความสีเขียว 🟢) ไปยังผู้ยื่นคำขอ

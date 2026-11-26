@@ -1161,6 +1161,17 @@ async function notifyTravelNextLevel(id, deciderName, nextLevel) {
       }
       return;
     }
+    /*
+     * ผู้ตรวจสอบเลือกผู้บังคับบัญชาขั้นต้นเอง → แจ้งคนที่เลือก (ขั้นที่ 2 ของสายสถานศึกษา)
+     */
+    const supOverride = Number(b.chosen_supervisor_id) || 0;
+    if (isSchool && supOverride && Number(nextLevel) === 2) {
+      const us = await db.prepare('SELECT telegram_token, telegram_chat_id FROM users WHERE id = ?').get(supOverride);
+      if (us && us.telegram_token && us.telegram_chat_id) {
+        await sendTelegram({ token: us.telegram_token, chatId: us.telegram_chat_id, text });
+      }
+      return;
+    }
     const settingRow = await db.prepare("SELECT value FROM settings WHERE `key` = ?").get(isSchool ? 'travel_approvers_school' : 'travel_approvers');
     let mapping = {};
     try { mapping = JSON.parse(settingRow ? settingRow.value : '{}'); } catch (e) { /* ignore */ }

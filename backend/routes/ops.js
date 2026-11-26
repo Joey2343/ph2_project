@@ -768,22 +768,19 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
   })();
 
   // ไปราชการ สายสถานศึกษา (3 ขั้น: reviewer → supervisor → approver)
+  //   ⚠️ นับตามสายของแต่ละคำขอ (รวมผู้บังคับบัญชาขั้นต้น/ผู้อนุมัติที่ผู้ตรวจสอบเลือกเอง)
   const travelSchool = (async () => {
-    const isAdmin = req.user.role === 'admin';
-    const tas = await db.prepare("SELECT value FROM settings WHERE \`key\` = 'travel_approvers_school'").get();
-    let mapping = {};
-    try { mapping = JSON.parse(tas ? tas.value : '{}'); } catch (e) { /* ignore */ }
     const out = {};
-    const pendingRows = await db.prepare("SELECT t.user_id, t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id WHERE t.status = 'pending' AND COALESCE(u.user_group, 'office') = 'school'").all();
+    if (req.user.role !== 'admin' && !req.user.can_approve) return out;
+    const pendingRows = await db.prepare(`SELECT t.id, t.user_id, t.approval_level, t.approval_data, t.final_approver_id, t.chosen_supervisor_id
+      FROM travel_requests t JOIN users u ON u.id = t.user_id
+      WHERE t.status = 'pending' AND COALESCE(u.user_group, 'office') = 'school'`).all();
     for (const r of pendingRows) {
-      const entry = mapping[String(r.user_id)];
-      if (!entry) continue;
-      const next = (r.approval_level || 0) + 1;
-      const isMine = isAdmin
-        || (next === 1 && Number(entry.reviewer) === req.user.id)
-        || (next === 2 && Number(entry.supervisor) === req.user.id)
-        || (next === 3 && Number(entry.approver) === req.user.id);
-      if (isMine) out[next] = (out[next] || 0) + 1;
+      const levels = await approvals.travelLevelsForRequest(r);
+      const done = approvals.parseApprovals(r.approval_data).length;
+      const next = levels[done];
+      if (!next) continue;
+      if (await approvals.canTravelApprover(req.user, next, r.id)) out[next] = (out[next] || 0) + 1;
     }
     return out;
   })();
