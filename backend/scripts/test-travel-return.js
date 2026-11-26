@@ -100,6 +100,13 @@ const jput = async (p, cookie, body) => {
 
     console.log('');
     console.log('① ไม่กรอกเหตุผล → 400');
+    // คอลัมน์ต้องเป็น utf8mb4 ไม่งั้นข้อความไทยจะกลายเป็น "?" (เจอจริง 26 พ.ย. 2569)
+    const colInfo = await db.prepare(`SELECT COLLATION_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'travel_requests' AND COLUMN_NAME = 'revision_note'`).get();
+    check(colInfo && colInfo.COLLATION_NAME === 'utf8mb4_bin',
+      'คอลัมน์ revision_note เป็น utf8mb4_bin (ข้อความไทยไม่กลายเป็น "?")',
+      JSON.stringify(colInfo));
+
     const r1 = await jput('/api/travel/' + travelId + '/return', revCookie, { note: '' });
     check(r1.status === 400, `ส่งกลับโดยไม่มีเหตุผล → 400 (ได้ ${r1.status})`, JSON.stringify(r1.body));
 

@@ -1173,8 +1173,13 @@ ph2_project/
   - รายการแสดงเหตุผลใต้ชื่อเรื่อง · ตัวกรองสถานะมี "ส่งกลับเพื่อแก้ไข" · ป้ายสถานะมาจาก UI kit เดิม
   - เทสต์กันไว้ที่ `backend/scripts/test-travel-return.js` (14 ข้อ · อยู่ใน `npm run verify`)
     และ `frontend/scripts/check-form-wiring.mjs` หัวข้อ ㉗
-  - ⚠️ `travel_requests.revision_note` ต้องเป็น **MEDIUMTEXT** (VARCHAR(2000) ทำให้
-    "Row size too large" ตอน migrate — เจอจริง 26 พ.ย. 2569)
+  - ⚠️ `travel_requests.revision_note` ต้องเป็น **MEDIUMTEXT COLLATE utf8mb4_bin** เสมอ
+    (VARCHAR(2000) ทำให้ "Row size too large" ตอน migrate — เจอจริง 26 พ.ย. 2569)
+    · ถ้าคอลัมน์ถูกสร้างโดยไม่มี COLLATE และตารางเดิมเป็น latin1 → ข้อความไทยที่ส่งกลับ
+      ถูกแทนด้วย **"?" ทั้งหมด อ่านไม่ออก** (เจอจริงบน production 26 พ.ย. 2569)
+    · `migrate()` มี `fixRevisionNoteCharset()` แก้ให้ทั้ง `documents` และ `travel_requests`
+      (ALTER MODIFY … CHARACTER SET utf8mb4 COLLATE utf8mb4_bin) ทุกครั้งที่บูต
+    · ข้อมูลที่ถูกบันทึกเป็น "?" ไปแล้วกู้คืนไม่ได้ — ผู้ใช้ต้องกดส่งกลับใหม่
 - **หน้าขออนุญาตลา (`#/leave`) เปิดมาที่แท็บ "ขออนุญาตลาพักผ่อน" + ตัวกรอง "ขออนุญาตลาทั้งหมด" เสมอ · แต่กดรีเฟรชแล้วอยู่แท็บเดิม**
   - ผู้ใช้สั่ง 5 พ.ย. 2569 — `pickInitialTab()` ใช้ `'vacation'` เป็นค่าเริ่มต้น
     **เลิกอ่าน `localStorage.leave_tab`** (เดิมจำแท็บที่เคยเปิด → เปิดครั้งถัดไปไม่ใช่พักผ่อน)

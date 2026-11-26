@@ -411,7 +411,8 @@ CREATE TABLE IF NOT EXISTS \`travel_requests\` (
   -- ผู้บังคับบัญชาขั้นต้นที่ "ผู้ตรวจสอบ" เลือกเองตอนกดตรวจสอบ (สายสถานศึกษา · ผู้ใช้สั่ง 26 พ.ย. 2569)
   \`chosen_supervisor_id\` int(11) DEFAULT NULL,
   -- "ส่งกลับเพื่อแก้ไข" (ผู้ใช้สั่ง 26 พ.ย. 2569) — status='returned' + เหตุผลให้แก้
-  \`revision_note\` mediumtext DEFAULT NULL,
+  -- ⚠️ ต้องระบุ COLLATE utf8mb4_bin เอง ไม่งั้นบนฐานที่ตารางเป็น latin1 ข้อความไทยจะกลายเป็น "?"
+  \`revision_note\` mediumtext COLLATE utf8mb4_bin DEFAULT NULL,
   \`returned_at\` varchar(30) DEFAULT NULL,
   \`returned_by\` int(11) DEFAULT NULL,
   PRIMARY KEY (\`id\`)
@@ -526,7 +527,7 @@ const COLUMN_MIGRATIONS = [
   ['travel_requests', 'form_data', "form_data VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT '{}'"],
   ['travel_requests', 'final_approver_id', 'final_approver_id INT DEFAULT NULL'],
   ['travel_requests', 'chosen_supervisor_id', 'chosen_supervisor_id INT DEFAULT NULL'],
-  ['travel_requests', 'revision_note', 'revision_note MEDIUMTEXT'],
+  ['travel_requests', 'revision_note', 'revision_note MEDIUMTEXT COLLATE utf8mb4_bin'],
   ['travel_requests', 'returned_at', 'returned_at VARCHAR(30)'],
   ['travel_requests', 'returned_by', 'returned_by INT DEFAULT NULL'],
   ['leave_requests', 'approval_level', "approval_level INT NOT NULL DEFAULT 0"],
@@ -752,16 +753,22 @@ async function migrate() {
    * แก้ไข charset ของคอลัมน์ revision_note ที่สร้างไว้ก่อนหน้านี้
    * (บน production ที่ติดตั้งก่อนการแก้ไขนี้ collation อาจไม่ใช่ utf8mb4_bin)
    * ทำเฉพาะเมื่อคอลัมน์มีอยู่แล้วและ collation ไม่ตรง → ปลอดภัย รันซ้ำได้
+   *
+   * ⚠️ เคยเจอจริง 26 พ.ย. 2569: travel_requests.revision_note ถูกสร้างเป็น latin1
+   *    (เพราะตารางเดิมบน production ไม่ได้ตั้ง default charset) → ข้อความไทยที่ส่งกลับ
+   *    เพื่อแก้ไขถูกแทนด้วย "?" ทั้งหมด อ่านไม่ออก
    */
   async function fixRevisionNoteCharset() {
-    const col = await db.prepare(`
-      SELECT COLLATION_NAME
-      FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents' AND COLUMN_NAME = 'revision_note'
-    `).get();
-    if (col && col.COLLATION_NAME !== 'utf8mb4_bin') {
-      await db.exec("ALTER TABLE \`documents\` MODIFY COLUMN \`revision_note\` MEDIUMTEXT COLLATE utf8mb4_bin");
-      console.log('[migrate] แก้ไข documents.revision_note COLLATE → utf8mb4_bin');
+    for (const table of ['documents', 'travel_requests']) {
+      const col = await db.prepare(`
+        SELECT COLLATION_NAME
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'revision_note'
+      `).get(table);
+      if (col && col.COLLATION_NAME !== 'utf8mb4_bin') {
+        await db.exec(`ALTER TABLE \`${table}\` MODIFY COLUMN \`revision_note\` MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin`);
+        console.log(`[migrate] แก้ไข ${table}.revision_note COLLATE → utf8mb4_bin`);
+      }
     }
   }
   await fixRevisionNoteCharset();
