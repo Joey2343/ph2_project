@@ -199,6 +199,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบเลขที่เอกสารพิมพ์เองได้ — คำสั่ง/เกียรติบัตร/หนังสือรับ + เลขถัดไปต่อจากเดิม]');
+  results.push(run('test-doc-no-editable', [path.join(__dirname, 'test-doc-no-editable.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบงานหนังสือราชการของสำนักงานเขต — เปลี่ยนตัวสารบัญเขตแล้วต้องเห็นงานเดิมครบ]');
   results.push(run('test-office-doc-handover', [path.join(__dirname, 'test-office-doc-handover.js')], {
     env: { TEST_BASE_URL },

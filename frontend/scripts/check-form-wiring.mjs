@@ -708,6 +708,40 @@ check(/const stamp = Date\.now\(\)\.toString\(36\)/.test(uploadsSrc) &&
       /`\$\{citizenId\}_\$\{kind\}_\$\{stamp\}\$\{ext\.toLowerCase\(\)\}`/.test(uploadsSrc),
   'เซิร์ฟเวอร์: ตั้งชื่อไฟล์รูปใหม่ทุกครั้ง (ไม่ติดแคชรูปเก่า)');
 
+/* ── ㉖ เลขที่เอกสารพิมพ์เองได้ (ผู้ใช้สั่ง 26 พ.ย. 2569) ───────────────────
+ *
+ *   ▼ ลงทะเบียนรับหนังสือ   → เลขหนังสือรับพิมพ์เองได้ + ครั้งถัดไปรันต่อ
+ *   ▭ ลงทะเบียนคำสั่ง        → <เลข>/<ปี พ.ศ.> พิมพ์เองได้ + ครั้งถัดไปรันต่อ
+ *   ▭ ลงทะเบียนเกียรติบัตร  → เลขที่ <เลข>/<ปี พ.ศ.> พิมพ์เองได้ + ครั้งถัดไปรันต่อ
+ */
+console.log('\n㉖ เลขที่เอกสารพิมพ์เองได้');
+
+const inFormSrc = readFileSync(join(ROOT, 'src', 'components', 'documents', 'DocumentsIncomingFormModal.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+const simpleFormSrc = readFileSync(join(ROOT, 'src', 'components', 'documents', 'DocumentsFormModal.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+
+{
+  const i = inFormSrc.indexOf('id="if-reg-no"');
+  const block = inFormSrc.slice(i, i + 320);
+  check(i > -1 && !/disabled/.test(block), 'ลงทะเบียนรับหนังสือ: ช่องเลขหนังสือรับพิมพ์ได้ (ไม่ disabled)');
+  check(/v-model="regNo"/.test(block), 'ช่องเลขหนังสือรับผูกกับ regNo');
+}
+check(/id="df-doc-no-main"/.test(simpleFormSrc), 'คำสั่ง/เกียรติบัตร: มีช่องพิมพ์เลข (#df-doc-no-main)');
+check(/`\$\{n\}\/\$\{yearSuffix\.value\}`/.test(simpleFormSrc), 'คำสั่ง: ประกอบเลขเป็น <เลข>/<ปี พ.ศ.>');
+check(/`เลขที่ \$\{n\}\/\$\{yearSuffix\.value\}`/.test(simpleFormSrc), 'เกียรติบัตร: ประกอบเลขเป็น เลขที่ <เลข>/<ปี พ.ศ.>');
+check(/fd\.append\('doc_no', finalDocNo\.value\)/.test(simpleFormSrc), 'ส่งเลขที่พิมพ์เองไปกับฟอร์ม');
+check(/const docYear = ref\(''\)/.test(simpleFormSrc), 'แก้ไขเอกสารเก่า: คงปี พ.ศ. เดิมไว้ (ไม่เปลี่ยนปี)');
+check(/normalizeYearDocNo\(/.test(adminRouteSrc) && /b\.doc_type === 'order'/.test(adminRouteSrc),
+  'เซิร์ฟเวอร์: คำสั่ง/เกียรติบัตรใช้เลขที่ผู้ใช้พิมพ์ (ถ้าส่งมา)');
+{
+  const certLine = adminRouteSrc.slice(adminRouteSrc.indexOf("if (b.doc_type === 'certificate')"));
+  check(/nextCertificateDocNo\(\)/.test(certLine.slice(0, 120)),
+    'หนังสือรับรอง: ยังรันอัตโนมัติเหมือนเดิม');
+}
+
 /* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
  *
  * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"

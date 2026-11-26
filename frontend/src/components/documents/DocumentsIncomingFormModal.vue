@@ -392,12 +392,16 @@ async function save() {
     <div class="form-grid">
       <div class="form-group full">
         <label>เลขหนังสือรับ</label>
+        <!-- ผู้ใช้สั่ง 26 พ.ย. 2569: พิมพ์เลขเองได้ (เดิมล็อกอ่านอย่างเดียว) -->
         <input
+          id="if-reg-no"
           v-model="regNo"
-          placeholder="กำลังโหลด..."
-          disabled
-          style="background: #f0f0f0"
+          placeholder="เลขหนังสือรับ (ระบบเติมเลขถัดไปให้ — แก้ไขได้)"
+          title="แก้ไขเลขหนังสือรับได้เอง — ครั้งถัดไประบบจะรันต่อจากเลขที่บันทึกไว้"
         />
+        <div class="hint" style="margin-top: 6px; font-size: 12.5px; color: #64748b">
+          ระบบเติมเลขถัดไปให้ — แก้ไขเองได้ และครั้งถัดไประบบจะรันต่อจากเลขที่บันทึกไว้
+        </div>
       </div>
 
       <!-- ---------- หนังสือจาก ---------- -->

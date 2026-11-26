@@ -46,8 +46,40 @@ const isOrder = computed(() => formType.value === 'order');
 const isCert = computed(() => formType.value === 'certificate');
 const isHonor = computed(() => formType.value === 'honor');
 
-/** เลขที่ระบบรันให้ → ล็อกอ่านไม่ได้ */
-const autoDocNo = computed(() => isOrder.value || isCert.value || isHonor.value);
+/* ---------- เลขที่ ---------- */
+/**
+ * เลขที่ที่ระบบล็อกไว้ (ผู้ใช้แก้ไม่ได้) — เหลือเฉพาะหนังสือรับรอง
+ *   คำสั่ง/เกียรติบัตร: ผู้ใช้พิมพ์เลขเองได้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+ */
+const autoDocNo = computed(() => isCert.value);
+
+/** ปี พ.ศ. ปัจจุบัน (ตามวันของระบบ/วันจำลอง) — ต่อท้ายเลขที่คำสั่ง/เกียรติบัตร */
+const yearBE = computed(() => {
+  const y = Number(String(UI.today()).slice(0, 4)) || new Date().getFullYear();
+  return String(y + 543);
+});
+
+/** ปี พ.ศ. ที่จะแสดง/บันทึก — ตอนแก้ไขเอกสารเก่าให้คงปีเดิมไว้ (ไม่เปลี่ยนปีทั้งที่ไม่ได้สั่ง) */
+const docYear = ref('');
+
+const yearSuffix = computed(() => docYear.value || yearBE.value);
+
+/** เลขรันที่พิมพ์เอง (คำสั่ง/เกียรติบัตร) — เก็บเฉพาะตัวเลข */
+const docNoMain = ref('');
+
+/** เลขที่สมบูรณ์ที่ใช้บันทึก/พิมพ์ */
+const finalDocNo = computed(() => {
+  const n = String(docNoMain.value || '').replace(/[^0-9]/g, '');
+  if (isOrder.value) return n ? `${n}/${yearSuffix.value}` : '';
+  if (isHonor.value) return n ? `เลขที่ ${n}/${yearSuffix.value}` : '';
+  return String(docNo.value || '').trim();
+});
+
+/** ดึงเลขรันออกจากเลขที่เต็ม เช่น "เลขที่ 12/2569" → "12" */
+function mainNoOf(full) {
+  const m = String(full || '').match(/([0-9]+)\s*\/\s*[0-9]{4}/);
+  return m ? m[1] : '';
+}
 
 const meta = computed(() => docTypeMeta(formType.value));
 
@@ -188,6 +220,9 @@ const showHonorActions = computed(() => !isNoneTemplate.value);
 async function load() {
   // ค่าจาก record (ตอนแก้ไข)
   docNo.value = d.value.doc_no || '';
+  docNoMain.value = mainNoOf(d.value.doc_no);
+  // คงปี พ.ศ. เดิมของเอกสารที่แก้ไข (ถ้ามี) — เอกสารใหม่ใช้ปีปัจจุบัน
+  docYear.value = (String(d.value.doc_no || '').match(/\/\s*([0-9]{4})\s*$/) || [])[1] || '';
   dateTH.value = d.value.date || UI.today();
   title.value = d.value.title || '';
   note.value = d.value.note || '';
@@ -214,6 +249,15 @@ async function load() {
   if (!d.value.id && autoDocNo.value) {
     docNo.value = await fetchNextDocNo(formType.value);
   }
+  /*
+   * คำสั่ง/เกียรติบัตร: เติมเลขถัดไปให้ก่อน แล้วผู้ใช้แก้เองได้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   เก็บเฉพาะส่วนตัวเลข — ปี พ.ศ. ต่อท้ายให้อัตโนมัติ
+   */
+  if (!d.value.id && (isOrder.value || isHonor.value)) {
+    const next = await fetchNextDocNo(formType.value);
+    docNo.value = next;
+    docNoMain.value = mainNoOf(next);
+  }
 
   // autocomplete
   if (isHonor.value) suggestions.value = await fetchPersonSuggestions('honor');
@@ -236,7 +280,7 @@ const honorData = computed(() => {
   const rec = honorSigners.value.find((s) => String(s.id) === String(signer.value)) || null;
   return {
     template: honorTemplate.value,
-    docNo: docNo.value,
+    docNo: finalDocNo.value,
     personName: attachHonorTitle(personName.value),
     title: title.value,
     body: bodyText.value,
@@ -265,6 +309,10 @@ async function onPrintHonor() {
  */
 function validate() {
   if (!isHonor.value && !isCert.value && !isOrder.value && !docNo.value.trim()) return 'กรุณากรอกเลขที่หนังสือ';
+  // คำสั่ง/เกียรติบัตร: ต้องมีเลขรัน (ระบบเติมให้อยู่แล้ว แต่ผู้ใช้อาจลบออก)
+  if ((isOrder.value || isHonor.value) && !String(docNoMain.value).replace(/[^0-9]/g, '')) {
+    return isOrder.value ? 'กรุณากรอกเลขที่คำสั่ง' : 'กรุณากรอกเลขที่เกียรติบัตร';
+  }
   if (!title.value.trim()) return 'กรุณากรอกเรื่อง';
   if (!dateTH.value) return 'กรุณาระบุวันที่';
 
@@ -300,7 +348,9 @@ async function save() {
   saving.value = true;
   try {
     const fd = new FormData();
-    fd.append('doc_type', formType.value);    fd.append('doc_no', docNo.value.trim());
+    fd.append('doc_type', formType.value);
+    // คำสั่ง/เกียรติบัตร: ใช้เลขที่พิมพ์เอง + "/ปีปัจจุบัน" (ผู้ใช้สั่ง 26 พ.ย. 2569)
+    fd.append('doc_no', finalDocNo.value);
     fd.append('date', dateTH.value);
     fd.append('title', title.value.trim());
     fd.append('from_org', 'สำนักงานเขตพื้นที่การศึกษาประถมศึกษาแพร่ เขต 2');
@@ -371,12 +421,33 @@ async function save() {
           {{ isHonor ? 'ที่เกียรติบัตร' : isCert ? 'เลขที่หนังสือ (ระบบรันอัตโนมัติ)' : isOrder ? 'เลขที่คำสั่ง (ระบบรันอัตโนมัติ)' : 'เลขที่หนังสือ' }}
           <span class="req"> *</span>
         </label>
+
+        <!-- คำสั่ง/เกียรติบัตร: พิมพ์เลขเองได้ + ต่อท้ายด้วย /ปีปัจจุบัน เสมอ (ผู้ใช้สั่ง 26 พ.ย. 2569) -->
+        <template v-if="isOrder || isHonor">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+            <span v-if="isHonor" style="font-size: 14px; color: #334155; white-space: nowrap">เลขที่</span>
+            <input
+              id="df-doc-no-main"
+              v-model="docNoMain"
+              inputmode="numeric"
+              placeholder="เลขรัน"
+              title="พิมพ์เลขได้เอง — ระบบจะรันเลขถัดไปต่อจากเลขที่บันทึกไว้"
+              style="width: 100px; text-align: center"
+            />
+            <span style="font-size: 14px; color: #334155; white-space: nowrap">/{{ yearSuffix }}</span>
+          </div>
+          <div class="hint" style="margin-top: 6px; font-size: 12.5px; color: #64748b">
+            แก้ไขเลขได้เอง — ลงทะเบียนครั้งถัดไประบบจะรันเลขต่อจากเลขที่บันทึกไว้ (เริ่ม 1 ใหม่ทุกปี)
+          </div>
+        </template>
+
         <input
+          v-else
           v-model="docNo"
-          :placeholder="autoDocNo ? 'กำลังโหลดเลขอัตโนมัติ...' : 'เช่น ที่ 12/2569'"
-          :readonly="autoDocNo"
-          :disabled="autoDocNo"
-          :style="autoDocNo ? { background: '#f0f0f0', color: '#334155' } : {}"
+          :placeholder="isCert ? 'กำลังโหลดเลขอัตโนมัติ...' : 'เช่น ที่ 12/2569'"
+          :readonly="isCert"
+          :disabled="isCert"
+          :style="isCert ? { background: '#f0f0f0', color: '#334155' } : {}"
         />
       </div>
 

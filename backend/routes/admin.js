@@ -623,6 +623,18 @@ async function nextHonorDocNo() {
   return 'เลขที่ ' + (max + 1) + '/' + yearBE;
 }
 
+/**
+ * จัดรูปแบบ "เลขที่ผู้ใช้พิมพ์" ให้เป็น `<prefix><เลข>/<ปี พ.ศ. ปัจจุบัน>`
+ *   รองรับสิ่งที่ผู้ใช้พิมพ์มา: "12", "12/2569", "เลขที่ 12/2569", "ที่ 12 / 2569"
+ *   คืน '' ถ้าไม่มีตัวเลขเลย (ให้ผู้เรียกไปรันอัตโนมัติแทน)
+ */
+function normalizeYearDocNo(raw, prefix) {
+  const yearBE = simdate.todayISO().slice(0, 4) - 0 + 543;
+  const num = (String(raw || '').match(/([0-9]+)/) || [])[1] || '';
+  if (!num) return '';
+  return String(prefix || '') + num + '/' + yearBE;
+}
+
 // ---------- โหมดจำลองวันที่ (ทดสอบการเปลี่ยนปี พ.ศ.) ----------
 // เปิด: PUT /api/sim-date { "date": "2027-01-01" } • ปิด/กลับเวลาจริง: PUT /api/sim-date { "date": null }
 // เป็นการจำลองเฉพาะ "นาฬิกาของระบบ" ไม่แก้ไขข้อมูลจริงใด ๆ และปิดแล้วทุกอย่างกลับปกติทันที
@@ -705,12 +717,19 @@ router.post('/documents', auth.requireAuth, uploadDocDynamic.array('files', 7), 
   if (senderTypeVal === 'school' && !autoRegNo) {
     autoRegNo = await nextDocNo('documents', 'reg_no');
   }
-  // เกียรติบัตร: ระบบรันเลขอัตโนมัติ เริ่ม ที่เกียรติบัตร 1/{ปี พ.ศ.} — ไม่ใช้ค่าจาก client
-  if (b.doc_type === 'honor') b.doc_no = await nextHonorDocNo();
+  /*
+   * คำสั่ง/เกียรติบัตร: ผู้ใช้พิมพ์เลขเองได้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   ส่งมา → ใช้ค่าที่ส่งมา (จัดรูปแบบ "<เลข>/<ปี พ.ศ.>" ให้เสมอ)
+   *   ไม่ส่ง/ว่าง → รันอัตโนมัติเหมือนเดิม · หนังสือรับรองยังรันอัตโนมัติเท่านั้น
+   */
+  const givenDocNo = String(b.doc_no || '').trim();
+  if (b.doc_type === 'honor') {
+    b.doc_no = normalizeYearDocNo(givenDocNo, 'เลขที่ ') || await nextHonorDocNo();
+  } else if (b.doc_type === 'order') {
+    b.doc_no = normalizeYearDocNo(givenDocNo, '') || await nextOrderDocNo();
+  }
   // หนังสือรับรอง: ระบบรันเลขอัตโนมัติ ที่ 1/{ปี พ.ศ.} เริ่ม 1 ใหม่ทุกปี — ไม่ใช้ค่าจาก client
   if (b.doc_type === 'certificate') b.doc_no = await nextCertificateDocNo();
-  // คำสั่ง: ระบบรันเลขอัตโนมัติ ที่ 1/{ปี พ.ศ.} เริ่ม 1 ใหม่ทุกปี — ไม่ใช้ค่าจาก client
-  if (b.doc_type === 'order') b.doc_no = await nextOrderDocNo();
   // ⚠ ตรวจผู้รับก่อนบันทึก: ถ้าระบบหาผู้รับจากช่อง "ถึง" ไม่ได้เลย → บังคับให้ผู้ส่งแก้ชื่อก่อน (กันหนังสือหล่นหายเงียบ)
   // ข้ามกรณีที่ไม่ได้ตั้งใจส่งถึงใคร: sender_type 'registered' (ลงทะเบียนเลขหนังสือส่ง), หนังสือรับรอง/คำสั่ง/เกียรติบัตร (ไม่มีช่องถึง),
   // และการส่งหลายโรงเรียนที่มี recipient_schools (โรงเรียนที่ยังไม่มีบุคลากรจะข้ามไปเฉพาะโรงเรียนนั้น ไม่บล็อกทั้งฉบับ)
