@@ -204,6 +204,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติเอง — คนที่เลือกเป็นผู้อนุมัติขั้นสุดท้าย]');
+  results.push(run('test-travel-final-approver', [path.join(__dirname, 'test-travel-final-approver.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบตำแหน่งที่เลือกตอนอนุมัติคำขอลา — ต้องบันทึกลง approval_data]');
   results.push(run('test-leave-approve-position', [path.join(__dirname, 'test-leave-approve-position.js')], {
     env: { TEST_BASE_URL },

@@ -405,6 +405,9 @@ CREATE TABLE IF NOT EXISTS \`travel_requests\` (
   \`approval_data\` varchar(8000) NOT NULL DEFAULT '[]',
   \`created_at\` varchar(30) NOT NULL DEFAULT current_timestamp(),
   \`form_data\` varchar(8000) DEFAULT '{}',
+  -- ผู้อนุมัติขั้นสุดท้ายที่ "ผู้บังคับบัญชาขั้นต้น" เลือกเองตอนกดควรอนุญาต (ผู้ใช้สั่ง 26 พ.ย. 2569)
+  --   NULL = ใช้ผู้อนุมัติตามสายที่ตั้งไว้ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ
+  \`final_approver_id\` int(11) DEFAULT NULL,
   PRIMARY KEY (\`id\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
@@ -515,6 +518,7 @@ const COLUMN_MIGRATIONS = [
   ['travel_requests', 'approval_level', "approval_level INT NOT NULL DEFAULT 0"],
   ['travel_requests', 'approval_data', "approval_data VARCHAR(1000) COLLATE utf8mb4_bin NOT NULL DEFAULT '[]'"],
   ['travel_requests', 'form_data', "form_data VARCHAR(1000) COLLATE utf8mb4_bin DEFAULT '{}'"],
+  ['travel_requests', 'final_approver_id', 'final_approver_id INT DEFAULT NULL'],
   ['leave_requests', 'approval_level', "approval_level INT NOT NULL DEFAULT 0"],
   ['leave_requests', 'approval_data', "approval_data VARCHAR(1000) COLLATE utf8mb4_bin NOT NULL DEFAULT '[]'"],
   ['leave_requests', 'writing_at', "writing_at VARCHAR(2000) COLLATE utf8mb4_bin"],

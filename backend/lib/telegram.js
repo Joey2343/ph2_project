@@ -1148,6 +1148,19 @@ async function notifyTravelNextLevel(id, deciderName, nextLevel) {
       ? ['reviewer', 'supervisor', 'approver'][Number(nextLevel) - 1]
       : ['supervisor', 'approver'][Number(nextLevel) - 1];
     if (!field) return;
+    /*
+     * ผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติเอง → แจ้งคนที่เลือก (ผู้ใช้สั่ง 26 พ.ย. 2569)
+     *   travel_requests.final_approver_id ใช้เฉพาะสาย สพป. และเฉพาะขั้นผู้อนุมัติ
+     */
+    const finalLv = isSchool ? 3 : 2;
+    const override = Number(b.final_approver_id) || 0;
+    if (override && Number(nextLevel) === finalLv) {
+      const uo = await db.prepare('SELECT telegram_token, telegram_chat_id FROM users WHERE id = ?').get(override);
+      if (uo && uo.telegram_token && uo.telegram_chat_id) {
+        await sendTelegram({ token: uo.telegram_token, chatId: uo.telegram_chat_id, text });
+      }
+      return;
+    }
     const settingRow = await db.prepare("SELECT value FROM settings WHERE `key` = ?").get(isSchool ? 'travel_approvers_school' : 'travel_approvers');
     let mapping = {};
     try { mapping = JSON.parse(settingRow ? settingRow.value : '{}'); } catch (e) { /* ignore */ }

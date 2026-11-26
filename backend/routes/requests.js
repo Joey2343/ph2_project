@@ -711,19 +711,32 @@ router.get('/travel', auth.requireAuth, async (req, res) => {
     travelApproversSchool = JSON.parse(tasRow ? tasRow.value : '{}');
   } catch (e) { /* ignore */ }
   // ⚠️ ห้าม map(async ...) ตรง ๆ — ดูคำอธิบายที่ GET /memos ด้านบน
-  const out = await Promise.all(rows.map(async (r) => ({
-    ...r,
-    // สายจริงของผู้ขอคนนี้ (ขั้นที่ตั้งไว้ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ)
-    // ให้หน้าเว็บวาดปุ่มตรงกับ backend ไม่ต้องเดาเอง
-    chain: await approvals.travelChainLevels(r.user_id),
-    required_levels: await approvals.travelRequiredLevels(r.user_id),
-    approvals: approvals.parseApprovals(r.approval_data),
-  })));
+  const out = await Promise.all(rows.map(async (r) => {
+    // สายจริงของคำขอใบนี้ (ถ้าผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติไว้ → ใช้คนที่เลือก)
+    const levels = await approvals.travelLevelsForRequest(r);
+    return {
+      ...r,
+      // สายจริงของผู้ขอคนนี้ (ขั้นที่ตั้งไว้ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ)
+      // ให้หน้าเว็บวาดปุ่มตรงกับ backend ไม่ต้องเดาเอง
+      chain: levels,
+      required_levels: levels.length,
+      approvals: approvals.parseApprovals(r.approval_data),
+    };
+  }));
   res.json({
     requests: out,
     travelApprovers,
     travelApproversSchool,
   });
+});
+
+/**
+ * รายชื่อตัวเลือก "ผู้อนุมัติ" สำหรับหน้าต่างพิจารณาของผู้บังคับบัญชาขั้นต้น
+ * (ผู้ใช้สั่ง 26 พ.ย. 2569) — ดึงจากคอลัมน์ผู้อนุมัติในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ
+ */
+router.get('/travel/final-approvers', auth.requireApprover, async (req, res) => {
+  const approvers = await approvals.travelFinalApproverCandidates();
+  res.json({ approvers });
 });
 
 router.post('/travel', auth.requireAuth, uploadTravelDyn.single('attachment'), uploadErrorHandler, async (req, res) => {
@@ -846,28 +859,62 @@ router.put('/travel/:id', auth.requireAuth, uploadTravelDyn.single('attachment')
 
 router.put('/travel/:id/approve', auth.requireApprover, async (req, res) => {
   const { note, position } = req.body || {};
+  /*
+   * ผู้บังคับบัญชาขั้นต้นเลือก "ผู้อนุมัติ" เองได้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   → คนที่เลือกกลายเป็นผู้อนุมัติขั้นสุดท้ายของคำขอใบนั้น
+   *   ส่งมาเฉพาะตอนพิจารณาครั้งแรก (ยังไม่มีใครอนุมัติ) ของสาย สพป. เท่านั้น
+   */
+  const finalApproverId = Number((req.body || {}).final_approver_id) || 0;
   // ถ้ามี position ให้ใช้ position ที่เลือกแทน position ของผู้ใช้
   const user = position ? Object.assign({}, req.user, { position }) : req.user;
-  const row = await db.prepare('SELECT user_id FROM travel_requests WHERE id = ?').get(Number(req.params.id));
-  const chain = row ? await approvals.travelChainLevels(row.user_id) : [1, 2];
-  const result = await approvals.approveRequest({ table: 'travel_requests', system: 'travel', id: Number(req.params.id), user, note,
-    canApproveFn: async (u, lvl) => { return  await approvals.canTravelApprover(u, lvl, Number(req.params.id)) },
+  const id = Number(req.params.id);
+  const row = await db.prepare('SELECT user_id, approval_data, status, final_approver_id FROM travel_requests WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'ไม่พบรายการ' });
+  if (finalApproverId) {
+    const group = await approvals.userGroupOf(row.user_id);
+    if (group === 'school') {
+      return res.status(400).json({ error: 'การเลือกผู้อนุมัติใช้กับสายเจ้าหน้าที่ สพป.แพร่ เขต 2 เท่านั้น' });
+    }
+    if (approvals.parseApprovals(row.approval_data).length > 0) {
+      return res.status(400).json({ error: 'เลือกผู้อนุมัติได้เฉพาะตอนผู้บังคับบัญชาขั้นต้นพิจารณาครั้งแรกเท่านั้น' });
+    }
+    const baseLevels = await approvals.travelChainLevels(row.user_id);
+    if (baseLevels[0] === approvals.travelFinalLevel(group)) {
+      return res.status(400).json({ error: 'ขั้นนี้เป็นขั้นของผู้อนุมัติอยู่แล้ว ไม่ต้องเลือกผู้อนุมัติ' });
+    }
+    const candidates = await approvals.travelFinalApproverCandidates();
+    if (!candidates.some((c) => Number(c.id) === finalApproverId)) {
+      return res.status(400).json({ error: 'ผู้อนุมัติที่เลือกไม่ได้อยู่ในรายชื่อผู้อนุมัติที่กำหนดไว้' });
+    }
+    await db.prepare('UPDATE travel_requests SET final_approver_id = ? WHERE id = ?').run(finalApproverId, id);
+    row.final_approver_id = finalApproverId;
+  }
+  // สายจริงของคำขอใบนี้ — ถ้าเลือกผู้อนุมัติไว้ ต้องมีขั้นผู้อนุมัติอยู่ในสายเสมอ
+  const levels = await approvals.travelLevelsForRequest(row);
+  const chain = levels;
+  const result = await approvals.approveRequest({ table: 'travel_requests', system: 'travel', id, user, note,
+    canApproveFn: async (u, lvl) => { return  await approvals.canTravelApprover(u, lvl, id) },
     // ⚠️ ต้องส่งสายจริง ไม่ใช่ค่า approval_travel ตรง ๆ
     //   ค่ากลางทำให้คอลัมน์ "ผู้อนุมัติ" ที่ตั้งไว้ไม่เคยถูกใช้ (จริงบนระบบจริง approval_travel = 1)
     //   ดูที่ approvals.travelChainLevels()
-    levelsFn: () => approvals.travelChainLevels(row.user_id),
+    levelsFn: () => levels,
     levelLabelFn: (lvl) => approvals.travelLevelLabel(row ? row.user_id : null, lvl) });
   if (result.error) return res.status(result.code || 400).json({ error: result.error });
+  // ส่ง final_approver_id + สายจริงกลับไปให้หน้าเว็บอัปเดตแถวนี้ได้ทันที
+  if (result.row) {
+    result.row.chain = levels;
+    if (Number(row.final_approver_id)) result.row.final_approver_id = Number(row.final_approver_id);
+  }
   if (result.approved) {
     // อนุมัติครบขั้นแล้ว → แจ้งเตือน Telegram (ข้อความสีเขียว 🟢) ไปยังผู้ยื่นคำขอ
-    await telegram.notifyRequest({ system: 'travel', id: Number(req.params.id), approved: true, deciderName: req.user.full_name, note });
+    await telegram.notifyRequest({ system: 'travel', id: id, approved: true, deciderName: req.user.full_name, note });
     // แจ้งคณะผู้ร่วมเดินทางที่เลือกไว้ในส่วน "พร้อมด้วยคณะ" ด้วย
-    await telegram.notifyTravelCompanions(Number(req.params.id), { approved: true, deciderName: req.user.full_name, note });
+    await telegram.notifyTravelCompanions(id, { approved: true, deciderName: req.user.full_name, note });
   } else if (result.level >= 1) {
     // ยังไม่ครบสาย → แจ้งผู้พิจารณาขั้นถัดไปตามสายจริง
     // ⚠️ ต้องหาจาก chain ไม่ใช่เดาเองว่าขั้น 2 คือใคร
     const nextLv = chain[chain.indexOf(result.level) + 1];
-    if (nextLv) await telegram.notifyTravelNextLevel(Number(req.params.id), req.user.full_name, nextLv);
+    if (nextLv) await telegram.notifyTravelNextLevel(id, req.user.full_name, nextLv);
   }
   res.json(result);
 });

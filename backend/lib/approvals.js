@@ -305,23 +305,64 @@ async function travelLevelLabel(requesterId, level) {
   return { 1: 'ขั้นที่ 1 (ผู้ตรวจสอบ)', 2: 'ขั้นที่ 2 (ผู้บังคับบัญชาขั้นต้น)', 3: 'ขั้นที่ 3 (ผู้อนุมัติ)' }[level] || ('ขั้นที่ ' + level);
 }
 
+/** ขั้น "ผู้อนุมัติ" (ขั้นสุดท้าย) ของแต่ละสาย — office = 2 · school = 3 */
+function travelFinalLevel(group) {
+  return group === 'school' ? 3 : 2;
+}
+
+/**
+ * ผู้อนุมัติขั้นสุดท้ายที่ "ผู้บังคับบัญชาขั้นต้น" เลือกเอง (ผู้ใช้สั่ง 26 พ.ย. 2569)
+ *   เก็บใน travel_requests.final_approver_id — ไม่ตั้ง = ใช้สายตามปกติ
+ */
+async function travelFinalApproverId(travelRequestId) {
+  const row = await db.prepare('SELECT final_approver_id FROM travel_requests WHERE id = ?').get(Number(travelRequestId));
+  return row ? Number(row.final_approver_id) || 0 : 0;
+}
+
+/**
+ * สายอนุมัติของ "คำขอใบนั้น" — ถ้าผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติไว้
+ *   ต้องมีขั้น "ผู้อนุมัติ" อยู่ในสายเสมอ (แม้สายที่ตั้งไว้จะมีแค่ขั้นผู้บังคับบัญชา)
+ *
+ * @param {object} row แถว travel_requests (ต้องมี user_id / final_approver_id)
+ * @returns {Promise<number[]>}
+ */
+async function travelLevelsForRequest(row) {
+  const base = await travelChainLevels(row.user_id);
+  const override = Number(row.final_approver_id) || 0;
+  if (!override) return base;
+  const group = await userGroupOf(row.user_id);
+  const finalLv = travelFinalLevel(group);
+  if (base.includes(finalLv)) return base;
+  return [...base, finalLv].sort((a, b) => a - b);
+}
+
 /**
  * ตรวจสอบสิทธิ์อนุมัติไปราชการโดยใช้ travel_approvers (per-user mapping)
  * Level 1 = ผู้บังคับบัญชาขั้นต้น (supervisor)
  * Level 2 = ผู้อนุมัติ (approver)
+ *
+ * ถ้าคำขอนั้นถูก "เลือกผู้อนุมัติ" ไว้ (final_approver_id) → ขั้นผู้อนุมัติเป็นของคนที่เลือกเท่านั้น
  */
 async function canTravelApprover(user, level, travelRequestId) {
   if (!user || user.status !== 'active') return false;
   if (user.role === 'admin') return true;
   if (!user.can_approve) return false;
   // ดึง user_id ของผู้ขอจาก travel_requests
-  const row = await db.prepare('SELECT user_id FROM travel_requests WHERE id = ?').get(travelRequestId);
+  const row = await db.prepare('SELECT user_id, final_approver_id FROM travel_requests WHERE id = ?').get(travelRequestId);
   if (!row) return false;
   const chain = await getTravelChain(row.user_id);
   const entry = chain.entry;
-  if (!entry) return false;
   // ผู้อนุมัติทุกขั้น (ทั้งสาย office และ school) ต้องเป็นเจ้าหน้าที่ สพป.แพร่ เขต 2 เท่านั้น
   if (!await isOfficeUser(user.id)) return false;
+  /*
+   * ผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติเอง → คนที่เลือกเป็นผู้อนุมัติขั้นสุดท้ายของคำขอนี้
+   *   (ผู้ใช้สั่ง 26 พ.ย. 2569) — ใช้ได้แม้สายที่ตั้งไว้จะไม่มีขั้นนี้
+   */
+  const override = Number(row.final_approver_id) || 0;
+  if (override && Number(level) === travelFinalLevel(chain.group)) {
+    return override === Number(user.id);
+  }
+  if (!entry) return false;
   if (chain.group === 'school') {
     // สายสถานศึกษา 3 ขั้น: ผู้ตรวจสอบ → ผู้บังคับบัญชาขั้นต้น → ผู้อนุมัติ
     if (level === 1) return Number(entry.reviewer) === user.id;
@@ -333,6 +374,40 @@ async function canTravelApprover(user, level, travelRequestId) {
   if (level === 1) return Number(entry.supervisor) === user.id;
   if (level === 2) return Number(entry.approver) === user.id;
   return false;
+}
+
+/**
+ * รายชื่อผู้ที่ถูกกำหนดเป็น "ผู้อนุมัติ" ในหน้า ⊛ กำหนดผู้อนุมัติไปราชการ (ทั้ง 2 สาย)
+ *   ใช้เป็นตัวเลือกในหน้าต่างพิจารณาของผู้บังคับบัญชาขั้นต้น
+ * @returns {Promise<Array<{id:number, name:string, position:string, workplace:string, title:string}>>}
+ */
+async function travelFinalApproverCandidates() {
+  const ids = new Set();
+  for (const key of ['travel_approvers', 'travel_approvers_school']) {
+    try {
+      const row = await db.prepare('SELECT value FROM settings WHERE `key` = ?').get(key);
+      const mapping = JSON.parse(row ? row.value : '{}');
+      for (const entry of Object.values(mapping || {})) {
+        const id = Number(entry && entry.approver) || 0;
+        if (id > 0) ids.add(id);
+      }
+    } catch (e) { /* ignore */ }
+  }
+  if (!ids.size) return [];
+  const list = [...ids];
+  const rows = await db.prepare(`SELECT id, title, full_name, first_name, last_name, position, workplace, can_approve, status, user_group
+    FROM users WHERE id IN (${list.map(() => '?').join(',')})`).all(...list);
+  return rows
+    // ผู้อนุมัติต้องเป็นเจ้าหน้าที่ สพป. ที่ยังใช้งานและมีสิทธิ์อนุมัติ
+    .filter((u) => u.status === 'active' && (u.user_group || 'office') !== 'school' && Number(u.can_approve) === 1)
+    .map((u) => ({
+      id: u.id,
+      title: u.title || '',
+      name: `${u.title || ''}${u.first_name || u.full_name || ''} ${u.last_name || ''}`.trim(),
+      position: u.position || '',
+      workplace: u.workplace || '',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'th'));
 }
 
 /** ผู้ใช้นี้ถูกกำหนดเป็นผู้ตรวจสอบ (ขั้นที่ 1), ผู้บังคับบัญชาขั้นต้น (ขั้นที่ 2) หรือผู้อนุมัติ (ขั้นที่ 3) ของสายสถานศึกษาหรือไม่ — ใช้เปิดเมนู ขออนุมัติ/อนุญาตเดินทางไปราชการ (สถานศึกษา) */
@@ -524,5 +599,7 @@ module.exports = {
   APPROVAL_SYSTEMS, LEVEL_NAMES, levelLabel, getRequiredLevels, leaveRequiredLevelsFor, leaveApproverKeyFor, leaveChainLevels, leaveApproverIdsFor, parseApprovals,
   getSystemApprovers, canApproveSystem, getUserSystemLevels, getLeaveApprovers,
   getMemoApproversPerPerson, getMemoApproverFor, canApproveMemoFor,
-  canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelChainLevels, travelRequiredLevels, travelLevelLabel, approveRequest, rejectRequest,
+  canTravelApprover, isSchoolTravelApprover, sameTravelGroup, userGroupOf, isOfficeUser, getTravelChain, travelChainLevels, travelRequiredLevels, travelLevelLabel,
+  travelFinalLevel, travelFinalApproverId, travelLevelsForRequest, travelFinalApproverCandidates,
+  approveRequest, rejectRequest,
 };

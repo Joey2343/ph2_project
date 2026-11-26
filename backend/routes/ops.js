@@ -749,14 +749,20 @@ router.get('/my-pending', auth.requireAuth, async (req, res) => {
   })();
 
   // ไปราชการ สาย สพป. — นับเฉพาะคำขอของเจ้าหน้าที่ สพป. (กันนับซ้ำกับสายสถานศึกษา)
+  //   ⚠️ ต้องนับตาม "สายของคำขอแต่ละใบ" (รวมผู้อนุมัติที่ผู้บังคับบัญชาขั้นต้นเลือกเอง)
+  //      เดิมนับจากบทบาท (getUserSystemLevels) → ผู้อนุมัติที่ถูกเลือกอาจไม่เห็นป้ายแจ้งเตือน
   const travelOffice = (async () => {
     const out = {};
-    const levels = await approvals.getUserSystemLevels(req.user, 'travel');
-    if (levels.length) {
-      const rows = await db.prepare(`SELECT t.approval_level FROM travel_requests t JOIN users u ON u.id = t.user_id
-        WHERE t.status = 'pending' AND (t.approval_level + 1) IN (${levels.map(() => '?').join(',')})
-        AND COALESCE(u.user_group, 'office') = 'office'`).all(...levels);
-      for (const l of levels) out[l] = rows.filter((r) => r.approval_level + 1 === l).length;
+    if (req.user.role !== 'admin' && !req.user.can_approve) return out;
+    const rows = await db.prepare(`SELECT t.id, t.user_id, t.approval_level, t.approval_data, t.final_approver_id
+      FROM travel_requests t JOIN users u ON u.id = t.user_id
+      WHERE t.status = 'pending' AND COALESCE(u.user_group, 'office') = 'office'`).all();
+    for (const r of rows) {
+      const levels = await approvals.travelLevelsForRequest(r);
+      const done = approvals.parseApprovals(r.approval_data).length;
+      const next = levels[done];
+      if (!next) continue;
+      if (await approvals.canTravelApprover(req.user, next, r.id)) out[next] = (out[next] || 0) + 1;
     }
     return out;
   })();

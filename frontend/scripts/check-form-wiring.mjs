@@ -587,6 +587,44 @@ check(/title:[\s\S]{0,200}?isSchoolScope\.value \? 'ขออนุญาตเ�
     'ใบลา (TravelDoc) ใช้ชื่อเรื่องเดียวกัน → ฟอร์มกับใบลาตรงกัน');
 }
 
+/* ── ⑳ ผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──────────
+ *
+ * ในหน้าต่างพิจารณาคำขอไปราชการ (ขั้นควรอนุญาต) ต้องเลือกผู้อนุมัติได้
+ * รายชื่อมาจากหน้า ⊛ กำหนดผู้อนุมัติไปราชการ (คอลัมน์ผู้อนุมัติ)
+ * และคนที่เลือกเป็นผู้อนุมัติขั้นสุดท้ายของคำขอใบนั้น
+ */
+console.log('\n⑳ ผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติ');
+
+const decideSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'TravelDecide.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+const travelPageSrc = readFileSync(join(ROOT, 'src', 'pages', 'TravelPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+const tripsBackend = readFileSync(join(ROOT, '..', 'backend', 'routes', 'requests.js'), 'utf8');
+const approvalsSrc = readFileSync(join(ROOT, '..', 'backend', 'lib', 'approvals.js'), 'utf8');
+const dbSrc = readFileSync(join(ROOT, '..', 'backend', 'db.js'), 'utf8');
+
+check(/showFinalApprover = computed\(\(\) => props\.mode === 'level1' && !isSchool\.value\)/.test(decideSrc),
+  'หน้าต่างพิจารณา: แสดงตัวเลือกผู้อนุมัติเฉพาะขั้นผู้บังคับบัญชาขั้นต้น (สาย สพป.)');
+check(/id="travel-final-approver"/.test(decideSrc), 'มี dropdown เลือกผู้อนุมัติ (#travel-final-approver)');
+check(/api\.get\('\/travel\/final-approvers'\)/.test(decideSrc), 'ดึงรายชื่อจาก GET /travel/final-approvers');
+check(/final_approver_id: showFinalApprover\.value \? Number\(finalApproverId\.value\) \|\| 0 : 0/.test(decideSrc),
+  'ส่ง final_approver_id กลับไปกับผลการพิจารณา');
+check(/finalApprovers\.value\.length && !finalApproverId\.value/.test(decideSrc),
+  'ต้องเลือกผู้อนุมัติก่อนยืนยัน (เมื่อมีรายชื่อให้เลือก)');
+check(/body\.final_approver_id = Number\(out\.final_approver_id\)/.test(travelPageSrc),
+  'TravelPage: ส่ง final_approver_id ไปกับ PUT /travel/:id/approve');
+check(/Number\(r\.final_approver_id\) && next === finalLv/.test(travelPageSrc),
+  'TravelPage: ปุ่มอนุมัติขั้นสุดท้ายเป็นของคนที่ถูกเลือกเท่านั้น');
+check(/router\.get\('\/travel\/final-approvers'/.test(tripsBackend),
+  'เซิร์ฟเวอร์: มี endpoint รายชื่อผู้อนุมัติให้เลือก');
+check(/final_approver_id/.test(tripsBackend) && /UPDATE travel_requests SET final_approver_id = \?/.test(tripsBackend),
+  'เซิร์ฟเวอร์: บันทึก final_approver_id ตอนผู้บังคับบัญชาขั้นต้นเลือก');
+check(/final_approver_id/.test(approvalsSrc) && /travelFinalApproverCandidates/.test(approvalsSrc),
+  'approvals: สายของคำขอใช้คนที่เลือก + มีรายชื่อตัวเลือก');
+check(/final_approver_id/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ travel_requests.final_approver_id');
+
 /* ── ⑤ ช่องที่ checkbox เป็นตัวคุม ต้องผูก disabled กับ "ติ๊กไว้" ไม่ใช่ "ค่าในช่อง" ──
  *
  * บั๊กที่เจอจริงใน TravelForm.vue (ยื่นคำขอไปราชการ)

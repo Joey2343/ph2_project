@@ -148,6 +148,14 @@ function canApprove(r) {
   const next = nextLevel(r);
   if (next == null) return false;
   const school = requestIsSchool(r);
+  /*
+   * ผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติไว้ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   → ขั้นผู้อนุมัติของคำขอใบนี้เป็นของ "คนที่เลือก" เท่านั้น
+   */
+  const finalLv = school ? 3 : 2;
+  if (!school && Number(r.final_approver_id) && next === finalLv) {
+    return Number(r.final_approver_id) === u.id;
+  }
   const entry = school
     ? approversSchool.value[String(r.user_id)]
     : approvers.value[String(r.user_id)];
@@ -335,6 +343,8 @@ async function onDecide(out) {
        */
       const body = { note };
       if (out && out.position) body.position = out.position;
+      // ผู้บังคับบัญชาขั้นต้นเลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+      if (out && Number(out.final_approver_id)) body.final_approver_id = Number(out.final_approver_id);
       res = await api.put(`/travel/${r.id}/approve`, body);
     }
     UI.toast(res.message);

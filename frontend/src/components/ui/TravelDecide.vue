@@ -18,6 +18,7 @@
  * และขั้น final ส่ง position ของผู้อนุมัติไปด้วย
  */
 import { ref, computed, watch } from 'vue';
+import api from '../../api/client.js';
 import { UI } from '../../ui/ui.js';
 import { Auth } from '../../stores/auth.js';
 import { approvePositionOptions } from '../../lib/approve-position.js';
@@ -93,6 +94,32 @@ const picked = ref([]);
 const reasons = ref({});
 const position = ref('');
 
+/* ---------- เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ----------
+ *
+ * ขั้นผู้บังคับบัญชาขั้นต้นของสาย สพป. → เลือกได้ว่าจะให้ใครเป็น "ผู้อนุมัติ" ของคำขอใบนี้
+ *   รายชื่อดึงจากหน้า ⊛ กำหนดผู้อนุมัติไปราชการ (คอลัมน์ "ผู้อนุมัติ")
+ *   คนที่เลือกจะกลายเป็นผู้อนุมัติขั้นสุดท้ายของรายการนั้น (บันทึกที่ travel_requests.final_approver_id)
+ */
+const finalApprovers = ref([]);
+const finalApproverId = ref('');
+const finalApproverError = ref('');
+
+/** แสดงตัวเลือกผู้อนุมัติหรือไม่ = ขั้นผู้บังคับบัญชาขั้นต้นของสาย สพป. เท่านั้น */
+const showFinalApprover = computed(() => props.mode === 'level1' && !isSchool.value);
+
+async function loadFinalApprovers() {
+  if (!showFinalApprover.value) return;
+  finalApproverError.value = '';
+  try {
+    const d = await api.get('/travel/final-approvers');
+    finalApprovers.value = d.approvers || [];
+  } catch (e) {
+    finalApproverError.value = e.message || 'โหลดรายชื่อผู้อนุมัติไม่สำเร็จ';
+  }
+}
+
+loadFinalApprovers();
+
 /**
  * ตำแหน่งที่ให้เลือกตอนอนุมัติ
  *
@@ -120,6 +147,8 @@ watch(
     picked.value = [];
     reasons.value = {};
     position.value = posOptions.value[0] || '';
+    finalApproverId.value = '';
+    loadFinalApprovers();
   },
   { immediate: true },
 );
@@ -164,6 +193,10 @@ function confirm() {
     emit('confirm', { forward: forward.value });
     return;
   }
+  // ขั้นผู้บังคับบัญชาขั้นต้น: ต้องเลือกผู้อนุมัติ (ถ้ามีรายชื่อให้เลือก)
+  if (showFinalApprover.value && finalApprovers.value.length && !finalApproverId.value) {
+    return UI.toast('กรุณาเลือกผู้อนุมัติของคำขอนี้', 'error');
+  }
   const reasonMap = {};
   for (const o of options.value) {
     if (o.reason && reasons.value[o.key]) reasonMap[o.key] = reasons.value[o.key];
@@ -173,6 +206,8 @@ function confirm() {
     reasonMap,
     isReject: isRejectPicked.value,
     position: showPosition.value ? position.value : '',
+    // คนที่เลือกจะเป็นผู้อนุมัติขั้นสุดท้ายของคำขอใบนี้
+    final_approver_id: showFinalApprover.value ? Number(finalApproverId.value) || 0 : 0,
   });
 }
 </script>
@@ -221,6 +256,32 @@ function confirm() {
             ></textarea>
           </div>
         </div>
+
+        <!-- ---------- ผู้อนุมัติ (ขั้นผู้บังคับบัญชาขั้นต้น — ผู้ใช้สั่ง 26 พ.ย. 2569) ---------- -->
+        <template v-if="showFinalApprover">
+          <div style="margin-top: 14px; font-weight: 700">
+            กรุณาเลือกผู้อนุมัติ <span style="font-weight: 400; font-size: 13px; color: #64748b">(ผู้อนุมัติขั้นสุดท้ายของคำขอนี้)</span>
+          </div>
+          <select
+            id="travel-final-approver"
+            v-model="finalApproverId"
+            style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; margin-top: 8px"
+          >
+            <option value="">— เลือกผู้อนุมัติ —</option>
+            <option v-for="a in finalApprovers" :key="a.id" :value="String(a.id)">
+              {{ a.name }}{{ a.position ? ' · ' + a.position : '' }}
+            </option>
+          </select>
+          <div v-if="finalApproverError" class="hint" style="color: #dc2626; margin-top: 6px">
+            {{ finalApproverError }}
+          </div>
+          <div v-else-if="!finalApprovers.length" class="hint" style="color: #b45309; margin-top: 6px">
+            ยังไม่มีรายชื่อผู้อนุมัติ — กำหนดได้ที่ปุ่ม "⊛ กำหนดผู้อนุมัติไปราชการ" (คอลัมน์ผู้อนุมัติ)
+          </div>
+          <div v-else class="hint" style="margin-top: 6px">
+            คนที่เลือกจะกลายเป็นผู้อนุมัติขั้นสุดท้ายของคำขอนี้
+          </div>
+        </template>
 
         <!-- ---------- ตำแหน่งที่จะลงนาม (ขั้นสุดท้าย + ขั้นอนุมัติขั้นต้นของสถานศึกษา) ---------- -->
         <template v-if="showPosition">
