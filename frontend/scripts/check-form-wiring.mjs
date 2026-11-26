@@ -674,6 +674,21 @@ check(/school_doc_prefix WHERE school_code = \?/.test(prefixGet), 'อ่าน�
     'PUT ยังจำกัดสิทธิ์เจ้าหน้าที่สารบัญเท่านั้น');
 }
 
+/* ── ㉔ ช่องเลขรันหลัง "/" ของหนังสือส่งสถานศึกษา พิมพ์แก้ได้ (ผู้ใช้สั่ง 26 พ.ย. 2569) ── */
+console.log('\n㉔ หนังสือส่งสถานศึกษา: ช่องเลขรันท้าย "/" พิมพ์แก้ได้');
+
+const outFormSrc = readFileSync(join(ROOT, 'src', 'components', 'documents', 'DocumentsOutgoingFormModal.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+check(/id="df-outgoing-no-school"/.test(outFormSrc), 'ช่องเลขรันมี id (#df-outgoing-no-school)');
+{
+  const i = outFormSrc.indexOf('id="df-outgoing-no-school"');
+  const block = outFormSrc.slice(i, i + 320);
+  check(!/readonly/.test(block), 'ช่องเลขรันไม่ถูกล็อก readonly แล้ว');
+  check(/v-model="noSchool"/.test(block), 'ผูกค่ากับ noSchool (บันทึกไปกับเลขที่หนังสือ)');
+  check(/noSchool\.value\.trim\(\) \|\| '1'/.test(outFormSrc), 'เลขที่หนังสือใช้ค่าที่พิมพ์ (ว่าง = 1)');
+}
+
 /* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
  *
  * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"

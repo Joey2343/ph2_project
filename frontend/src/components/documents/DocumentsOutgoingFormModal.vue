@@ -200,10 +200,14 @@ async function save() {
               :style="{ width: '80px', textAlign: 'center', background: schoolPrefixLocked ? '#f0f0f0' : '#fff' }"
             />
             <span style="font-size: 14px; color: #334155; white-space: nowrap">/</span>
+            <!-- ผู้ใช้สั่ง 26 พ.ย. 2569: ช่องเลขรันหลัง "/" พิมพ์แก้เองได้ (เดิม readonly) -->
             <input
+              id="df-outgoing-no-school"
               v-model="noSchool"
-              readonly
-              style="width: 60px; text-align: center; background: #f0f0f0"
+              inputmode="numeric"
+              placeholder="เช่น 1"
+              title="แก้ไขเลขรันได้เอง"
+              style="width: 60px; text-align: center"
             />
           </template>
 
