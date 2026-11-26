@@ -191,7 +191,14 @@ function deleteUploadedFile(name) {
 function renameAsCitizen(oldName, citizenId, kind) {
   if (!oldName) return null;
   const ext = path.extname(oldName) || '.bin';
-  const newName = `${citizenId}_${kind}${ext.toLowerCase()}`;
+  /*
+   * ใส่ timestamp ต่อท้ายชื่อไฟล์ (ผู้ใช้สั่ง 26 พ.ย. 2569)
+   *   เดิมชื่อคงที่ เช่น `<citizen>_photo.jpg` → เปลี่ยนรูปใหม่แล้ว URL เดิม
+   *   เบราว์เซอร์จึงยังแสดงรูปเก่าจากแคช (เหมือนแก้รูปไม่ติด)
+   *   · ยังคงรูป `<citizen>_photo...` ไว้ให้เครื่องมือตรวจไฟล์กำพร้าจับได้
+   */
+  const stamp = Date.now().toString(36);
+  const newName = `${citizenId}_${kind}_${stamp}${ext.toLowerCase()}`;
   let oldPath = null;
   if (oldName.includes('/')) {
     oldPath = path.join(UPLOAD_DIR, oldName);

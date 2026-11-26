@@ -689,6 +689,25 @@ check(/id="df-outgoing-no-school"/.test(outFormSrc), 'ช่องเลขร�
   check(/noSchool\.value\.trim\(\) \|\| '1'/.test(outFormSrc), 'เลขที่หนังสือใช้ค่าที่พิมพ์ (ว่าง = 1)');
 }
 
+/* ── ㉕ โปรไฟล์ของฉัน: แก้ไขรูปโปรไฟล์ได้ (ผู้ใช้สั่ง 26 พ.ย. 2569) ───────── */
+console.log('\n㉕ โปรไฟล์ของฉัน: แก้ไขรูปโปรไฟล์');
+
+const profileSrc = readFileSync(join(ROOT, 'src', 'components', 'auth', 'ProfileModal.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+const uploadsSrc = readFileSync(join(ROOT, '..', 'backend', 'lib', 'uploads.js'), 'utf8');
+
+check(/id="pf-photo"/.test(profileSrc), 'มีช่องเลือกไฟล์รูปโปรไฟล์ (#pf-photo)');
+check(/เปลี่ยนรูปโปรไฟล์/.test(profileSrc), 'มีปุ่ม/ป้าย "เปลี่ยนรูปโปรไฟล์"');
+check(/function onPhotoPick/.test(profileSrc) && /URL\.createObjectURL\(file\)/.test(profileSrc),
+  'แสดงตัวอย่างรูปที่เลือกทันที (preview)');
+check(/id="pf-photo-preview"/.test(profileSrc), 'มีกรอบตัวอย่างรูปโปรไฟล์');
+check(/if \(photo\.value\) fd\.append\('photo', photo\.value\)/.test(profileSrc),
+  'ส่งไฟล์รูปไปกับ PUT /auth/profile');
+check(/const stamp = Date\.now\(\)\.toString\(36\)/.test(uploadsSrc) &&
+      /`\$\{citizenId\}_\$\{kind\}_\$\{stamp\}\$\{ext\.toLowerCase\(\)\}`/.test(uploadsSrc),
+  'เซิร์ฟเวอร์: ตั้งชื่อไฟล์รูปใหม่ทุกครั้ง (ไม่ติดแคชรูปเก่า)');
+
 /* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
  *
  * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"

@@ -47,6 +47,21 @@ const showSecondary = ref(false);
 
 const photo = ref(null);
 const signature = ref(null);
+/** ภาพตัวอย่างรูปโปรไฟล์ (รูปปัจจุบัน หรือรูปใหม่ที่เพิ่งเลือก) */
+const photoPreview = ref('');
+
+function setPhotoPreview(url) {
+  if (photoPreview.value && photoPreview.value.startsWith('blob:')) URL.revokeObjectURL(photoPreview.value);
+  photoPreview.value = url || '';
+}
+
+/** เลือกรูปใหม่ → แสดงตัวอย่างทันที (ยังไม่บันทึกจนกว่าจะกด "บันทึกข้อมูล") */
+function onPhotoPick(e) {
+  const file = (e.target.files && e.target.files[0]) || null;
+  photo.value = file;
+  if (!file) return;
+  setPhotoPreview(URL.createObjectURL(file));
+}
 
 const oldPassword = ref('');
 const newPassword = ref('');
@@ -86,6 +101,7 @@ async function load() {
   });
   photo.value = null;
   signature.value = null;
+  setPhotoPreview(x.photo ? '/uploads/' + UI.encodePath(x.photo) : '');
   oldPassword.value = '';
   newPassword.value = '';
 
@@ -174,6 +190,14 @@ async function saveProfile() {
   try {
     const res = await store.saveProfile(fd);
     UI.toast(res.message);
+    /*
+     * อัปเดตตัวอย่างให้เป็นรูปที่บันทึกจริง (ผู้ใช้สั่ง 26 พ.ย. 2569)
+     *   + ล้างค่าไฟล์ที่เลือกไว้ ไม่งั้นกดบันทึกครั้งถัดไปจะอัปโหลดซ้ำโดยไม่ตั้งใจ
+     */
+    photo.value = null;
+    setPhotoPreview(res.user && res.user.photo ? '/uploads/' + UI.encodePath(res.user.photo) : '');
+    const fileEl = document.getElementById('pf-photo');
+    if (fileEl) fileEl.value = '';
   } catch (e) {
     UI.toast(e.message, 'error');
   } finally {
@@ -357,9 +381,40 @@ async function changePass() {
         </button>
       </div>
 
-      <div class="form-group">
+      <!-- ---------- รูปโปรไฟล์ (แก้ไขได้ — ผู้ใช้สั่ง 26 พ.ย. 2569) ---------- -->
+      <div class="form-group full">
         <label>รูปถ่าย (ใหม่)</label>
-        <input id="pf-photo" type="file" accept="image/*" @change="photo = $event.target.files[0] || null" />
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+          <img
+            v-if="photoPreview"
+            id="pf-photo-preview"
+            :src="photoPreview"
+            alt="รูปโปรไฟล์"
+            style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-light, #bfdbfe); background: #fff"
+          />
+          <div
+            v-else
+            id="pf-photo-preview"
+            style="width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--primary-light, #dbeafe); color: var(--primary-deep, #1e3a8a)"
+          >
+            {{ (u.full_name || '?').charAt(0) }}
+          </div>
+          <label
+            class="btn btn-outline"
+            for="pf-photo"
+            style="cursor: pointer; margin: 0; display: inline-flex; align-items: center; gap: 6px"
+          >
+            📷 เปลี่ยนรูปโปรไฟล์
+            <input
+              id="pf-photo"
+              type="file"
+              accept="image/*"
+              style="display: none"
+              @change="onPhotoPick"
+            />
+          </label>
+          <span class="hint">ไฟล์ภาพ (jpg/png) — จะเปลี่ยนเมื่อกด "บันทึกข้อมูล"</span>
+        </div>
       </div>
 
       <div class="form-group">
