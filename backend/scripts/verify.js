@@ -239,6 +239,11 @@ async function main() {
     env: { TEST_BASE_URL },
   }));
 
+  console.log('\n[ทดสอบบันทึกข้อความ "เรียนเสนอ" — เลือกผู้อนุมัติขั้นที่ 2 แล้วส่งถึงคนนั้น]');
+  results.push(run('test-memo-next-approver', [path.join(__dirname, 'test-memo-next-approver.js')], {
+    env: { TEST_BASE_URL },
+  }));
+
   console.log('\n[ทดสอบตำแหน่งที่เลือกตอนอนุมัติคำขอลา — ต้องบันทึกลง approval_data]');
   results.push(run('test-leave-approve-position', [path.join(__dirname, 'test-leave-approve-position.js')], {
     env: { TEST_BASE_URL },

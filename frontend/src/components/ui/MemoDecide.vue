@@ -78,7 +78,21 @@ async function loadApproverOptions(level) {
     } catch {
       /* chain ไม่อ่านได้ → ใช้ config ปัจจุบัน */
     }
+    /*
+     * ผู้ใช้สั่ง 27 พ.ย. 2569: "เรียนเสนอ" ต้องดึงรายชื่อจาก
+     * "+ เพิ่มเจ้าหน้าที่ (ลำดับขั้นบันทึกข้อความ)" ขั้นนี้ด้วย
+     *   · ผู้อนุมัติที่ admin ตั้งไว้ให้ "ผู้จัดทำบันทึกฉบับนี้" (มาก่อน)
+     *   · ทุกคนที่ถูกกำหนดในคอลัมน์ขั้นนี้ (ส่งเรื่องไปที่คนที่เลือกได้)
+     */
+    const perMap = (d.perPerson || {})[level] || {};
+    const ownId = Number(perMap[String(m.value.user_id)]) || 0;
+    if (ownId) ids.push(ownId);
+    for (const v of Object.values(perMap)) {
+      const n = Number(v) || 0;
+      if (n) ids.push(n);
+    }
     if (!ids.length) ids = ((d.approvers || {})[level] || []).map(Number);
+    ids = [...new Set(ids)];
     const byId = {};
     for (const u of staff) byId[u.id] = u;
     return ids.map((id) => byId[id]).filter(Boolean);

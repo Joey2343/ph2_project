@@ -794,6 +794,37 @@ check(/resubmitted: wasReturned/.test(tripsBackend) &&
   'เซิร์ฟเวอร์: ผู้ยื่นแก้ไขแล้วกลับเข้าสายอนุมัติ (pending)');
 check(/revision_note/.test(dbSrc) && /returned_at/.test(dbSrc), 'ฐานข้อมูล: มีคอลัมน์ revision_note/returned_at');
 
+/* ── ㉘ "เรียนเสนอ" ของบันทึกข้อความ — ดึงจากหน้า + เพิ่มเจ้าหน้าที่ (ลำดับขั้น) (ผู้ใช้สั่ง 27 พ.ย. 2569) ── */
+console.log('\n㉘ บันทึกข้อความ: ตัวเลือก "เรียนเสนอ" จากลำดับขั้นที่กำหนด');
+
+const memoDecideSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'MemoDecide.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+check(/const perMap = \(d\.perPerson \|\| \{\}\)\[level\] \|\| \{\}/.test(memoDecideSrc),
+  'MemoDecide: ดึงรายชื่อจาก perPerson (หน้า + เพิ่มเจ้าหน้าที่) ตามขั้น');
+check(/const ownId = Number\(perMap\[String\(m\.value\.user_id\)\]\) \|\| 0/.test(memoDecideSrc),
+  'MemoDecide: ผู้อนุมัติของ "ผู้จัดทำ" มาก่อน');
+check(/for \(const v of Object\.values\(perMap\)\)/.test(memoDecideSrc),
+  'MemoDecide: รวมทุกคนที่ถูกกำหนดในคอลัมน์ขั้นนั้น');
+check(/ids = \[\.\.\.new Set\(ids\)\]/.test(memoDecideSrc), 'MemoDecide: ตัดรายชื่อซ้ำ');
+check(/async function memoLevelCandidates\(level\)/.test(tripsBackend),
+  'เซิร์ฟเวอร์: มีรายชื่อผู้ที่ถูกกำหนดในขั้นนั้น (memoLevelCandidates)');
+check(/memoLevelIds\(row, 2\)\), \.\.\.\(await memoLevelCandidates\(2\)\)/.test(tripsBackend),
+  'เซิร์ฟเวอร์: ตรวจสิทธิ์ขั้นที่ 2 = สายผู้จัดทำ + ทุกคนที่กำหนดไว้');
+check(/next_approver_id/.test(tripsBackend) && /notifyMemoForwarded\(id, nextApproverId/.test(tripsBackend),
+  'เซิร์ฟเวอร์: เลือกคนไหนก็ส่งเรื่อง/แจ้งเตือนไปที่คนนั้น');
+
+/* หน้าบันทึกข้อความ: ปุ่มอนุมัติต้องโผล่ให้ผู้อนุมัติรายคน + ผู้ที่ถูกเลือก (ให้ตรงกับเซิร์ฟเวอร์) */
+const memosPageSrc = readFileSync(join(ROOT, 'src', 'pages', 'MemosPage.vue'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/<!--[\s\S]*?-->/g, '');
+check(/const perPerson = ref\(\{ 1: \{\}, 2: \{\}, 3: \{\} \}\)/.test(memosPageSrc),
+  'MemosPage: เก็บลำดับขั้นรายบุคคล (perPerson) จาก API');
+check(/const perId = Number\(\(\(perPerson\.value\[next\] \|\| \{\}\)\[String\(m\.user_id\)\]\) \|\| 0\)/.test(memosPageSrc),
+  'MemosPage: ปุ่มอนุมัติโผล่ให้ผู้อนุมัติรายคนของผู้จัดทำ');
+check(/Number\(m\.next_approver_id\) === Number\(Auth\.user\?\.id\)/.test(memosPageSrc),
+  'MemosPage: ผู้ที่ถูก "เรียนเสนอ" เจาะจงเห็นปุ่มอนุมัติ');
+
 /* ── ㉒ ผู้อนุมัติขั้นต้น (สายสถานศึกษา) เลือกผู้อนุมัติ (ผู้ใช้สั่ง 26 พ.ย. 2569) ──
  *
  * ขั้นที่ 2 (อนุมัติขั้นต้น) → เลือกผู้อนุมัติ (ขั้นที่ 3) จากคอลัมน์ "ผู้อนุมัติ"

@@ -172,6 +172,28 @@ async function memoLevelIds(row, level) {
   return (await memoChainFor(row.user_id))[level] || [];
 }
 
+/**
+ * รายชื่อผู้ที่ถูกกำหนดเป็นผู้อนุมัติขั้นที่ level ในหน้า "+ เพิ่มเจ้าหน้าที่ (ลำดับขั้นบันทึกข้อความ)"
+ *   = ทุกคนที่ปรากฏในคอลัมน์ขั้นนั้น (ไม่จำกัดเฉพาะสายของผู้จัดทำ) + ลำดับรวมเดิม
+ *
+ * ใช้เป็นตัวเลือกในช่อง "เรียนเสนอ" (ขั้น 1 → 2) / "ผ่านเรื่อง/เสนอต่อ" (ขั้น 2 → 3)
+ * เมื่อผู้ตรวจเลือกคนไหน ระบบส่งเรื่องไปที่คนนั้น (next_approver_id) — ผู้ใช้สั่ง 27 พ.ย. 2569
+ */
+async function memoLevelCandidates(level) {
+  const per = await approvals.getMemoApproversPerPerson();
+  const flat = await approvals.getSystemApprovers('memo');
+  const ids = new Set();
+  for (const v of Object.values(per[level] || {})) {
+    const n = Number(v) || 0;
+    if (n > 0) ids.add(n);
+  }
+  for (const v of (flat[level] || [])) {
+    const n = Number(v) || 0;
+    if (n > 0) ids.add(n);
+  }
+  return [...ids];
+}
+
 /** ผู้ใช้พิจารณาบันทึกข้อความนี้ได้หรือไม่ (ผู้อนุมัติขั้นที่กำลังรอ หรือผู้ที่ถูกเรียนเสนอเลือกไว้) */
 async function canDecideMemo(user, row, nextLevel) {
   // รายบุคคล: ต้องเป็นผู้อนุมัติของ "ผู้จัดทำ" ณ ขั้นนั้้น (หรือถูกส่งต่อเจาะจงถึง)
@@ -369,8 +391,9 @@ router.put('/memos/:id/approve', auth.requireAuth, async (req, res) => {
     }
   }
   // ขั้นที่ 1 ต้องเลือกผู้อนุมัติขั้นที่ 2 (เรียนเสนอ) เพื่อส่งต่องาน — เมื่อมีผู้ได้รับมอบหมายขั้นที่ 2
-  const level2Ids = await memoLevelIds(row, 2);
-  const level3Ids = await memoLevelIds(row, 3);
+  //   ตัวเลือก = สายของผู้จัดทำ + ทุกคนที่ถูกกำหนดในคอลัมน์ขั้นที่ 2 ของหน้า "+ เพิ่มเจ้าหน้าที่ (ลำดับขั้นบันทึกข้อความ)"
+  const level2Ids = [...new Set([...(await memoLevelIds(row, 2)), ...(await memoLevelCandidates(2))])];
+  const level3Ids = [...new Set([...(await memoLevelIds(row, 3)), ...(await memoLevelCandidates(3))])];
   let mode = null;
   let actChoices = [];
   let nextApproverId = null;

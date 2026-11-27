@@ -32,11 +32,14 @@ import Pagination from '../components/ui/Pagination.vue';
 
 /* ---------- สิทธิ์เจ้าหน้าที่อนุมัติ ---------- */
 const myLevels = ref([]);
+/** ลำดับขั้นรายบุคคล: perPerson[level][ผู้จัดทำ] = ผู้อนุมัติ (หน้า + เพิ่มเจ้าหน้าที่) */
+const perPerson = ref({ 1: {}, 2: {}, 3: {} });
 
 onMounted(async () => {
   try {
     const d = await api.get('/memo/approvers');
     const ap = d.approvers || {};
+    perPerson.value = d.perPerson || { 1: {}, 2: {}, 3: {} };
     myLevels.value = Auth.isAdmin() ? [1, 2, 3] : [1, 2, 3].filter((l) => (ap[l] || []).includes(Auth.user.id));
   } catch {
     /* โหลดไม่ได้ = ไม่มีสิทธิ์อนุมัติ */
@@ -149,7 +152,23 @@ function requiredLevels(m) {
 
 /* ---------- สิทธิ์กดปุ่ม ---------- */
 const canEditRow = (m) => Auth.isAdmin() || m.user_id === Auth.user?.id;
-const canDecideRow = (m) => m.status === 'submitted' && myLevels.value.includes(UI.approvalDone(m) + 1);
+/**
+ * ผู้ใช้คนนี้กดอนุมัติบันทึกข้อความนี้ได้หรือไม่ — ให้ตรงกับเซิร์ฟเวอร์ (`canDecideMemo`)
+ *   · admin ผ่านทุกขั้น
+ *   · ผู้ที่ถูก "เรียนเสนอ/ผ่านเรื่อง" เจาะจง (next_approver_id)
+ *   · ผู้อนุมัติขั้นถัดไปตามลำดับขั้นรายบุคคลของผู้จัดทำ (หน้า + เพิ่มเจ้าหน้าที่)
+ *   · fallback: ลำดับรวมเดิม
+ * (ผู้ใช้สั่ง 27 พ.ย. 2569 — เดิมดูแค่ลำดับรวม ทำให้ผู้อนุมัติที่ตั้งรายคนกดไม่ได้)
+ */
+const canDecideRow = (m) => {
+  if (!m || m.status !== 'submitted') return false;
+  const next = UI.approvalDone(m) + 1;
+  if (Auth.isAdmin()) return true;
+  if (Number(m.next_approver_id) === Number(Auth.user?.id)) return true;
+  const perId = Number(((perPerson.value[next] || {})[String(m.user_id)]) || 0);
+  if (perId) return perId === Number(Auth.user?.id);
+  return myLevels.value.includes(next);
+};
 
 /* ---------- หน้าต่าง ---------- */
 const detail = ref(null);
