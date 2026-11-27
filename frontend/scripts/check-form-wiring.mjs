@@ -547,15 +547,15 @@ const leaveStatsSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveS
 const leaveExportSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveStatsExport.vue'), 'utf8');
 const opsLeaveSrc = readFileSync(join(ROOT, '..', 'backend', 'routes', 'requests.js'), 'utf8');
 
-check(/const TYPES = \['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'\]/.test(leaveFormSrc),
+check(/const TYPES = \['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'\]/.test(leaveFormSrc),
   'LeaveForm: ช่อง "เรื่อง" มีตัวเลือก "ลาบวช"');
 check(/f\.value\.leave_type === 'ลาบวช'/.test(leaveFormSrc),
   'LeaveForm: เลือกลาบวชแล้วมีช่อง "เนื่องจาก"');
 check(/\{ label: 'บวช'[\s\S]{0,120}?usedOf\('ลาบวช'\)/.test(leaveFormSrc),
   'LeaveForm: ตารางสถิติในฟอร์มมีแถว "บวช"');
-check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'\]/.test(opsLeaveSrc),
+check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'\]/.test(opsLeaveSrc),
   'เซิร์ฟเวอร์: /leave-stats นับ "ลาบวช" ด้วย');
-check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'ลาบวช'\]/.test(leaveReviewSrc),
+check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'\]/.test(leaveReviewSrc),
   'หน้าตรวจสอบคำขอลา: ตารางสถิติมีคอลัมน์ "บวช"');
 check(/t === 'ลาบวช'\) return HEAD\.monk/.test(leaveReviewSrc),
   'หน้าตรวจสอบคำขอลา: หัวคอลัมน์ของลาบวช = "บวช"');
@@ -567,6 +567,27 @@ check(/u\.monk \+= d/.test(leaveStatsSrc) && /ลาบวช \(วัน\)/.tes
   'หน้าสถิติการลา: นับและแสดงคอลัมน์ "ลาบวช (วัน)"');
 check(/u\.monk \+= d/.test(leaveExportSrc) && /'ลาบวช \(วัน\)'/.test(leaveExportSrc),
   'ไฟล์ Excel สถิติการลา: มีคอลัมน์ "ลาบวช (วัน)"');
+
+/* ⑱.๑ "การลาไปช่วยเหลือภริยาที่คลอดบุตร" (ผู้ใช้สั่ง 27 พ.ย. 2569) — ต่อจากลาคลอดบุตร */
+const ASSIST = 'การลาไปช่วยเหลือภริยาที่คลอดบุตร';
+check(new RegExp(`const TYPES = \\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'\\]`).test(leaveFormSrc),
+  'LeaveForm: มีตัวเลือก "การลาไปช่วยเหลือภริยาที่คลอดบุตร" ต่อจากลาคลอดบุตร');
+check(/label: 'ช่วยเหลือภริยา'[\s\S]{0,200}?usedOf\('การลาไปช่วยเหลือภริยาที่คลอดบุตร'\)/.test(leaveFormSrc),
+  'LeaveForm: ตารางสถิติในฟอร์มมีแถว "ช่วยเหลือภริยา"');
+check(new RegExp(`'ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'`).test(opsLeaveSrc),
+  'เซิร์ฟเวอร์: /leave-stats นับ "การลาไปช่วยเหลือภริยาที่คลอดบุตร" ด้วย');
+check(new RegExp(`'ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'`).test(opsLeaveSrc.split('leave-last')[1] || ''),
+  'เซิร์ฟเวอร์: "ลาครั้งสุดท้าย" นับประเภทนี้ด้วย');
+check(new RegExp(`'ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'`).test(leaveReviewSrc),
+  'หน้าตรวจสอบคำขอลา: มีคอลัมน์ "ช่วยเหลือภริยา"');
+check(/t === 'การลาไปช่วยเหลือภริยาที่คลอดบุตร'\) return HEAD\.assist/.test(leaveReviewSrc),
+  'หน้าตรวจสอบคำขอลา: หัวคอลัมน์ = "ช่วยเหลือภริยา"');
+check(/<td style="text-align: left">ช่วยเหลือภริยา<\/td>/.test(leaveDocSrc),
+  'ใบลา: ตารางสถิติมีแถว "ช่วยเหลือภริยา"');
+check(/u\.assist \+= d/.test(leaveStatsSrc) && /ช่วยเหลือภริยา \(วัน\)/.test(leaveStatsSrc),
+  'หน้าสถิติการลา: นับและแสดงคอลัมน์ "ช่วยเหลือภริยา (วัน)"');
+check(/u\.assist \+= d/.test(leaveExportSrc) && /'ช่วยเหลือภริยา \(วัน\)'/.test(leaveExportSrc),
+  'ไฟล์ Excel สถิติการลา: มีคอลัมน์ "ช่วยเหลือภริยา (วัน)"');
 
 /* ── ⑲ ฟอร์มไปราชการของสถานศึกษา: เรื่อง = "ขออนุญาตเดินทางไปราชการในราชอาณาจักร" ──
  *

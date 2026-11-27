@@ -89,7 +89,7 @@ async function loadLeaveStats() {
   const map = {};
   for (const r of list) {
     if (!map[r.user_id]) {
-      map[r.user_id] = { name: UI.personName(r), position: r.position || '-', sick: 0, personal: 0, maternity: 0, monk: 0, total: 0 };
+      map[r.user_id] = { name: UI.personName(r), position: r.position || '-', sick: 0, personal: 0, maternity: 0, assist: 0, monk: 0, total: 0 };
     }
     const u = map[r.user_id];
     const d = Number(r.days) || 0;
@@ -97,6 +97,7 @@ async function loadLeaveStats() {
     if (r.leave_type === 'ลาป่วย') u.sick += d;
     else if (r.leave_type === 'ลากิจ') u.personal += d;
     else if (r.leave_type === 'ลาคลอดบุตร') u.maternity += d;
+    else if (r.leave_type === 'การลาไปช่วยเหลือภริยาที่คลอดบุตร') u.assist += d;
     else if (r.leave_type === 'ลาบวช') u.monk += d;
   }
   rows.value = Object.values(map).sort((a, b) => b.total - a.total);
@@ -131,13 +132,14 @@ async function loadMyStats() {
   const data = await api.get('/leaves?status=approved&year=' + year);
   const list = (data.requests || []).filter((r) => r.user_id === u.id && inRound(r.date_from));
 
-  let sick = 0, personal = 0, maternity = 0, monk = 0, vacDays = 0, vacTimes = 0;
+  let sick = 0, personal = 0, maternity = 0, assist = 0, monk = 0, vacDays = 0, vacTimes = 0;
   for (const r of list) {
     const d = Number(r.days) || 0;
     if (r.leave_type === 'ลาพักผ่อน') { vacDays += d; vacTimes += 1; }
     else if (r.leave_type === 'ลาป่วย') sick += d;
     else if (r.leave_type === 'ลากิจ') personal += d;
     else if (r.leave_type === 'ลาคลอดบุตร') maternity += d;
+    else if (r.leave_type === 'การลาไปช่วยเหลือภริยาที่คลอดบุตร') assist += d;
     else if (r.leave_type === 'ลาบวช') monk += d;
   }
 
@@ -156,14 +158,14 @@ async function loadMyStats() {
     position: u.position || '',
     accumulated, annual, vacTotal, vacTimes, vacDays,
     vacRemain: Math.max(0, vacTotal - vacDays),
-    sick, personal, maternity, monk,
-    grand: sick + personal + maternity + monk + vacDays,
-    generalTotal: sick + personal + maternity + monk,
+    sick, personal, maternity, assist, monk,
+    grand: sick + personal + maternity + assist + monk + vacDays,
+    generalTotal: sick + personal + maternity + assist + monk,
   };
 }
 
 /** สีตัวเลข: มีค่า → สีตามประเภท, ไม่มีค่า → จาง */
-const COLORS = { sick: '#dc2626', personal: '#d97706', maternity: '#2563eb', monk: '#7c3aed' };
+const COLORS = { sick: '#dc2626', personal: '#d97706', maternity: '#2563eb', assist: '#0891b2', monk: '#7c3aed' };
 
 const thStyle = {
   padding: '8px 12px',
@@ -182,7 +184,8 @@ const myGeneral = computed(() =>
         { label: 'ลาป่วย', v: mine.value.sick },
         { label: 'ลากิจ', v: mine.value.personal },
         { label: 'ลาคลอดบุตร', v: mine.value.maternity },
-        /* เพิ่มตามประเภทการลาที่เพิ่มใหม่ (ผู้ใช้สั่ง 25 พ.ย. 2569) */
+        /* เพิ่มตามประเภทการลาที่เพิ่มใหม่ (ผู้ใช้สั่ง 25–27 พ.ย. 2569) */
+        { label: 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', v: mine.value.assist },
         { label: 'ลาบวช', v: mine.value.monk },
       ]
     : [],
@@ -229,6 +232,7 @@ const myGeneral = computed(() =>
               <th :style="thStyle">ลาป่วย (วัน)</th>
               <th :style="thStyle">ลากิจ (วัน)</th>
               <th :style="thStyle">ลาคลอด (วัน)</th>
+              <th :style="thStyle">ช่วยเหลือภริยา (วัน)</th>
               <th :style="thStyle">ลาบวช (วัน)</th>
               <th :style="{ ...thStyle, fontWeight: 800 }">รวม (วัน)</th>
             </tr>
@@ -246,6 +250,9 @@ const myGeneral = computed(() =>
               </td>
               <td :style="{ ...tdStyle, textAlign: 'center', color: u.maternity ? COLORS.maternity : '#d1d5db', fontWeight: u.maternity ? 600 : 400 }">
                 {{ u.maternity }}
+              </td>
+              <td :style="{ ...tdStyle, textAlign: 'center', color: u.assist ? COLORS.assist : '#d1d5db', fontWeight: u.assist ? 600 : 400 }">
+                {{ u.assist }}
               </td>
               <td :style="{ ...tdStyle, textAlign: 'center', color: u.monk ? COLORS.monk : '#d1d5db', fontWeight: u.monk ? 600 : 400 }">
                 {{ u.monk }}
