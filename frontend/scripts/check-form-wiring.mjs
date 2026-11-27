@@ -547,16 +547,20 @@ const leaveStatsSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveS
 const leaveExportSrc = readFileSync(join(ROOT, 'src', 'components', 'ui', 'LeaveStatsExport.vue'), 'utf8');
 const opsLeaveSrc = readFileSync(join(ROOT, '..', 'backend', 'routes', 'requests.js'), 'utf8');
 
-check(/const TYPES = \['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'\]/.test(leaveFormSrc),
-  'LeaveForm: ช่อง "เรื่อง" มีตัวเลือก "ลาบวช"');
+check(/const BASE_TYPES = \['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร'\]/.test(leaveFormSrc),
+  'LeaveForm: ช่อง "เรื่อง" เหลือ 3 ประเภท (ป่วย/กิจ/คลอด)');
+check(!/BASE_TYPES = \[[^\]]*'(ลาบวช|การลาไปช่วยเหลือภริยาที่คลอดบุตร)'/.test(leaveFormSrc),
+  'LeaveForm: เอาตัวเลือก "ลาบวช" และ "ช่วยเหลือภริยา" ออกแล้ว (ผู้ใช้สั่ง 27 พ.ย. 2569)');
+check(/const TYPES = computed\(\(\) => \{[\s\S]{0,220}?!BASE_TYPES\.includes\(t\)/.test(leaveFormSrc),
+  'LeaveForm: เปิดแก้ไขคำขอเก่าที่ยังใช้ประเภทเดิมได้ (ไม่เปลี่ยนประเภทให้เอง)');
 check(/f\.value\.leave_type === 'ลาบวช'/.test(leaveFormSrc),
-  'LeaveForm: เลือกลาบวชแล้วมีช่อง "เนื่องจาก"');
+  'LeaveForm: คำขอเก่าประเภทลาบวชยังมีช่อง "เนื่องจาก"');
 check(/\{ label: 'บวช'[\s\S]{0,120}?usedOf\('ลาบวช'\)/.test(leaveFormSrc),
-  'LeaveForm: ตารางสถิติในฟอร์มมีแถว "บวช"');
+  'LeaveForm: ตารางสถิติในฟอร์มยังแสดงแถว "บวช" เมื่อมีข้อมูล/กำลังแก้ไข');
 check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'\]/.test(opsLeaveSrc),
-  'เซิร์ฟเวอร์: /leave-stats นับ "ลาบวช" ด้วย');
+  'เซิร์ฟเวอร์: /leave-stats ยังนับประเภทเดิม (ข้อมูลย้อนหลัง)');
 check(/\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'\]/.test(leaveReviewSrc),
-  'หน้าตรวจสอบคำขอลา: ตารางสถิติมีคอลัมน์ "บวช"');
+  'หน้าตรวจสอบคำขอลา: ยังมีคอลัมน์ของประเภทเดิม');
 check(/t === 'ลาบวช'\) return HEAD\.monk/.test(leaveReviewSrc),
   'หน้าตรวจสอบคำขอลา: หัวคอลัมน์ของลาบวช = "บวช"');
 check(/r\.value\.leave_type === 'ลาบวช'/.test(leaveDocSrc),
@@ -568,14 +572,14 @@ check(/u\.monk \+= d/.test(leaveStatsSrc) && /ลาบวช \(วัน\)/.tes
 check(/u\.monk \+= d/.test(leaveExportSrc) && /'ลาบวช \(วัน\)'/.test(leaveExportSrc),
   'ไฟล์ Excel สถิติการลา: มีคอลัมน์ "ลาบวช (วัน)"');
 
-/* ⑱.๑ "การลาไปช่วยเหลือภริยาที่คลอดบุตร" (ผู้ใช้สั่ง 27 พ.ย. 2569) — ต่อจากลาคลอดบุตร */
+/* ⑱.๑ ประเภทเดิม "ช่วยเหลือภริยา" — เอาออกจากช่อง "เรื่อง" แต่ยังรองรับข้อมูลย้อนหลัง */
 const ASSIST = 'การลาไปช่วยเหลือภริยาที่คลอดบุตร';
-check(new RegExp(`const TYPES = \\['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'\\]`).test(leaveFormSrc),
-  'LeaveForm: มีตัวเลือก "การลาไปช่วยเหลือภริยาที่คลอดบุตร" ต่อจากลาคลอดบุตร');
-check(/label: 'ช่วยเหลือภริยา'[\s\S]{0,200}?usedOf\('การลาไปช่วยเหลือภริยาที่คลอดบุตร'\)/.test(leaveFormSrc),
-  'LeaveForm: ตารางสถิติในฟอร์มมีแถว "ช่วยเหลือภริยา"');
+check(!new RegExp(`BASE_TYPES = \\[[^\\]]*'${ASSIST}'`).test(leaveFormSrc),
+  'LeaveForm: ไม่มีตัวเลือก "การลาไปช่วยเหลือภริยาที่คลอดบุตร" ในช่อง "เรื่อง" แล้ว');
+check(/const assist = 'การลาไปช่วยเหลือภริยาที่คลอดบุตร'[\s\S]{0,200}?usedOf\(assist\) > 0/.test(leaveFormSrc),
+  'LeaveForm: ยังแสดงแถว "ช่วยเหลือภริยา" เมื่อเคยใช้/กำลังแก้ไขคำขอเก่า');
 check(new RegExp(`'ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'`).test(opsLeaveSrc),
-  'เซิร์ฟเวอร์: /leave-stats นับ "การลาไปช่วยเหลือภริยาที่คลอดบุตร" ด้วย');
+  'เซิร์ฟเวอร์: /leave-stats นับ "การลาไปช่วยเหลือภริยาที่คลอดบุตร" (ข้อมูลย้อนหลัง)');
 check(new RegExp(`'ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'`).test(opsLeaveSrc.split('leave-last')[1] || ''),
   'เซิร์ฟเวอร์: "ลาครั้งสุดท้าย" นับประเภทนี้ด้วย');
 check(new RegExp(`'ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', '${ASSIST}', 'ลาบวช'`).test(leaveReviewSrc),

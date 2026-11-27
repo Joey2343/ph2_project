@@ -144,18 +144,24 @@ const statRows = computed(() => {
   }
   const thisDays = num(f.value.days);
   const is = f.value.leave_type;
-  return [
+  const rows = [
     { label: 'ป่วย', before: usedOf('ลาป่วย'), now: is === 'ลาป่วย' ? thisDays : 0 },
     { label: 'กิจส่วนตัว', before: usedOf('ลากิจ'), now: is === 'ลากิจ' ? thisDays : 0 },
     { label: 'คลอดบุตร', before: usedOf('ลาคลอดบุตร'), now: is === 'ลาคลอดบุตร' ? thisDays : 0 },
-    /* เพิ่มตามประเภทที่เพิ่มใหม่ (ผู้ใช้สั่ง 25–27 พ.ย. 2569) */
-    {
-      label: 'ช่วยเหลือภริยา',
-      before: usedOf('การลาไปช่วยเหลือภริยาที่คลอดบุตร'),
-      now: is === 'การลาไปช่วยเหลือภริยาที่คลอดบุตร' ? thisDays : 0,
-    },
-    { label: 'บวช', before: usedOf('ลาบวช'), now: is === 'ลาบวช' ? thisDays : 0 },
   ];
+  /*
+   * ประเภทที่เลิกให้เลือกแล้ว (ผู้ใช้สั่ง 27 พ.ย. 2569) — ยังแสดงแถวเมื่อ
+   *   · กำลังแก้ไขคำขอเก่าที่ใช้ประเภทนั้น หรือ
+   *   · เคยใช้ประเภทนั้นในปีงบประมาณนี้ (มีตัวเลขให้ดู)
+   */
+  const assist = 'การลาไปช่วยเหลือภริยาที่คลอดบุตร';
+  if (is === assist || usedOf(assist) > 0) {
+    rows.push({ label: 'ช่วยเหลือภริยา', before: usedOf(assist), now: is === assist ? thisDays : 0 });
+  }
+  if (is === 'ลาบวช' || usedOf('ลาบวช') > 0) {
+    rows.push({ label: 'บวช', before: usedOf('ลาบวช'), now: is === 'ลาบวช' ? thisDays : 0 });
+  }
+  return rows;
 });
 
 function usedOf(type) {
@@ -234,10 +240,17 @@ async function save() {
 
 /*
  * ประเภทการลาของแบบ "ลาป่วย ลากิจ ลาคลอด"
- *   · ผู้ใช้สั่ง 25 พ.ย. 2569: เพิ่ม "ลาบวช"
- *   · ผู้ใช้สั่ง 27 พ.ย. 2569: เพิ่ม "การลาไปช่วยเหลือภริยาที่คลอดบุตร" (ต่อจากลาคลอดบุตร)
+ *   · ผู้ใช้สั่ง 27 พ.ย. 2569: เอา "ลาบวช" และ "การลาไปช่วยเหลือภริยาที่คลอดบุตร" ออก
+ *     (เหลือ 3 ประเภทตามแบบฟอร์มราชการ)
+ *   · ยังรองรับคำขอเก่าที่ใช้สองประเภทนั้น: ถ้า record เป็นประเภทนั้น จะแสดงตัวเลือกให้
+ *     เพื่อไม่ให้การเปิดแก้ไขไปเปลี่ยนประเภทของคำขอเดิมโดยไม่ตั้งใจ
  */
-const TYPES = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร', 'การลาไปช่วยเหลือภริยาที่คลอดบุตร', 'ลาบวช'];
+const BASE_TYPES = ['ลาป่วย', 'ลากิจ', 'ลาคลอดบุตร'];
+const TYPES = computed(() => {
+  const t = f.value.leave_type;
+  if (t && !BASE_TYPES.includes(t) && t !== 'ลาพักผ่อน') return [...BASE_TYPES, t];
+  return BASE_TYPES;
+});
 const TITLE = computed(
   () =>
     (props.record ? '✎ แก้ไขคำขอลา — ' + (props.record.leave_no || '') : '') ||
